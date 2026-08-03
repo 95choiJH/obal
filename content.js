@@ -1186,7 +1186,7 @@
           }
           if (p.collab && p.members && p.members.length) {
             group += '<div class="cs-pop-members">' +
-              p.members.map(channelAvatarLinkHtml).join("") +
+              p.members.map((member) => channelAvatarLinkHtml(member)).join("") +
               "</div>";
           }
           group += "</div>";
