@@ -1,0 +1,38 @@
+# Build and packaging output
+dist/
+netlify-admin/
+*.zip
+
+# Dependencies and package-manager caches
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Supabase local CLI state
+supabase/.temp/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Local AI/tooling state
+.claude/
+.agents/
+.codex/
