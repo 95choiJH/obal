@@ -20,6 +20,49 @@ alter table public.upcoming_content enable row level security;
 alter table public.feedback enable row level security;
 alter table public.admin_users enable row level security;
 
+
+-- Game image uploads used by the admin page.
+insert into storage.buckets (id, name, public)
+values ('game-images', 'game-images', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "anon can read game images" on storage.objects;
+drop policy if exists "admin users can upload game images" on storage.objects;
+drop policy if exists "admin users can update game images" on storage.objects;
+drop policy if exists "admin users can delete game images" on storage.objects;
+
+create policy "anon can read game images"
+  on storage.objects for select
+  to anon, authenticated
+  using (bucket_id = 'game-images');
+
+create policy "admin users can upload game images"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'game-images'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
+
+create policy "admin users can update game images"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'game-images'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  )
+  with check (
+    bucket_id = 'game-images'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
+
+create policy "admin users can delete game images"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'game-images'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
 -- Replace broad policies from older setup docs, if they exist.
 drop policy if exists "anon can read schedule" on public.schedule;
 drop policy if exists "authenticated can read schedule" on public.schedule;

@@ -132,7 +132,7 @@
       .select("*")
       .eq("channel_id", cfg.channelId)
       .order("date", { ascending: false });
-    if (error) { toast("불러오기 실패: " + error.message); return; }
+    if (error) { toast("\uBD88\uB7EC\uC624\uAE30 \uC2E4\uD328: " + error.message); return; }
     rows = (data || []).map((r) => ({
       ...r,
       notes: normalizeNotes(r.note),
@@ -477,6 +477,40 @@ function infoItemHtml(u, i) {
   }
 
 
+
+  function safeStorageName(value) {
+    return String(value || "")
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "image";
+  }
+
+  async function uploadGameImage(rowIndex, imageIndex, file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith("image/")) { toast("\uC774\uBBF8\uC9C0 \uD30C\uC77C\uB9CC \uC5C5\uB85C\uB4DC\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."); return; }
+    const bucket = cfg.gameImageBucketName || "game-images";
+    const row = rows[rowIndex];
+    if (!row) return;
+    row.gameImages = row.gameImages || [];
+    row.gameImages[imageIndex] = row.gameImages[imageIndex] || { url: "", label: "" };
+    const ext = safeStorageName((file.name.split(".").pop() || "jpg").toLowerCase());
+    const base = safeStorageName(file.name.replace(/\.[^.]+$/, ""));
+    const path = [cfg.channelId || "channel", row.date || todayKey(), Date.now() + "-" + base + "." + ext].join("/");
+    toast("\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC911...");
+    const { error } = await sb.storage.from(bucket).upload(path, file, {
+      cacheControl: "31536000",
+      upsert: false,
+      contentType: file.type,
+    });
+    if (error) { toast("\uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC2E4\uD328: " + error.message); return; }
+    const { data } = sb.storage.from(bucket).getPublicUrl(path);
+    row.gameImages[imageIndex].url = data && data.publicUrl ? data.publicUrl : "";
+    if (!row.gameImages[imageIndex].label) row.gameImages[imageIndex].label = file.name.replace(/\.[^.]+$/, "");
+    render();
+    markDirty();
+    toast("\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC644\uB8CC. \uC800\uC7A5\uC744 \uB20C\uB7EC \uBC18\uC601\uD558\uC138\uC694.");
+  }
   function gameImagesListHtml(r, i) {
     const images = r.gameImages || [];
     const itemsHtml = images.map((g, gi) => gameImageItemHtml(i, g, gi)).join("");
@@ -495,6 +529,7 @@ function infoItemHtml(u, i) {
           '<button class="icon-btn" data-delgameimg="' + i + "-" + gi + '" aria-label="\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC0AD\uC81C">' + trashSvg() + "</button>" +
         '</div>' +
         '<input type="url" inputmode="url" data-gif="url" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.url || "") + '" placeholder="\uC774\uBBF8\uC9C0 URL (https://)" />' +
+        '<div class="game-upload-row"><input type="file" accept="image/*" data-gameupload="' + i + '-' + gi + '" /></div>' +
       '</div>'
     );
   }
@@ -2202,6 +2237,12 @@ function infoItemHtml(u, i) {
         markDirty();
       };
     });
+    document.querySelectorAll("[data-gameupload]").forEach((el) => {
+      el.onchange = async () => {
+        const [i, gi] = el.getAttribute("data-gameupload").split("-").map(Number);
+        await uploadGameImage(i, gi, el.files && el.files[0]);
+      };
+    });
     document.querySelectorAll("[data-addgameimg]").forEach((el) => {
       el.onclick = () => {
         const i = +el.getAttribute("data-addgameimg");
@@ -2532,6 +2573,8 @@ function infoItemHtml(u, i) {
 
   init();
 })();
+
+
 
 
 
