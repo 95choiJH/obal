@@ -240,11 +240,16 @@
     .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
     .cs-game-list { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 8px; align-content: start; }
-    .cs-game-card { min-width: 0; text-decoration: none; color: inherit; }
+    .cs-game-list-many { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; height: 112px; overflow: hidden; }
+    .cs-game-card { min-width: 0; text-decoration: none; color: inherit; overflow: hidden; }
     .cs-game-card img { display: block; width: 100%; height: 92px; object-fit: cover; object-position: center; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
+    .cs-game-list-many .cs-game-card img { height: calc((112px - ((var(--cs-game-rows, 1) - 1) * 5px)) / var(--cs-game-rows, 1)); }
     .cs-game-name { display: block; margin-top: 3px; color: #c9cacd; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-game-list-many .cs-game-name { display: none; }
     .cs-month-cell .cs-game-list { grid-template-columns: 1fr; gap: 5px; margin-top: 5px; }
+    .cs-month-cell .cs-game-list-many { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; height: 58px; }
     .cs-month-cell .cs-game-card img { height: 48px; border-radius: 4px; }
+    .cs-month-cell .cs-game-list-many .cs-game-card img { height: calc((58px - ((var(--cs-game-rows, 1) - 1) * 3px)) / var(--cs-game-rows, 1)); }
     .cs-month-cell .cs-game-name { display: none; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-pop-game-image { display: block; max-width: 240px; max-height: 135px; margin: 6px 0 8px; border: 1px solid #3a3c40; border-radius: 8px; object-fit: cover; background: #111214; }
@@ -591,9 +596,10 @@
     if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
     const classes = ["cs-game-list"];
     if (compact) classes.push("cs-game-list-compact");
-    if (games.length >= 3) classes.push("cs-game-list-many");
+    if (games.length >= 2) classes.push("cs-game-list-many");
     if (games.length >= 5) classes.push("cs-game-list-dense");
-    return '<div class="' + classes.join(" ") + '">' + games.map((game) => {
+    const rows = games.length >= 2 ? Math.ceil(games.length / 2) : 1;
+    return '<div class="' + classes.join(" ") + '" style="--cs-game-rows:' + rows + '">' + games.map((game) => {
       const url = safeMediaUrl(game.url);
       const name = game.label || entry.titleShort || entry.title || "\uAC8C\uC784";
       return '<span class="cs-game-card"><img src="' + escapeHtml(url) + '" alt="' + escapeHtml(name) + '" loading="lazy" />' +
