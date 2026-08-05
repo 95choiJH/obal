@@ -44,6 +44,7 @@
         hidePartLabel: !!p.hidePartLabel,
         displayType: p.displayType || "text",
         profile: (p.profile && p.profile.channelId) || (p.profile && p.profile.channelName) || "",
+        gameImageUrl: p.gameImageUrl || "",
         collab: !!p.collab,
         official: !!p.official,
         otherChannel: !!p.otherChannel,
@@ -516,6 +517,7 @@ function infoItemHtml(u, i) {
           '<input class="part-label-input" type="text" data-pf="label" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(p.label || (pi + 1) + "부") + '" placeholder="부" aria-label="부 표시 이름"' + (speculativeOn ? " disabled" : "") + ' />' +
         '</div>' +
         '<div class="directive-preview" data-directive-preview="' + i + '-' + pi + '">' + directivePreviewHtml(inputValue, p.profile) + '</div>' +
+        '<div class="part-game-image-row"><input type="url" inputmode="url" data-pf="gameImageUrl" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(p.gameImageUrl || "") + '" placeholder="\uAC8C\uC784 \uC774\uBBF8\uC9C0 URL (https://)" /></div>' +
         '<div class="part-tools-row">' +
           '<div class="part-tool-actions">' + partMoveButtons(i, pi, partCount) + deletePartBtn(i, pi) + '</div>' +
         '</div>' +
@@ -1906,7 +1908,7 @@ function infoItemHtml(u, i) {
 
   function normalizePart(p) {
     if (typeof p === "string") {
-      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
     }
     if (p && typeof p === "object") {
       return {
@@ -1915,6 +1917,7 @@ function infoItemHtml(u, i) {
         hidePartLabel: !!p.hidePartLabel,
         displayType: p.displayType || "text",
         profile: normalizeChannelRef(p.profile),
+        gameImageUrl: p.gameImageUrl || "",
         collab: !!p.collab,
         official: !!p.official,
         otherChannel: !!p.otherChannel,
@@ -1925,7 +1928,7 @@ function infoItemHtml(u, i) {
         hostChannel: normalizeChannelRef(p.hostChannel),
       };
     }
-    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
   }
 
   function findDirectiveBracketEnd(raw, openIndex) {
@@ -2126,7 +2129,7 @@ function infoItemHtml(u, i) {
       el.onclick = () => {
         const i = +el.getAttribute("data-addpart");
         rows[i].parts = rows[i].parts || [];
-        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null });
+        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null });
         render();
         markDirty();
       };
@@ -2329,6 +2332,7 @@ function infoItemHtml(u, i) {
             hidePartLabel: !!p.hidePartLabel,
             displayType: p.displayType || "text",
             profile: p.profile || null,
+            gameImageUrl: (p.gameImageUrl || "").trim(),
             collab: !!p.collab,
             official: !!p.official,
             otherChannel: !!p.otherChannel,

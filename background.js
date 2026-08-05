@@ -46,7 +46,7 @@ function normalizeChannelRef(c) {
 // parts 항목을 {content, collab, official, otherChannel, members, hostChannel} 형태로 정규화 (구버전은 문자열 하나였음)
 function normalizePart(p) {
   if (typeof p === "string") {
-    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
   }
   if (p && typeof p === "object") {
     return {
@@ -55,6 +55,7 @@ function normalizePart(p) {
       hidePartLabel: !!p.hidePartLabel,
       displayType: p.displayType || "text",
       profile: normalizeChannelRef(p.profile),
+      gameImageUrl: p.gameImageUrl || "",
       collab: !!p.collab,
       official: !!p.official,
       otherChannel: !!p.otherChannel,
@@ -65,7 +66,7 @@ function normalizePart(p) {
       hostChannel: normalizeChannelRef(p.hostChannel),
     };
   }
-  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
 }
 
 // vods 항목을 {url, label} 형태로 정규화. label이 없으면 "방송 다시보기"가 기본값.

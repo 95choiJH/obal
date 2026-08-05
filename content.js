@@ -28,6 +28,7 @@
     pageOffset: 0,       // 0 = 오늘 페이지, -1 = 5일 전 페이지 ...
     monthExpanded: false,
     monthOffset: 0,
+    gameOnly: false,
     host: null,          // shadow host element
     shadow: null,
     mode: null,          // "inline" | "floating"
@@ -224,6 +225,7 @@
     .cs-view-toggle { flex: 0 0 auto; border: 1px solid #3a3c40; border-radius: 7px;
       background: #232427; color: #c9cacd; padding: 5px 9px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
     .cs-view-toggle:hover, .cs-view-toggle.cs-open { color: #efeff1; background: #2b2d31; border-color: #4a4c52; }
+    .cs-game-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
     .cs-month-label { color: #9d9ea3; font-size: 12px; font-weight: 700; white-space: nowrap; }
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
@@ -237,6 +239,14 @@
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
+    .cs-game-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 7px; margin-top: 8px; }
+    .cs-game-card { min-width: 0; text-decoration: none; color: inherit; }
+    .cs-game-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
+    .cs-game-name { display: block; margin-top: 4px; color: #c9cacd; font-size: 11px; font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-month-cell .cs-game-list { grid-template-columns: 1fr; gap: 5px; }
+    .cs-month-cell .cs-game-card img { aspect-ratio: 4 / 3; }
+    .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
+    .cs-pop-game-image { display: block; max-width: 240px; max-height: 135px; margin: 6px 0 8px; border: 1px solid #3a3c40; border-radius: 8px; object-fit: cover; background: #111214; }
 
     .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
       border-radius: 8px; padding: 16px; padding-right: 30px; text-align: center; min-height: 66px; }
@@ -469,6 +479,7 @@
     :host(.cs-light-theme) .cs-arrow:disabled { color: #b8bcc1; }
     :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
     :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
+    :host(.cs-light-theme) .cs-game-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
     :host(.cs-light-theme) .cs-month-label { color: #6f747b; }
     :host(.cs-light-theme) .cs-month-weekday { color: #8b9097; }
     :host(.cs-light-theme) .cs-month-blank { background: #fafafa; border: 1px solid #f0f1f2; }
@@ -495,6 +506,9 @@
     :host(.cs-light-theme) .cs-part-tag-speculative { color: #9a6b00; background: rgba(232,194,104,0.2); }
     :host(.cs-light-theme) .cs-cell-muted .cs-part-tag { color: #969ba1; background: #e9ebed; border-color: transparent; }
     :host(.cs-light-theme) .cs-text-badge { color: #7557c9; background: rgba(117,87,201,0.1); border-color: rgba(117,87,201,0.25); }
+    :host(.cs-light-theme) .cs-game-card img, :host(.cs-light-theme) .cs-pop-game-image { border-color: #d3d6da; background: #f2f3f4; }
+    :host(.cs-light-theme) .cs-game-name { color: #33373c; }
+    :host(.cs-light-theme) .cs-game-empty { color: #a3a7ad; }
     :host(.cs-light-theme) .cs-inline-feedback-trigger { color: #008a43; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.28); }
     :host(.cs-light-theme) .cs-inline-feedback-trigger:hover { background: rgba(3,169,80,0.15); }
     :host(.cs-light-theme) .cs-inline-media-trigger { color: #1d4ed8; background: rgba(37,99,235,0.08); border-color: rgba(37,99,235,0.24); }
@@ -549,6 +563,7 @@
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 22px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 11px; }
+      .cs-month-cell .cs-game-name { font-size: 10px; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
     }
 
@@ -566,6 +581,20 @@
   // ----------------------------------------------------------
   // 렌더링
   // ----------------------------------------------------------
+  function gameParts(entry) {
+    return ((entry && entry.parts) || []).filter((p) => p && safeMediaUrl(p.gameImageUrl));
+  }
+
+  function gameImagesHtml(entry, compact) {
+    const games = gameParts(entry);
+    if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
+    return '<div class="cs-game-list">' + games.map((p) => {
+      const url = safeMediaUrl(p.gameImageUrl);
+      const name = p.content || p.label || "\uAC8C\uC784";
+      return '<span class="cs-game-card"><img src="' + escapeHtml(url) + '" alt="' + escapeHtml(name) + '" loading="lazy" />' +
+        '<span class="cs-game-name">' + directiveHtml(name, { disableProfileLinks: true }) + "</span></span>";
+    }).join("") + "</div>";
+  }
   function compactCellContentHtml(entry) {
     if (entry.parts && entry.parts.length) {
       return entry.parts.slice(0, 2).map((p, idx) => {
@@ -589,20 +618,23 @@
     const isPast = key < state.todayKey;
     const isOff = !!entry && entry.status === "off";
     const notes = entryNotes(entry);
-    const hoverable = !!entry && (!isOff || notes.length > 0);
+    const games = gameParts(entry);
+    const hoverable = !!entry && (state.gameOnly ? games.length > 0 : (!isOff || notes.length > 0));
 
     const classes = ["cs-cell"];
     if (compact) classes.push("cs-month-cell");
     if (isToday) classes.push("cs-cell-today");
     if (isPast || isOff) classes.push("cs-cell-muted");
-    if (!entry) classes.push("cs-cell-unknown");
+    if (!entry || (state.gameOnly && !games.length)) classes.push("cs-cell-unknown");
     if (!compact && (!entry || isOff)) classes.push("cs-cell-center");
     if (hoverable) classes.push("cs-cell-hoverable");
 
     const dateLabel = compact ? String(d.getDate()) : ((isToday ? "\uC624\uB298 " : "") + cellDateLabel(d));
     let dateRow = '<div class="cs-cell-date">' + dateLabel + "</div>";
     let body = "";
-    if (!entry) {
+    if (state.gameOnly) {
+      body = gameImagesHtml(entry, compact);
+    } else if (!entry) {
       body = compact ? "" : '<div class="cs-cell-center-body">' +
         '<div class="cs-cell-time"><img class="cs-undetermined-icon" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
         '<div class="cs-cell-title">\uBBF8\uC815</div></div>';
@@ -624,7 +656,7 @@
 
     return '<div class="' + classes.join(" ") + '" data-date="' + key + '"' +
       (hoverable ? ' data-hoverable="1"' : "") + ">" +
-      dateRow + body + timeIndicatorsHtml(entry, isPast) + "</div>";
+      dateRow + body + (state.gameOnly && !games.length ? "" : timeIndicatorsHtml(entry, isPast)) + "</div>";
   }
 
   function fiveDayGridHtml(windowStart) {
@@ -677,6 +709,7 @@
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
       monthLabel +
+      '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '">' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + "</button>" +
       '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '">' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + "</button>" +
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
@@ -1005,6 +1038,7 @@
     const next = s.getElementById("cs-next");
     const refresh = s.getElementById("cs-refresh");
     const monthToggle = s.getElementById("cs-month-toggle");
+    const gameToggle = s.getElementById("cs-game-toggle");
     const grid = s.getElementById("cs-grid");
     const popover = s.getElementById("cs-popover");
     const feedbackOpen = s.getElementById("cs-feedback-open");
@@ -1022,6 +1056,7 @@
     if (prev) prev.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset -= 1; else state.pageOffset -= 1; render(); });
     if (next) next.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset += 1; else state.pageOffset += 1; render(); });
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; render(); });
+    if (gameToggle) gameToggle.addEventListener("click", () => { closePopover(); state.gameOnly = !state.gameOnly; render(); });
     if (refresh) refresh.addEventListener("click", async () => {
       refresh.textContent = "…";
       await refreshData(true);
@@ -1234,9 +1269,13 @@
           if (p.displayType === "profile" && p.profile) {
             popContent = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
           }
+          const gameImageUrl = safeMediaUrl(p.gameImageUrl);
           let group = '<div class="cs-pop-part">' +
             '<div class="cs-pop-row">' + (label ? '<span class="' + iconClass + '">' + label + "</span>" : "") +
             popContent + "</div>";
+          if (gameImageUrl) {
+            group += '<img class="cs-pop-game-image" src="' + escapeHtml(gameImageUrl) + '" alt="' + escapeHtml(p.content || "\uAC8C\uC784") + '" loading="lazy" />';
+          }
           if ((p.official || p.otherChannel) && p.hostChannel) {
             group += '<div class="cs-pop-members">' + channelAvatarLinkHtml(p.hostChannel) + "</div>";
           }
