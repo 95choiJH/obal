@@ -24,9 +24,6 @@ const ADMIN_CONFIG = {
 
   // 문의·제보 테이블 이름
   feedbackTableName: "feedback",
-
-  // 게임 이미지 Supabase Storage 버킷 이름
-  gameImageBucketName: "game-images",
 };
 
 

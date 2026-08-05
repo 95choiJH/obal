@@ -478,53 +478,12 @@ function infoItemHtml(u, i) {
 
 
 
-  function safeStorageName(value) {
-    return String(value || "")
-      .normalize("NFKD")
-      .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || "image";
-  }
-
-  function gameImageUploadErrorMessage(error, bucket) {
-    const message = error && error.message ? error.message : "";
-    if (/bucket not found/i.test(message)) {
-      return 'Storage \uBC84\uD0B7 "' + bucket + '"\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. Supabase\uC5D0\uC11C supabase/rls-hardening.sql\uC744 \uBA3C\uC800 \uC2E4\uD589\uD558\uC138\uC694.';
-    }
-    return "\uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC2E4\uD328: " + message;
-  }
-
-  async function uploadGameImage(rowIndex, imageIndex, file) {
-    if (!file) return;
-    if (!file.type || !file.type.startsWith("image/")) { toast("\uC774\uBBF8\uC9C0 \uD30C\uC77C\uB9CC \uC5C5\uB85C\uB4DC\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."); return; }
-    const bucket = cfg.gameImageBucketName || "game-images";
-    const row = rows[rowIndex];
-    if (!row) return;
-    row.gameImages = row.gameImages || [];
-    row.gameImages[imageIndex] = row.gameImages[imageIndex] || { url: "", label: "" };
-    const ext = safeStorageName((file.name.split(".").pop() || "jpg").toLowerCase());
-    const base = safeStorageName(file.name.replace(/\.[^.]+$/, ""));
-    const path = [cfg.channelId || "channel", row.date || todayKey(), Date.now() + "-" + base + "." + ext].join("/");
-    toast("\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC911...");
-    const { error } = await sb.storage.from(bucket).upload(path, file, {
-      cacheControl: "31536000",
-      upsert: false,
-      contentType: file.type,
-    });
-    if (error) { toast(gameImageUploadErrorMessage(error, bucket)); return; }
-    const { data } = sb.storage.from(bucket).getPublicUrl(path);
-    row.gameImages[imageIndex].url = data && data.publicUrl ? data.publicUrl : "";
-    if (!row.gameImages[imageIndex].label) row.gameImages[imageIndex].label = file.name.replace(/\.[^.]+$/, "");
-    render();
-    markDirty();
-    toast("\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC644\uB8CC. \uC800\uC7A5\uC744 \uB20C\uB7EC \uBC18\uC601\uD558\uC138\uC694.");
-  }
   function gameImagesListHtml(r, i) {
     const images = r.gameImages || [];
     const itemsHtml = images.map((g, gi) => gameImageItemHtml(i, g, gi)).join("");
     return (
       '<div class="game-images-wrap">' + itemsHtml +
-        '<button class="add-btn small" data-addgameimg="' + i + '">+ \uAC8C\uC784 \uC774\uBBF8\uC9C0 \uCD94\uAC00</button>' +
+        '<button class="add-btn small" data-addgameimg="' + i + '">+ \uAC8C\uC784 \uCD94\uAC00</button>' +
       "</div>"
     );
   }
@@ -533,11 +492,10 @@ function infoItemHtml(u, i) {
     return (
       '<div class="game-image-item">' +
         '<div class="game-image-head">' +
-          '<input type="text" data-gif="label" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.label || "") + '" placeholder="\uAC8C\uC784\uBA85" />' +
-          '<button class="icon-btn" data-delgameimg="' + i + "-" + gi + '" aria-label="\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC0AD\uC81C">' + trashSvg() + "</button>" +
+          '<input type="text" data-gif="label" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.label || "") + '" placeholder="\uAC8C\uC784\uBA85 (\uC608: \uBC1C\uB85C\uB780\uD2B8)" />' +
+          '<button class="icon-btn" data-delgameimg="' + i + "-" + gi + '" aria-label="\uAC8C\uC784 \uC0AD\uC81C">' + trashSvg() + "</button>" +
         '</div>' +
-        '<input type="url" inputmode="url" data-gif="url" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.url || "") + '" placeholder="\uC774\uBBF8\uC9C0 URL (https://)" />' +
-        '<div class="game-upload-row"><input type="file" accept="image/*" data-gameupload="' + i + '-' + gi + '" /></div>' +
+        '<div class="game-meta-hint">\uD504\uB860\uD2B8 \uAC8C\uC784\uB9CC\uBCF4\uAE30\uB294 \uAC8C\uC784\uBA85\uC73C\uB85C \uC9D1\uACC4\uB429\uB2C8\uB2E4.</div>' +
       '</div>'
     );
   }
@@ -2043,13 +2001,14 @@ function infoItemHtml(u, i) {
 
   function normalizeGameImage(item) {
     if (typeof item === "string") {
-      const url = item.trim();
-      return url ? { url, label: "" } : null;
+      const value = item.trim();
+      if (!value) return null;
+      return /^https?:\/\//i.test(value) ? { url: value, label: "" } : { url: "", label: value };
     }
     if (!item || typeof item !== "object") return null;
     const url = String(item.url || item.imageUrl || item.src || "").trim();
-    if (!url) return null;
-    return { url, label: String(item.label || item.title || "").trim() };
+    const label = String(item.label || item.title || item.name || item.game || "").trim();
+    return (label || url) ? { url, label } : null;
   }
   function normalizeVod(v) {
     if (!v || typeof v !== "object") return null;
@@ -2243,12 +2202,6 @@ function infoItemHtml(u, i) {
         rows[i].gameImages[gi] = rows[i].gameImages[gi] || { url: "", label: "" };
         rows[i].gameImages[gi][f] = el.value;
         markDirty();
-      };
-    });
-    document.querySelectorAll("[data-gameupload]").forEach((el) => {
-      el.onchange = async () => {
-        const [i, gi] = el.getAttribute("data-gameupload").split("-").map(Number);
-        await uploadGameImage(i, gi, el.files && el.files[0]);
       };
     });
     document.querySelectorAll("[data-addgameimg]").forEach((el) => {
@@ -2457,7 +2410,7 @@ function infoItemHtml(u, i) {
             url: (g.url || "").trim(),
             label: (g.label || "").trim(),
           }))
-          .filter((g) => g.url);
+          .filter((g) => g.label || g.url);
         const cleanVods = (r.vods || [])
           .map((v) => ({
             url: (v.url || "").trim(),
