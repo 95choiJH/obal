@@ -242,14 +242,14 @@
     .cs-game-list { display: grid; grid-template-columns: repeat(var(--cs-game-count, 1), minmax(0, 1fr)); gap: 5px; margin-top: 8px; align-content: start; }
     .cs-game-list-many { height: 92px; overflow: hidden; }
     .cs-game-card { min-width: 0; text-decoration: none; color: inherit; overflow: hidden; }
-    .cs-game-card img { display: block; width: 100%; height: 92px; object-fit: cover; object-position: center center; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
-    .cs-game-list-many .cs-game-card img { width: calc(var(--cs-game-count, 1) * 100%); max-width: none; margin-left: 50%; transform: translateX(-50%); }
+    .cs-game-card img { display: block; width: 200%; max-width: none; height: 92px; object-fit: cover; object-position: center center; margin-left: 50%; transform: translateX(-50%); border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
+    .cs-game-list-many .cs-game-card img { width: calc(var(--cs-game-count, 1) * 200%); }
     .cs-game-name { display: block; margin-top: 3px; color: #c9cacd; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-game-list-many .cs-game-name { display: none; }
     .cs-month-cell .cs-game-list { grid-template-columns: repeat(var(--cs-game-count, 1), minmax(0, 1fr)); gap: 3px; margin-top: 5px; }
     .cs-month-cell .cs-game-list-many { height: 48px; overflow: hidden; }
     .cs-month-cell .cs-game-card img { height: 48px; border-radius: 4px; }
-    .cs-month-cell .cs-game-list-many .cs-game-card img { width: calc(var(--cs-game-count, 1) * 100%); }
+    .cs-month-cell .cs-game-list-many .cs-game-card img { width: calc(var(--cs-game-count, 1) * 200%); }
     .cs-month-cell .cs-game-name { display: none; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-pop-game-image { display: block; max-width: 240px; max-height: 135px; margin: 6px 0 8px; border: 1px solid #3a3c40; border-radius: 8px; object-fit: cover; background: #111214; }
