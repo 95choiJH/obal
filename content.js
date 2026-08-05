@@ -239,13 +239,12 @@
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
-    .cs-game-list { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 8px; max-height: 164px; overflow: hidden; align-content: start; }
-    .cs-game-list-many, .cs-game-list-dense { max-height: 164px; }
+    .cs-game-list { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 8px; align-content: start; }
     .cs-game-card { min-width: 0; text-decoration: none; color: inherit; }
-    .cs-game-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: center; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
+    .cs-game-card img { display: block; width: 100%; height: 92px; object-fit: cover; object-position: center; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
     .cs-game-name { display: block; margin-top: 3px; color: #c9cacd; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cs-month-cell .cs-game-list { grid-template-columns: 1fr; gap: 5px; margin-top: 5px; max-height: 74px; }
-    .cs-month-cell .cs-game-card img { aspect-ratio: 16 / 9; border-radius: 4px; }
+    .cs-month-cell .cs-game-list { grid-template-columns: 1fr; gap: 5px; margin-top: 5px; }
+    .cs-month-cell .cs-game-card img { height: 48px; border-radius: 4px; }
     .cs-month-cell .cs-game-name { display: none; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-pop-game-image { display: block; max-width: 240px; max-height: 135px; margin: 6px 0 8px; border: 1px solid #3a3c40; border-radius: 8px; object-fit: cover; background: #111214; }
