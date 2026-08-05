@@ -1997,6 +1997,17 @@ function infoItemHtml(u, i) {
     return { ...p, content: value, displayType: "profile", profile };
   }
   // label이 없으면 "방송 다시보기"가 기본값
+
+  function normalizeGameImage(item) {
+    if (typeof item === "string") {
+      const url = item.trim();
+      return url ? { url, label: "" } : null;
+    }
+    if (!item || typeof item !== "object") return null;
+    const url = String(item.url || item.imageUrl || item.src || "").trim();
+    if (!url) return null;
+    return { url, label: String(item.label || item.title || "").trim() };
+  }
   function normalizeVod(v) {
     if (!v || typeof v !== "object") return null;
     return { url: v.url || "", label: v.label || "방송 다시보기" };
