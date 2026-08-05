@@ -486,6 +486,14 @@ function infoItemHtml(u, i) {
       .slice(0, 80) || "image";
   }
 
+  function gameImageUploadErrorMessage(error, bucket) {
+    const message = error && error.message ? error.message : "";
+    if (/bucket not found/i.test(message)) {
+      return 'Storage \uBC84\uD0B7 "' + bucket + '"\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. Supabase\uC5D0\uC11C supabase/rls-hardening.sql\uC744 \uBA3C\uC800 \uC2E4\uD589\uD558\uC138\uC694.';
+    }
+    return "\uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC2E4\uD328: " + message;
+  }
+
   async function uploadGameImage(rowIndex, imageIndex, file) {
     if (!file) return;
     if (!file.type || !file.type.startsWith("image/")) { toast("\uC774\uBBF8\uC9C0 \uD30C\uC77C\uB9CC \uC5C5\uB85C\uB4DC\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."); return; }
@@ -503,7 +511,7 @@ function infoItemHtml(u, i) {
       upsert: false,
       contentType: file.type,
     });
-    if (error) { toast("\uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC \uC2E4\uD328: " + error.message); return; }
+    if (error) { toast(gameImageUploadErrorMessage(error, bucket)); return; }
     const { data } = sb.storage.from(bucket).getPublicUrl(path);
     row.gameImages[imageIndex].url = data && data.publicUrl ? data.publicUrl : "";
     if (!row.gameImages[imageIndex].label) row.gameImages[imageIndex].label = file.name.replace(/\.[^.]+$/, "");
