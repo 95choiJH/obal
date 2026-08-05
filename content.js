@@ -605,14 +605,23 @@
     return !state.selectedGame || games.some((game) => game.label === state.selectedGame);
   }
 
+  function compactGameLabel(label) {
+    const text = String(label || "").trim();
+    const cleaned = text.replace(/[\(\[\{].*?[\)\]\}]/g, "").replace(/\s*[~:\uFF1A\-]\s*.*$/, "").trim() || text;
+    const firstWord = cleaned.split(/\s+/)[0] || cleaned;
+    const base = firstWord.length >= 2 && firstWord.length <= 8 ? firstWord : cleaned;
+    return base.length > 6 ? base.slice(0, 6) + "..." : base;
+  }
+
   function gameChipsHtml(entry, compact) {
     const allGames = gameItems(entry);
     const games = state.selectedGame ? allGames.filter((game) => game.label === state.selectedGame) : allGames;
     if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
-    return '<div class="cs-game-chip-list">' + games.map((game) =>
-      '<span class="cs-game-chip' + (game.label === state.selectedGame ? " cs-selected" : "") + '" title="' + escapeHtml(game.label) + '">' +
-      directiveHtml(game.label, { disableProfileLinks: true }) + "</span>"
-    ).join("") + "</div>";
+    return '<div class="cs-game-chip-list">' + games.map((game) => {
+      const label = compact ? compactGameLabel(game.label) : game.label;
+      return '<span class="cs-game-chip' + (game.label === state.selectedGame ? " cs-selected" : "") + '" title="' + escapeHtml(game.label) + '">' +
+        directiveHtml(label, { disableProfileLinks: true }) + "</span>";
+    }).join("") + "</div>";
   }
 
   function monthGameStats(monthBase) {
