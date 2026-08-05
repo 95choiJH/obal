@@ -197,7 +197,7 @@
     .cs-wrapper { position: relative; background: #1b1c1f; border: 1px solid #2e3033;
       border-radius: 10px; margin: 0 30px 20px; }
     .cs-section { position: relative; padding: 12px 14px; }
-    .cs-schedule-section { border-radius: 10px; }
+    .cs-schedule-section { position: relative; border-radius: 10px; }
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
       background: rgba(15,16,18,0.28); }
 
@@ -223,11 +223,15 @@
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
       font-size: 20px; line-height: 1; padding: 2px 4px; }
     .cs-arrow:disabled { color: #4a4c52; cursor: default; }
-    .cs-view-toggle { flex: 0 0 auto; border: 1px solid #3a3c40; border-radius: 7px;
-      background: #232427; color: #c9cacd; padding: 5px 9px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-    .cs-view-toggle:hover, .cs-view-toggle.cs-open { color: #efeff1; background: #2b2d31; border-color: #4a4c52; }
+    .cs-view-toggle { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid #3a3c40; border-radius: 7px;
+      background: #232427; color: #c9cacd; padding: 0; font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+    .cs-view-toggle:hover, .cs-view-toggle:focus-visible, .cs-view-toggle.cs-open { color: #efeff1; background: #2b2d31; border-color: #4a4c52; }
+    .cs-view-icon { line-height: 1; font-size: 18px; pointer-events: none; }
+    .cs-view-icon svg { display: block; width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .cs-view-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 11px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
+    .cs-view-toggle:hover .cs-view-tip, .cs-view-toggle:focus-visible .cs-view-tip { opacity: 1; visibility: visible; transform: translateY(0); }
     .cs-game-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
-    .cs-month-label { color: #9d9ea3; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .cs-month-label { position: absolute; left: 50%; top: 13px; transform: translateX(-50%); color: #c9cacd; font-size: 18px; line-height: 1; font-weight: 900; white-space: nowrap; pointer-events: none; }
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
     .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -248,11 +252,12 @@
     .cs-game-rank { flex: 0 0 auto; color: #00FFA3; font-size: 11px; font-weight: 800; }
     .cs-game-stat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
     .cs-game-stat-count { color: #9d9ea3; font-size: 11px; font-weight: 800; white-space: nowrap; }
-    .cs-game-chip-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
-    .cs-game-chip { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(0,255,163,0.28); border-radius: 7px; background: rgba(0,255,163,0.11); color: #c9cacd; padding: 4px 6px; font-size: 11px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-game-chip-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; min-width: 0; }
+    .cs-game-chip { min-width: 0; max-width: 100%; display: block; border: 1px solid rgba(0,255,163,0.28); border-radius: 7px; background: rgba(0,255,163,0.11); color: #c9cacd; padding: 4px 6px; font-size: 11px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
     .cs-game-chip.cs-selected { color: #062b20; background: #00c878; border-color: #00c878; }
-    .cs-month-cell .cs-game-chip-list { gap: 3px; margin-top: 5px; max-height: 45px; overflow: hidden; }
-    .cs-month-cell .cs-game-chip { max-width: 100%; padding: 3px 4px; font-size: 10px; border-radius: 6px; }
+    .cs-game-chip.cs-muted { color: #777a80; background: rgba(127,127,127,0.08); border-color: rgba(127,127,127,0.18); }
+    .cs-month-cell .cs-game-chip-list { gap: 3px; margin-top: 5px; flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+    .cs-month-cell .cs-game-chip { flex: 0 0 auto; width: 100%; max-width: 100%; padding: 3px 4px; font-size: 10px; border-radius: 6px; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
       border-radius: 8px; padding: 16px; padding-right: 30px; text-align: center; min-height: 66px; }
@@ -484,7 +489,8 @@
     :host(.cs-light-theme) .cs-arrow { color: #008a43; }
     :host(.cs-light-theme) .cs-arrow:disabled { color: #b8bcc1; }
     :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
-    :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
+    :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
+    :host(.cs-light-theme) .cs-view-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
     :host(.cs-light-theme) .cs-game-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
     :host(.cs-light-theme) .cs-month-label { color: #6f747b; }
     :host(.cs-light-theme) .cs-month-weekday { color: #8b9097; }
@@ -517,6 +523,7 @@
     :host(.cs-light-theme) .cs-game-stat:hover, :host(.cs-light-theme) .cs-game-stat.cs-selected { background: rgba(3,169,80,0.1); border-color: #03a950; }
     :host(.cs-light-theme) .cs-game-chip { color: #33373c; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.24); }
     :host(.cs-light-theme) .cs-game-chip.cs-selected { color: #ffffff; background: #03a950; border-color: #03a950; }
+    :host(.cs-light-theme) .cs-game-chip.cs-muted { color: #9ca1a8; background: #eef0f2; border-color: #d8dadd; }
     :host(.cs-light-theme) .cs-game-empty { color: #a3a7ad; }
     :host(.cs-light-theme) .cs-inline-feedback-trigger { color: #008a43; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.28); }
     :host(.cs-light-theme) .cs-inline-feedback-trigger:hover { background: rgba(3,169,80,0.15); }
@@ -601,24 +608,14 @@
       .filter((item) => item.label);
   }
 
-  function gameHasSelected(games) {
-    return !state.selectedGame || games.some((game) => game.label === state.selectedGame);
-  }
-
-  function compactGameLabel(label) {
-    const text = String(label || "").replace(/\s+/g, " ").trim();
-    const cleaned = text.replace(/[\(\[\{].*?[\)\]\}]/g, "").replace(/\s*[~:\uFF1A\-]\s*.*$/, "").trim() || text;
-    return cleaned.length > 9 ? cleaned.slice(0, 9) + "..." : cleaned;
-  }
-
   function gameChipsHtml(entry, compact) {
     const allGames = gameItems(entry);
-    const games = state.selectedGame ? allGames.filter((game) => game.label === state.selectedGame) : allGames;
+    const games = allGames;
     if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
     return '<div class="cs-game-chip-list">' + games.map((game) => {
-      const label = compact ? compactGameLabel(game.label) : game.label;
-      return '<span class="cs-game-chip' + (game.label === state.selectedGame ? " cs-selected" : "") + '" title="' + escapeHtml(game.label) + '">' +
-        directiveHtml(label, { disableProfileLinks: true }) + "</span>";
+      const chipClass = game.label === state.selectedGame ? " cs-selected" : (state.selectedGame ? " cs-muted" : "");
+      return '<span class="cs-game-chip' + chipClass + '" title="' + escapeHtml(game.label) + '">' +
+        directiveHtml(game.label, { disableProfileLinks: true }) + "</span>";
     }).join("") + "</div>";
   }
 
@@ -650,7 +647,7 @@
     const statsHtml = visible.map((item, idx) =>
       '<button type="button" class="cs-game-stat' + (item.label === state.selectedGame ? " cs-selected" : "") + '" data-game-filter="' + escapeHtml(item.label) + '">' +
       '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + (idx + 1) + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
-      '<span class="cs-game-stat-count">' + item.count + '\uD68C</span></button>'
+      '<span class="cs-game-stat-count">' + item.count + '\uC77C \uBC29\uC1A1</span></button>'
     ).join("");
     return '<div class="cs-game-summary"><div class="cs-game-stats">' + statsHtml + '</div></div>';
   }
@@ -679,14 +676,13 @@
     const isOff = !!entry && entry.status === "off";
     const notes = entryNotes(entry);
     const games = gameItems(entry);
-    const selectedMatch = gameHasSelected(games);
-    const hoverable = !!entry && (state.gameOnly ? games.length > 0 && selectedMatch : (!isOff || notes.length > 0));
+    const hoverable = !!entry && (state.gameOnly ? games.length > 0 : (!isOff || notes.length > 0));
 
     const classes = ["cs-cell"];
     if (compact) classes.push("cs-month-cell");
     if (isToday) classes.push("cs-cell-today");
     if (isPast || isOff) classes.push("cs-cell-muted");
-    if (!entry || (state.gameOnly && (!games.length || !selectedMatch))) classes.push("cs-cell-unknown");
+    if (!entry || (state.gameOnly && !games.length)) classes.push("cs-cell-unknown");
     if (!compact && (!entry || isOff)) classes.push("cs-cell-center");
     if (hoverable) classes.push("cs-cell-hoverable");
 
@@ -772,8 +768,8 @@
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
       monthLabel +
-      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '">' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + "</button>" : "") +
-      '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '">' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + "</button>" +
+      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + '"><span class="cs-view-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 13h3M8.5 11.5v3M15.5 12.4h.1M18 14.4h.1"/><path d="M8.2 8.8h7.6c2.5 0 4.1 1.7 4.5 4.9l.2 1.4c.2 1.5-.6 2.7-1.9 2.7-.8 0-1.4-.4-2-1.1l-.9-1.1H8.3l-.9 1.1c-.6.7-1.2 1.1-2 1.1-1.3 0-2.1-1.2-1.9-2.7l.2-1.4c.4-3.2 2-4.9 4.5-4.9Z"/></svg></span><span class="cs-view-tip">' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + "</span></button>" : "") +
+      '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + '"><span class="cs-view-icon" aria-hidden="true">\u25A6</span><span class="cs-view-tip">' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + "</span></button>" +
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
       "</div>" +
