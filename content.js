@@ -240,19 +240,14 @@
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
-    .cs-game-summary { display: grid; grid-template-columns: minmax(120px, 0.7fr) minmax(0, 2fr); gap: 10px; margin: 0 0 10px; }
-    .cs-game-total { min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #1f2023; padding: 10px; }
-    .cs-game-total-number { display: block; color: #00FFA3; font-size: 24px; line-height: 1; font-weight: 800; }
-    .cs-game-total-label { display: block; margin-top: 5px; color: #9d9ea3; font-size: 11px; font-weight: 700; }
-    .cs-game-stats { min-width: 0; display: grid; gap: 6px; }
+    .cs-game-summary { margin: 10px 0 0; }
+    .cs-game-stats { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
     .cs-game-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #222327; color: #c9cacd; padding: 7px 8px; cursor: pointer; text-align: left; }
     .cs-game-stat:hover, .cs-game-stat.cs-selected { border-color: #00c878; background: rgba(0,200,120,0.14); color: #efeff1; }
     .cs-game-stat-main { min-width: 0; display: flex; align-items: center; gap: 7px; }
     .cs-game-rank { flex: 0 0 auto; color: #00FFA3; font-size: 11px; font-weight: 800; }
     .cs-game-stat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
     .cs-game-stat-count { color: #9d9ea3; font-size: 11px; font-weight: 800; white-space: nowrap; }
-    .cs-game-clear { border: 1px solid #3a3c40; border-radius: 7px; background: transparent; color: #9d9ea3; padding: 6px 8px; font-size: 11px; font-weight: 800; cursor: pointer; }
-    .cs-game-clear:hover { color: #efeff1; border-color: #5a5d63; }
     .cs-game-chip-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
     .cs-game-chip { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(0,255,163,0.28); border-radius: 7px; background: rgba(0,255,163,0.11); color: #c9cacd; padding: 4px 6px; font-size: 11px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-game-chip.cs-selected { color: #062b20; background: #00c878; border-color: #00c878; }
@@ -517,7 +512,7 @@
     :host(.cs-light-theme) .cs-part-tag-speculative { color: #9a6b00; background: rgba(232,194,104,0.2); }
     :host(.cs-light-theme) .cs-cell-muted .cs-part-tag { color: #969ba1; background: #e9ebed; border-color: transparent; }
     :host(.cs-light-theme) .cs-text-badge { color: #7557c9; background: rgba(117,87,201,0.1); border-color: rgba(117,87,201,0.25); }
-    :host(.cs-light-theme) .cs-game-total, :host(.cs-light-theme) .cs-game-stat { background: #ffffff; border-color: #d8dadd; }
+    :host(.cs-light-theme) .cs-game-stat { background: #ffffff; border-color: #d8dadd; }
     :host(.cs-light-theme) .cs-game-stat { color: #33373c; }
     :host(.cs-light-theme) .cs-game-stat:hover, :host(.cs-light-theme) .cs-game-stat.cs-selected { background: rgba(3,169,80,0.1); border-color: #03a950; }
     :host(.cs-light-theme) .cs-game-chip { color: #33373c; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.24); }
@@ -577,7 +572,7 @@
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 22px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 11px; }
-      .cs-game-summary { grid-template-columns: 1fr; }
+      .cs-game-stats { grid-template-columns: 1fr; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
     }
 
@@ -623,12 +618,10 @@
   function monthGameStats(monthBase) {
     const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
     const map = new Map();
-    let gameDays = 0;
     for (let day = 1; day <= days; day++) {
       const entry = entryFor(dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day)));
       const games = gameItems(entry);
       if (!games.length) continue;
-      gameDays += 1;
       const seen = new Set();
       for (const game of games) {
         if (seen.has(game.label)) continue;
@@ -639,22 +632,20 @@
       }
     }
     return {
-      gameDays,
       stats: Array.from(map.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ko")),
     };
   }
 
   function gameSummaryHtml(monthBase) {
     const summary = monthGameStats(monthBase);
-    if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-total"><span class="cs-game-total-number">0</span><span class="cs-game-total-label">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC77C\uC815</span></div><div class="cs-game-empty">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC5C6\uC74C</div></div>';
-    const visible = summary.stats.slice(0, 6);
+    if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC5C6\uC74C</div></div>';
+    const visible = summary.stats.slice(0, 5);
     const statsHtml = visible.map((item, idx) =>
       '<button type="button" class="cs-game-stat' + (item.label === state.selectedGame ? " cs-selected" : "") + '" data-game-filter="' + escapeHtml(item.label) + '">' +
       '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + (idx + 1) + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
       '<span class="cs-game-stat-count">' + item.count + '\uD68C</span></button>'
     ).join("");
-    const clearHtml = state.selectedGame ? '<button type="button" class="cs-game-clear" id="cs-game-clear">\uD544\uD130 \uD574\uC81C</button>' : "";
-    return '<div class="cs-game-summary"><div class="cs-game-total"><span class="cs-game-total-number">' + summary.gameDays + '</span><span class="cs-game-total-label">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC77C\uC815</span>' + clearHtml + '</div><div class="cs-game-stats">' + statsHtml + '</div></div>';
+    return '<div class="cs-game-summary"><div class="cs-game-stats">' + statsHtml + '</div></div>';
   }
 
   function compactCellContentHtml(entry) {
@@ -778,8 +769,8 @@
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
       "</div>" +
-      gameSummary +
       '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
+      gameSummary +
       '<div class="cs-popover" id="cs-popover">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
       '<div id="cs-pop-body"></div>' +
@@ -1130,8 +1121,6 @@
         render();
       });
     });
-    const gameClear = s.getElementById("cs-game-clear");
-    if (gameClear) gameClear.addEventListener("click", () => { state.selectedGame = ""; closePopover(); render(); });
     if (refresh) refresh.addEventListener("click", async () => {
       refresh.textContent = "…";
       await refreshData(true);
