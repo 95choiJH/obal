@@ -606,11 +606,9 @@
   }
 
   function compactGameLabel(label) {
-    const text = String(label || "").trim();
+    const text = String(label || "").replace(/\s+/g, " ").trim();
     const cleaned = text.replace(/[\(\[\{].*?[\)\]\}]/g, "").replace(/\s*[~:\uFF1A\-]\s*.*$/, "").trim() || text;
-    const firstWord = cleaned.split(/\s+/)[0] || cleaned;
-    const base = firstWord.length >= 2 && firstWord.length <= 8 ? firstWord : cleaned;
-    return base.length > 6 ? base.slice(0, 6) + "..." : base;
+    return cleaned.length > 9 ? cleaned.slice(0, 9) + "..." : cleaned;
   }
 
   function gameChipsHtml(entry, compact) {
@@ -755,9 +753,10 @@
     const canGoPrev = state.monthExpanded || hasEntryBefore(windowStartKey);
     const canGoNext = state.monthExpanded || hasEntryAfter(windowEndKey);
 
+    if (!state.monthExpanded && state.gameOnly) state.gameOnly = false;
     const pill = pillState();
     const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
-    const gameSummary = state.gameOnly ? gameSummaryHtml(monthBase) : "";
+    const gameSummary = state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
@@ -773,7 +772,7 @@
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
       monthLabel +
-      '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '">' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + "</button>" +
+      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '">' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + "</button>" : "") +
       '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '">' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + "</button>" +
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
@@ -1120,7 +1119,7 @@
 
     if (prev) prev.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset -= 1; else state.pageOffset -= 1; render(); });
     if (next) next.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset += 1; else state.pageOffset += 1; render(); });
-    if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; render(); });
+    if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; } render(); });
     if (gameToggle) gameToggle.addEventListener("click", () => { closePopover(); state.gameOnly = !state.gameOnly; render(); });
     s.querySelectorAll("[data-game-filter]").forEach((el) => {
       el.addEventListener("click", () => {
