@@ -239,12 +239,17 @@
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
-    .cs-game-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 7px; margin-top: 8px; }
+    .cs-game-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 6px; margin-top: 8px; max-height: 156px; overflow: hidden; align-content: start; }
+    .cs-game-list-many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cs-game-list-many .cs-game-card img { aspect-ratio: 3 / 1; }
+    .cs-game-list-dense { max-height: 132px; }
+    .cs-game-list-dense .cs-game-card img { aspect-ratio: 4 / 1; }
     .cs-game-card { min-width: 0; text-decoration: none; color: inherit; }
-    .cs-game-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
-    .cs-game-name { display: block; margin-top: 4px; color: #c9cacd; font-size: 11px; font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cs-month-cell .cs-game-list { grid-template-columns: 1fr; gap: 5px; }
-    .cs-month-cell .cs-game-card img { aspect-ratio: 4 / 3; }
+    .cs-game-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: center; border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
+    .cs-game-name { display: block; margin-top: 3px; color: #c9cacd; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-month-cell .cs-game-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; margin-top: 5px; max-height: 58px; }
+    .cs-month-cell .cs-game-card img { aspect-ratio: 2 / 1; border-radius: 4px; }
+    .cs-month-cell .cs-game-name { display: none; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-pop-game-image { display: block; max-width: 240px; max-height: 135px; margin: 6px 0 8px; border: 1px solid #3a3c40; border-radius: 8px; object-fit: cover; background: #111214; }
 
@@ -588,7 +593,11 @@
   function gameImagesHtml(entry, compact) {
     const games = gameItems(entry);
     if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
-    return '<div class="cs-game-list">' + games.map((game) => {
+    const classes = ["cs-game-list"];
+    if (compact) classes.push("cs-game-list-compact");
+    if (games.length >= 3) classes.push("cs-game-list-many");
+    if (games.length >= 5) classes.push("cs-game-list-dense");
+    return '<div class="' + classes.join(" ") + '">' + games.map((game) => {
       const url = safeMediaUrl(game.url);
       const name = game.label || entry.titleShort || entry.title || "\uAC8C\uC784";
       return '<span class="cs-game-card"><img src="' + escapeHtml(url) + '" alt="' + escapeHtml(name) + '" loading="lazy" />' +
