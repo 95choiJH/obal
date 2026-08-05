@@ -9,6 +9,7 @@ create table if not exists public.admin_users (
 
 
 -- Ensure optional columns used by current extension/admin code exist before policies reference them.
+alter table public.schedule add column if not exists game_images jsonb;
 alter table public.feedback add column if not exists related_link text;
 alter table public.feedback add column if not exists status text not null default 'new';
 alter table public.feedback add column if not exists contact text;

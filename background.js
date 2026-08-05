@@ -46,7 +46,7 @@ function normalizeChannelRef(c) {
 // parts 항목을 {content, collab, official, otherChannel, members, hostChannel} 형태로 정규화 (구버전은 문자열 하나였음)
 function normalizePart(p) {
   if (typeof p === "string") {
-    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
   }
   if (p && typeof p === "object") {
     return {
@@ -55,7 +55,6 @@ function normalizePart(p) {
       hidePartLabel: !!p.hidePartLabel,
       displayType: p.displayType || "text",
       profile: normalizeChannelRef(p.profile),
-      gameImageUrl: p.gameImageUrl || "",
       collab: !!p.collab,
       official: !!p.official,
       otherChannel: !!p.otherChannel,
@@ -66,9 +65,19 @@ function normalizePart(p) {
       hostChannel: normalizeChannelRef(p.hostChannel),
     };
   }
-  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
 }
 
+function normalizeGameImage(item) {
+  if (typeof item === "string") {
+    const url = item.trim();
+    return url ? { url, label: "" } : null;
+  }
+  if (!item || typeof item !== "object") return null;
+  const url = String(item.url || item.imageUrl || item.src || "").trim();
+  if (!url) return null;
+  return { url, label: String(item.label || item.title || "").trim() };
+}
 // vods 항목을 {url, label} 형태로 정규화. label이 없으면 "방송 다시보기"가 기본값.
 function normalizeVod(v) {
   if (!v || typeof v !== "object" || !v.url) return null;
@@ -114,6 +123,7 @@ function rowsToChannels(rows) {
     if (r.title_short) entry.titleShort = r.title_short;
     if (Array.isArray(r.parts) && r.parts.length) entry.parts = r.parts.map(normalizePart);
     if (Array.isArray(r.vods) && r.vods.length) entry.vods = r.vods.map(normalizeVod).filter(Boolean);
+    if (Array.isArray(r.game_images) && r.game_images.length) entry.gameImages = r.game_images.map(normalizeGameImage).filter(Boolean);
     if (r.status) entry.status = r.status;
     if (r.cafe_time) entry.cafeTime = true;
     if (r.video_time) entry.videoTime = true;
@@ -173,6 +183,7 @@ async function resolveDirectiveProfiles(channels) {
       (entry.notes || []).forEach(collect);
       (entry.parts || []).forEach((part) => collect(part.content));
       (entry.vods || []).forEach((vod) => collect(vod.label));
+      (entry.gameImages || []).forEach((game) => collect(game.label));
     });
   });
   const profiles = {};

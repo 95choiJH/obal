@@ -581,20 +581,21 @@
   // ----------------------------------------------------------
   // 렌더링
   // ----------------------------------------------------------
-  function gameParts(entry) {
-    return ((entry && entry.parts) || []).filter((p) => p && safeMediaUrl(p.gameImageUrl));
+  function gameItems(entry) {
+    return ((entry && entry.gameImages) || []).filter((item) => item && safeMediaUrl(item.url));
   }
 
   function gameImagesHtml(entry, compact) {
-    const games = gameParts(entry);
+    const games = gameItems(entry);
     if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
-    return '<div class="cs-game-list">' + games.map((p) => {
-      const url = safeMediaUrl(p.gameImageUrl);
-      const name = p.content || p.label || "\uAC8C\uC784";
+    return '<div class="cs-game-list">' + games.map((game) => {
+      const url = safeMediaUrl(game.url);
+      const name = game.label || entry.titleShort || entry.title || "\uAC8C\uC784";
       return '<span class="cs-game-card"><img src="' + escapeHtml(url) + '" alt="' + escapeHtml(name) + '" loading="lazy" />' +
         '<span class="cs-game-name">' + directiveHtml(name, { disableProfileLinks: true }) + "</span></span>";
     }).join("") + "</div>";
   }
+
   function compactCellContentHtml(entry) {
     if (entry.parts && entry.parts.length) {
       return entry.parts.slice(0, 2).map((p, idx) => {
@@ -618,7 +619,7 @@
     const isPast = key < state.todayKey;
     const isOff = !!entry && entry.status === "off";
     const notes = entryNotes(entry);
-    const games = gameParts(entry);
+    const games = gameItems(entry);
     const hoverable = !!entry && (state.gameOnly ? games.length > 0 : (!isOff || notes.length > 0));
 
     const classes = ["cs-cell"];
@@ -1269,13 +1270,9 @@
           if (p.displayType === "profile" && p.profile) {
             popContent = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
           }
-          const gameImageUrl = safeMediaUrl(p.gameImageUrl);
           let group = '<div class="cs-pop-part">' +
             '<div class="cs-pop-row">' + (label ? '<span class="' + iconClass + '">' + label + "</span>" : "") +
             popContent + "</div>";
-          if (gameImageUrl) {
-            group += '<img class="cs-pop-game-image" src="' + escapeHtml(gameImageUrl) + '" alt="' + escapeHtml(p.content || "\uAC8C\uC784") + '" loading="lazy" />';
-          }
           if ((p.official || p.otherChannel) && p.hostChannel) {
             group += '<div class="cs-pop-members">' + channelAvatarLinkHtml(p.hostChannel) + "</div>";
           }

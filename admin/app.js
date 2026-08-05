@@ -44,7 +44,6 @@
         hidePartLabel: !!p.hidePartLabel,
         displayType: p.displayType || "text",
         profile: (p.profile && p.profile.channelId) || (p.profile && p.profile.channelName) || "",
-        gameImageUrl: p.gameImageUrl || "",
         collab: !!p.collab,
         official: !!p.official,
         otherChannel: !!p.otherChannel,
@@ -54,6 +53,7 @@
         members: (p.members || []).map((m) => m.channelId),
         hostChannel: (p.hostChannel && p.hostChannel.channelId) || "",
       })),
+      gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "" })),
       vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "" })),
       status: r.status || "", cafe_time: !!r.cafe_time, video_time: !!r.video_time, notes: r.notes || normalizeNotes(r.note),
     })).sort(compareScheduleDate);
@@ -137,6 +137,7 @@
       ...r,
       notes: normalizeNotes(r.note),
       parts: Array.isArray(r.parts) ? r.parts.map(normalizePart) : [],
+      gameImages: Array.isArray(r.game_images) ? r.game_images.map(normalizeGameImage).filter(Boolean) : [],
       vods: Array.isArray(r.vods) ? r.vods.map(normalizeVod).filter(Boolean) : [],
     })).sort(compareScheduleDate);
 
@@ -442,6 +443,7 @@ function infoItemHtml(u, i) {
           '<input class="time" type="text" data-f="start_time" data-i="' + i + '" value="' + esc(r.start_time) + '" placeholder="시간" />' +
         "</div>" +
         partsListHtml(r, i) +
+        gameImagesListHtml(r, i) +
         vodsListHtml(r, i) +
         notesListHtml(r, i, false) +
         '<p class="hint">시간을 비우면 "시간 미정"으로 표시됩니다</p>' +
@@ -474,6 +476,28 @@ function infoItemHtml(u, i) {
     );
   }
 
+
+  function gameImagesListHtml(r, i) {
+    const images = r.gameImages || [];
+    const itemsHtml = images.map((g, gi) => gameImageItemHtml(i, g, gi)).join("");
+    return (
+      '<div class="game-images-wrap">' + itemsHtml +
+        '<button class="add-btn small" data-addgameimg="' + i + '">+ \uAC8C\uC784 \uC774\uBBF8\uC9C0 \uCD94\uAC00</button>' +
+      "</div>"
+    );
+  }
+
+  function gameImageItemHtml(i, g, gi) {
+    return (
+      '<div class="game-image-item">' +
+        '<div class="game-image-head">' +
+          '<input type="text" data-gif="label" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.label || "") + '" placeholder="\uAC8C\uC784\uBA85" />' +
+          '<button class="icon-btn" data-delgameimg="' + i + "-" + gi + '" aria-label="\uAC8C\uC784 \uC774\uBBF8\uC9C0 \uC0AD\uC81C">' + trashSvg() + "</button>" +
+        '</div>' +
+        '<input type="url" inputmode="url" data-gif="url" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.url || "") + '" placeholder="\uC774\uBBF8\uC9C0 URL (https://)" />' +
+      '</div>'
+    );
+  }
   function vodsListHtml(r, i) {
     const vods = r.vods || [];
     const itemsHtml = vods.map((v, vi) => vodItemHtml(i, v, vi)).join("");
@@ -517,7 +541,6 @@ function infoItemHtml(u, i) {
           '<input class="part-label-input" type="text" data-pf="label" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(p.label || (pi + 1) + "부") + '" placeholder="부" aria-label="부 표시 이름"' + (speculativeOn ? " disabled" : "") + ' />' +
         '</div>' +
         '<div class="directive-preview" data-directive-preview="' + i + '-' + pi + '">' + directivePreviewHtml(inputValue, p.profile) + '</div>' +
-        '<div class="part-game-image-row"><input type="url" inputmode="url" data-pf="gameImageUrl" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(p.gameImageUrl || "") + '" placeholder="\uAC8C\uC784 \uC774\uBBF8\uC9C0 URL (https://)" /></div>' +
         '<div class="part-tools-row">' +
           '<div class="part-tool-actions">' + partMoveButtons(i, pi, partCount) + deletePartBtn(i, pi) + '</div>' +
         '</div>' +
@@ -1908,7 +1931,7 @@ function infoItemHtml(u, i) {
 
   function normalizePart(p) {
     if (typeof p === "string") {
-      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
     }
     if (p && typeof p === "object") {
       return {
@@ -1917,7 +1940,6 @@ function infoItemHtml(u, i) {
         hidePartLabel: !!p.hidePartLabel,
         displayType: p.displayType || "text",
         profile: normalizeChannelRef(p.profile),
-        gameImageUrl: p.gameImageUrl || "",
         collab: !!p.collab,
         official: !!p.official,
         otherChannel: !!p.otherChannel,
@@ -1928,7 +1950,7 @@ function infoItemHtml(u, i) {
         hostChannel: normalizeChannelRef(p.hostChannel),
       };
     }
-    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
   }
 
   function findDirectiveBracketEnd(raw, openIndex) {
@@ -2129,7 +2151,7 @@ function infoItemHtml(u, i) {
       el.onclick = () => {
         const i = +el.getAttribute("data-addpart");
         rows[i].parts = rows[i].parts || [];
-        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, gameImageUrl: "", collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null });
+        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null });
         render();
         markDirty();
       };
@@ -2154,6 +2176,34 @@ function infoItemHtml(u, i) {
       el.onclick = () => {
         const [i, pi] = el.getAttribute("data-delpart").split("-").map(Number);
         rows[i].parts.splice(pi, 1);
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-gif]").forEach((el) => {
+      const i = +el.getAttribute("data-i");
+      const gi = +el.getAttribute("data-gi");
+      const f = el.getAttribute("data-gif");
+      el.oninput = () => {
+        rows[i].gameImages = rows[i].gameImages || [];
+        rows[i].gameImages[gi] = rows[i].gameImages[gi] || { url: "", label: "" };
+        rows[i].gameImages[gi][f] = el.value;
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-addgameimg]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-addgameimg");
+        rows[i].gameImages = rows[i].gameImages || [];
+        rows[i].gameImages.push({ url: "", label: "" });
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-delgameimg]").forEach((el) => {
+      el.onclick = () => {
+        const [i, gi] = el.getAttribute("data-delgameimg").split("-").map(Number);
+        rows[i].gameImages.splice(gi, 1);
         render();
         markDirty();
       };
@@ -2280,7 +2330,7 @@ function infoItemHtml(u, i) {
       const key = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
       if (!existing.has(key)) {
         rows.forEach((row) => { delete row._newlyAdded; });
-        rows.push({ channel_id: cfg.channelId, date: key, start_time: "", title: "", parts: [], vods: [], status: "", cafe_time: false, video_time: false, notes: [], _newlyAdded: true });
+        rows.push({ channel_id: cfg.channelId, date: key, start_time: "", title: "", parts: [], gameImages: [], vods: [], status: "", cafe_time: false, video_time: false, notes: [], _newlyAdded: true });
         render();
         markDirty();
         requestAnimationFrame(() => {
@@ -2332,7 +2382,6 @@ function infoItemHtml(u, i) {
             hidePartLabel: !!p.hidePartLabel,
             displayType: p.displayType || "text",
             profile: p.profile || null,
-            gameImageUrl: (p.gameImageUrl || "").trim(),
             collab: !!p.collab,
             official: !!p.official,
             otherChannel: !!p.otherChannel,
@@ -2343,6 +2392,12 @@ function infoItemHtml(u, i) {
             hostChannel: p.hostChannel || null,
           }))
           .filter((p) => p.content);
+        const cleanGameImages = (r.gameImages || [])
+          .map((g) => ({
+            url: (g.url || "").trim(),
+            label: (g.label || "").trim(),
+          }))
+          .filter((g) => g.url);
         const cleanVods = (r.vods || [])
           .map((v) => ({
             url: (v.url || "").trim(),
@@ -2356,6 +2411,7 @@ function infoItemHtml(u, i) {
           end_time: r.end_time ? r.end_time.trim() : null,
           title: r.title ? r.title.trim() : null,
           parts: cleanParts.length ? cleanParts : null,
+          game_images: cleanGameImages.length ? cleanGameImages : null,
           vods: cleanVods.length ? cleanVods : null,
           status: r.status || null,
           cafe_time: !!r.cafe_time,
