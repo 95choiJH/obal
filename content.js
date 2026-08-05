@@ -26,6 +26,8 @@
     channel: null,       // data.channels[channelId]
     byDate: new Map(),   // "YYYY-MM-DD" -> entry
     pageOffset: 0,       // 0 = 오늘 페이지, -1 = 5일 전 페이지 ...
+    monthExpanded: false,
+    monthOffset: 0,
     host: null,          // shadow host element
     shadow: null,
     mode: null,          // "inline" | "floating"
@@ -219,8 +221,22 @@
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
       font-size: 20px; line-height: 1; padding: 2px 4px; }
     .cs-arrow:disabled { color: #4a4c52; cursor: default; }
+    .cs-view-toggle { flex: 0 0 auto; border: 1px solid #3a3c40; border-radius: 7px;
+      background: #232427; color: #c9cacd; padding: 5px 9px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .cs-view-toggle:hover, .cs-view-toggle.cs-open { color: #efeff1; background: #2b2d31; border-color: #4a4c52; }
+    .cs-month-label { color: #9d9ea3; font-size: 12px; font-weight: 700; white-space: nowrap; }
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .cs-month-weekday { color: #6b6d73; font-size: 11px; font-weight: 700; text-align: center; padding: 2px 0 4px; }
+    .cs-month-blank { min-height: 88px; border-radius: 8px; background: rgba(255,255,255,0.02); }
+    .cs-month-grid .cs-month-cell { min-height: 88px; padding: 9px 8px 24px; text-align: left; }
+    .cs-month-cell .cs-cell-date { font-size: 12px; font-weight: 700; }
+    .cs-month-cell .cs-cell-time { margin-top: 7px; font-size: 12px; }
+    .cs-month-cell .cs-cell-title { margin-top: 4px; font-size: 12px; line-height: 1.35; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
+    .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
+    .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
 
     .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
       border-radius: 8px; padding: 16px; padding-right: 30px; text-align: center; min-height: 66px; }
@@ -451,6 +467,11 @@
     :host(.cs-light-theme) .cs-pill-on .cs-dot { background: #03a950; }
     :host(.cs-light-theme) .cs-arrow { color: #008a43; }
     :host(.cs-light-theme) .cs-arrow:disabled { color: #b8bcc1; }
+    :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
+    :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
+    :host(.cs-light-theme) .cs-month-label { color: #6f747b; }
+    :host(.cs-light-theme) .cs-month-weekday { color: #8b9097; }
+    :host(.cs-light-theme) .cs-month-blank { background: #fafafa; border: 1px solid #f0f1f2; }
     :host(.cs-light-theme) .cs-cell { background: #f5f6f7; border-color: transparent; }
     :host(.cs-light-theme) .cs-cell-hoverable:hover { background: #eceef0; border-color: #d3d6da; }
     :host(.cs-light-theme) .cs-cell-today { background: rgba(0,199,90,0.09); border-color: rgba(0,199,90,0.5); }
@@ -524,6 +545,10 @@
     :host(.cs-light-theme) .cs-float-btn { background: #03a950; color: #ffffff; }
 
     @media (max-width: 600px) {
+      .cs-header { flex-wrap: wrap; }
+      .cs-month-grid { gap: 4px; }
+      .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 22px; }
+      .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 11px; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
     }
 
@@ -541,79 +566,106 @@
   // ----------------------------------------------------------
   // 렌더링
   // ----------------------------------------------------------
+  function compactCellContentHtml(entry) {
+    if (entry.parts && entry.parts.length) {
+      return entry.parts.slice(0, 2).map((p, idx) => {
+        const tagClass = p.speculative ? "cs-part-tag cs-part-tag-speculative" :
+          isSpecialPart(p) ? "cs-part-tag cs-part-tag-collab" : "cs-part-tag";
+        const tagLabel = partDisplayLabel(p, idx);
+        let display = '<span class="cs-part-text">' + directiveHtml(p.content) + "</span>";
+        if (p.displayType === "tag") display = '<span class="cs-text-badge">' + directiveHtml(p.content) + "</span>";
+        if (p.displayType === "profile" && p.profile) display = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
+        const tagHtml = tagLabel ? '<span class="' + tagClass + '">' + tagLabel + "</span>" : "";
+        return '<div class="cs-cell-part">' + tagHtml + display + "</div>";
+      }).join("");
+    }
+    return '<div class="cs-cell-title">' + directiveHtml(entry.titleShort || entry.title || "") + "</div>";
+  }
+
+  function scheduleCellHtml(d, compact) {
+    const key = dateKey(d);
+    const entry = entryFor(key);
+    const isToday = key === state.todayKey;
+    const isPast = key < state.todayKey;
+    const isOff = !!entry && entry.status === "off";
+    const notes = entryNotes(entry);
+    const hoverable = !!entry && (!isOff || notes.length > 0);
+
+    const classes = ["cs-cell"];
+    if (compact) classes.push("cs-month-cell");
+    if (isToday) classes.push("cs-cell-today");
+    if (isPast || isOff) classes.push("cs-cell-muted");
+    if (!entry) classes.push("cs-cell-unknown");
+    if (!compact && (!entry || isOff)) classes.push("cs-cell-center");
+    if (hoverable) classes.push("cs-cell-hoverable");
+
+    const dateLabel = compact ? String(d.getDate()) : ((isToday ? "\uC624\uB298 " : "") + cellDateLabel(d));
+    let dateRow = '<div class="cs-cell-date">' + dateLabel + "</div>";
+    let body = "";
+    if (!entry) {
+      body = compact ? "" : '<div class="cs-cell-center-body">' +
+        '<div class="cs-cell-time"><img class="cs-undetermined-icon" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
+        '<div class="cs-cell-title">\uBBF8\uC815</div></div>';
+    } else if (isOff) {
+      const dot = notes.length ? '<span class="cs-memo-dot"></span>' : "";
+      body = dot + (compact
+        ? '<div class="cs-cell-title">\uD734\uBC29</div>'
+        : '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>');
+    } else if (compact) {
+      body = (entry.start ? '<div class="cs-cell-time">' + escapeHtml(entry.start) + "</div>" : "") + compactCellContentHtml(entry);
+    } else if (isPast) {
+      body = '<div style="margin-top:12px;">' + cellContentHtml(entry) + "</div>";
+    } else {
+      const timeText = entry.start ? escapeHtml(entry.start) : "\uC2DC\uAC04 \uBBF8\uC815";
+      dateRow = '<div class="cs-cell-date-row"><span class="cs-cell-date">' + dateLabel + "</span>" +
+        '<span class="cs-cell-time">' + timeText + "</span></div>";
+      body = cellContentHtml(entry);
+    }
+
+    return '<div class="' + classes.join(" ") + '" data-date="' + key + '"' +
+      (hoverable ? ' data-hoverable="1"' : "") + ">" +
+      dateRow + body + timeIndicatorsHtml(entry, isPast) + "</div>";
+  }
+
+  function fiveDayGridHtml(windowStart) {
+    let html = "";
+    for (let i = 0; i < PAGE_SIZE; i++) html += scheduleCellHtml(addDays(windowStart, i), false);
+    return html;
+  }
+
+  function monthGridHtml(monthBase) {
+    const weekdays = ["\uC77C", "\uC6D4", "\uD654", "\uC218", "\uBAA9", "\uAE08", "\uD1A0"];
+    let html = weekdays.map((day) => '<div class="cs-month-weekday">' + day + "</div>").join("");
+    const firstDay = monthBase.getDay();
+    const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
+    for (let i = 0; i < firstDay; i++) html += '<div class="cs-month-blank" aria-hidden="true"></div>';
+    for (let day = 1; day <= days; day++) html += scheduleCellHtml(new Date(monthBase.getFullYear(), monthBase.getMonth(), day), true);
+    const trailing = (firstDay + days) % 7;
+    if (trailing) for (let i = trailing; i < 7; i++) html += '<div class="cs-month-blank" aria-hidden="true"></div>';
+    return html;
+  }
+
   function render() {
     if (!state.shadow) return;
 
     const root = state.shadow.getElementById("cs-root");
     if (!root) return;
-
     const today = parseKey(state.todayKey);
     const anchor = addDays(today, todayAnchorOffset());
     const windowStart = addDays(anchor, state.pageOffset * PAGE_SIZE);
+    const monthBase = new Date(today.getFullYear(), today.getMonth() + state.monthOffset, 1);
     const windowStartKey = dateKey(windowStart);
     const windowEndKey = dateKey(addDays(windowStart, PAGE_SIZE - 1));
 
-    const canGoPrev = hasEntryBefore(windowStartKey);
-    const canGoNext = hasEntryAfter(windowEndKey);
+    const canGoPrev = state.monthExpanded || hasEntryBefore(windowStartKey);
+    const canGoNext = state.monthExpanded || hasEntryAfter(windowEndKey);
 
     const pill = pillState();
-
-    // 칸 5개 생성
-    let cellsHtml = "";
-    for (let i = 0; i < PAGE_SIZE; i++) {
-      const d = addDays(windowStart, i);
-      const key = dateKey(d);
-      const entry = entryFor(key);
-      const isToday = key === state.todayKey;
-      const isPast = key < state.todayKey;
-      const isOff = !!entry && entry.status === "off";
-
-      const classes = ["cs-cell"];
-      if (isToday) classes.push("cs-cell-today");
-      // 지난 일정과 휴방은 미정과 동일한 스타일로 표시
-      if (isPast || isOff) classes.push("cs-cell-muted");
-      if (!entry) classes.push("cs-cell-unknown");
-      // 미정/휴방만 날짜 영역과 무관하게 칸 전체 기준으로 상하 가운데 정렬. 일정이 있는 칸은 위쪽 정렬 유지.
-      if (!entry || isOff) classes.push("cs-cell-center");
-
-      // 팝오버 대상: 일반 일정, 또는 메모가 있는 휴방
-      const notes = entryNotes(entry);
-      const hoverable = !!entry && (!isOff || notes.length > 0);
-      if (hoverable) classes.push("cs-cell-hoverable");
-
-      const dateLabel = (isToday ? "오늘 " : "") + cellDateLabel(d);
-
-      let dateRow = '<div class="cs-cell-date">' + dateLabel + "</div>";
-      let body = "";
-      if (!entry) {
-        body = '<div class="cs-cell-center-body">' +
-          '<div class="cs-cell-time"><img class="cs-undetermined-icon" src="' + UNDETERMINED_ICON_URL + '" alt="미정" /></div>' +
-          '<div class="cs-cell-title">미정</div></div>';
-      } else if (isOff) {
-        const dot = notes.length ? '<span class="cs-memo-dot"></span>' : "";
-        body = dot +
-          '<div class="cs-cell-center-body">' +
-          '<div class="cs-cell-time"><img class="cs-break-icon" src="' + BREAK_ICON_URL + '" alt="휴방" /></div>' +
-          '<div class="cs-cell-title">휴방</div>' +
-          "</div>";
-      } else if (isPast) {
-        // 이전 일정: 시간 없이 날짜 + 내용만
-        body = '<div style="margin-top:12px;">' + cellContentHtml(entry) + "</div>";
-      } else {
-        // 날짜는 왼쪽, 시간은 오른쪽으로 한 줄에 나란히 배치
-        const timeText = entry.start ? escapeHtml(entry.start) : "시간 미정";
-        dateRow = '<div class="cs-cell-date-row"><span class="cs-cell-date">' + dateLabel + "</span>" +
-          '<span class="cs-cell-time">' + timeText + "</span></div>";
-        body = cellContentHtml(entry);
-      }
-
-      cellsHtml +=
-        '<div class="' + classes.join(" ") + '" data-date="' + key + '"' +
-        (hoverable ? ' data-hoverable="1"' : "") + ">" +
-        dateRow + body +
-        timeIndicatorsHtml(entry, isPast) +
-        "</div>";
-    }
+    const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
+    const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
+    const monthLabel = state.monthExpanded
+      ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
+      : "";
 
     const updatedLabel = formatUpdated();
 
@@ -624,10 +676,12 @@
       '<span class="cs-title">방송 일정</span>' +
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
+      monthLabel +
+      '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '">' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + "</button>" +
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
       "</div>" +
-      '<div class="cs-grid" id="cs-grid">' + cellsHtml + "</div>" +
+      '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       '<div class="cs-popover" id="cs-popover">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
       '<div id="cs-pop-body"></div>' +
@@ -950,6 +1004,7 @@
     const prev = s.getElementById("cs-prev");
     const next = s.getElementById("cs-next");
     const refresh = s.getElementById("cs-refresh");
+    const monthToggle = s.getElementById("cs-month-toggle");
     const grid = s.getElementById("cs-grid");
     const popover = s.getElementById("cs-popover");
     const feedbackOpen = s.getElementById("cs-feedback-open");
@@ -964,8 +1019,9 @@
     const feedbackCount = s.getElementById("cs-feedback-count");
     const feedbackSubmit = s.getElementById("cs-feedback-submit");
 
-    if (prev) prev.addEventListener("click", () => { state.pageOffset -= 1; render(); });
-    if (next) next.addEventListener("click", () => { state.pageOffset += 1; render(); });
+    if (prev) prev.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset -= 1; else state.pageOffset -= 1; render(); });
+    if (next) next.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset += 1; else state.pageOffset += 1; render(); });
+    if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; render(); });
     if (refresh) refresh.addEventListener("click", async () => {
       refresh.textContent = "…";
       await refreshData(true);
