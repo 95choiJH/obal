@@ -29,6 +29,7 @@
     monthExpanded: false,
     monthOffset: 0,
     gameOnly: false,
+    selectedGame: "",
     host: null,          // shadow host element
     shadow: null,
     mode: null,          // "inline" | "floating"
@@ -239,21 +240,25 @@
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 10px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
-    .cs-game-list { display: grid; grid-template-columns: repeat(var(--cs-game-count, 1), minmax(0, 1fr)); gap: 5px; margin-top: 8px; align-content: start; }
-    .cs-game-list-many { height: 92px; overflow: hidden; }
-    .cs-game-card { min-width: 0; text-decoration: none; color: inherit; overflow: hidden; }
-    .cs-game-card img { display: block; width: 200%; max-width: none; height: 92px; object-fit: cover; object-position: center center; margin-left: 50%; transform: translateX(-50%); border-radius: 6px; border: 1px solid #3a3c40; background: #111214; }
-    .cs-game-list-many .cs-game-card img { width: calc(var(--cs-game-count, 1) * 200%); }
-    .cs-game-name { display: block; margin-top: 3px; color: #c9cacd; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cs-game-list-many .cs-game-name { display: none; }
-    .cs-month-cell .cs-game-list { grid-template-columns: repeat(var(--cs-game-count, 1), minmax(0, 1fr)); gap: 3px; margin-top: 5px; }
-    .cs-month-cell .cs-game-list-many { height: 48px; overflow: hidden; }
-    .cs-month-cell .cs-game-card img { height: 48px; border-radius: 4px; }
-    .cs-month-cell .cs-game-list-many .cs-game-card img { width: calc(var(--cs-game-count, 1) * 200%); }
-    .cs-month-cell .cs-game-name { display: none; }
+    .cs-game-summary { display: grid; grid-template-columns: minmax(120px, 0.7fr) minmax(0, 2fr); gap: 10px; margin: 0 0 10px; }
+    .cs-game-total { min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #1f2023; padding: 10px; }
+    .cs-game-total-number { display: block; color: #00FFA3; font-size: 24px; line-height: 1; font-weight: 800; }
+    .cs-game-total-label { display: block; margin-top: 5px; color: #9d9ea3; font-size: 11px; font-weight: 700; }
+    .cs-game-stats { min-width: 0; display: grid; gap: 6px; }
+    .cs-game-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #222327; color: #c9cacd; padding: 7px 8px; cursor: pointer; text-align: left; }
+    .cs-game-stat:hover, .cs-game-stat.cs-selected { border-color: #00c878; background: rgba(0,200,120,0.14); color: #efeff1; }
+    .cs-game-stat-main { min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .cs-game-rank { flex: 0 0 auto; color: #00FFA3; font-size: 11px; font-weight: 800; }
+    .cs-game-stat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
+    .cs-game-stat-count { color: #9d9ea3; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .cs-game-clear { border: 1px solid #3a3c40; border-radius: 7px; background: transparent; color: #9d9ea3; padding: 6px 8px; font-size: 11px; font-weight: 800; cursor: pointer; }
+    .cs-game-clear:hover { color: #efeff1; border-color: #5a5d63; }
+    .cs-game-chip-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
+    .cs-game-chip { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(0,255,163,0.28); border-radius: 7px; background: rgba(0,255,163,0.11); color: #c9cacd; padding: 4px 6px; font-size: 11px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-game-chip.cs-selected { color: #062b20; background: #00c878; border-color: #00c878; }
+    .cs-month-cell .cs-game-chip-list { gap: 3px; margin-top: 5px; max-height: 45px; overflow: hidden; }
+    .cs-month-cell .cs-game-chip { max-width: 100%; padding: 3px 4px; font-size: 10px; border-radius: 6px; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
-    .cs-pop-game-image { display: block; max-width: 240px; max-height: 135px; margin: 6px 0 8px; border: 1px solid #3a3c40; border-radius: 8px; object-fit: cover; background: #111214; }
-
     .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
       border-radius: 8px; padding: 16px; padding-right: 30px; text-align: center; min-height: 66px; }
     .cs-cell-center { display: flex; flex-direction: column; gap: 16px; }
@@ -512,8 +517,11 @@
     :host(.cs-light-theme) .cs-part-tag-speculative { color: #9a6b00; background: rgba(232,194,104,0.2); }
     :host(.cs-light-theme) .cs-cell-muted .cs-part-tag { color: #969ba1; background: #e9ebed; border-color: transparent; }
     :host(.cs-light-theme) .cs-text-badge { color: #7557c9; background: rgba(117,87,201,0.1); border-color: rgba(117,87,201,0.25); }
-    :host(.cs-light-theme) .cs-game-card img, :host(.cs-light-theme) .cs-pop-game-image { border-color: #d3d6da; background: #f2f3f4; }
-    :host(.cs-light-theme) .cs-game-name { color: #33373c; }
+    :host(.cs-light-theme) .cs-game-total, :host(.cs-light-theme) .cs-game-stat { background: #ffffff; border-color: #d8dadd; }
+    :host(.cs-light-theme) .cs-game-stat { color: #33373c; }
+    :host(.cs-light-theme) .cs-game-stat:hover, :host(.cs-light-theme) .cs-game-stat.cs-selected { background: rgba(3,169,80,0.1); border-color: #03a950; }
+    :host(.cs-light-theme) .cs-game-chip { color: #33373c; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.24); }
+    :host(.cs-light-theme) .cs-game-chip.cs-selected { color: #ffffff; background: #03a950; border-color: #03a950; }
     :host(.cs-light-theme) .cs-game-empty { color: #a3a7ad; }
     :host(.cs-light-theme) .cs-inline-feedback-trigger { color: #008a43; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.28); }
     :host(.cs-light-theme) .cs-inline-feedback-trigger:hover { background: rgba(3,169,80,0.15); }
@@ -569,7 +577,7 @@
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 22px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 11px; }
-      .cs-month-cell .cs-game-name { font-size: 10px; }
+      .cs-game-summary { grid-template-columns: 1fr; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
     }
 
@@ -587,23 +595,66 @@
   // ----------------------------------------------------------
   // 렌더링
   // ----------------------------------------------------------
-  function gameItems(entry) {
-    return ((entry && entry.gameImages) || []).filter((item) => item && safeMediaUrl(item.url));
+  function gameLabel(entry, game) {
+    if (typeof game === "string") return game.trim();
+    return String((game && game.label) || (entry && (entry.titleShort || entry.title)) || "\uAC8C\uC784").trim();
   }
 
-  function gameImagesHtml(entry, compact) {
-    const games = gameItems(entry);
+  function gameItems(entry) {
+    return ((entry && entry.gameImages) || [])
+      .map((item) => ({ label: gameLabel(entry, item), url: item && item.url ? item.url : "" }))
+      .filter((item) => item.label);
+  }
+
+  function gameHasSelected(games) {
+    return !state.selectedGame || games.some((game) => game.label === state.selectedGame);
+  }
+
+  function gameChipsHtml(entry, compact) {
+    const allGames = gameItems(entry);
+    const games = state.selectedGame ? allGames.filter((game) => game.label === state.selectedGame) : allGames;
     if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
-    const classes = ["cs-game-list"];
-    if (compact) classes.push("cs-game-list-compact");
-    if (games.length >= 2) classes.push("cs-game-list-many");
-    if (games.length >= 5) classes.push("cs-game-list-dense");
-    return '<div class="' + classes.join(" ") + '" style="--cs-game-count:' + games.length + '">' + games.map((game) => {
-      const url = safeMediaUrl(game.url);
-      const name = game.label || entry.titleShort || entry.title || "\uAC8C\uC784";
-      return '<span class="cs-game-card"><img src="' + escapeHtml(url) + '" alt="' + escapeHtml(name) + '" loading="lazy" />' +
-        '<span class="cs-game-name">' + directiveHtml(name, { disableProfileLinks: true }) + "</span></span>";
-    }).join("") + "</div>";
+    return '<div class="cs-game-chip-list">' + games.map((game) =>
+      '<span class="cs-game-chip' + (game.label === state.selectedGame ? " cs-selected" : "") + '" title="' + escapeHtml(game.label) + '">' +
+      directiveHtml(game.label, { disableProfileLinks: true }) + "</span>"
+    ).join("") + "</div>";
+  }
+
+  function monthGameStats(monthBase) {
+    const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
+    const map = new Map();
+    let gameDays = 0;
+    for (let day = 1; day <= days; day++) {
+      const entry = entryFor(dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day)));
+      const games = gameItems(entry);
+      if (!games.length) continue;
+      gameDays += 1;
+      const seen = new Set();
+      for (const game of games) {
+        if (seen.has(game.label)) continue;
+        seen.add(game.label);
+        const stat = map.get(game.label) || { label: game.label, count: 0 };
+        stat.count += 1;
+        map.set(game.label, stat);
+      }
+    }
+    return {
+      gameDays,
+      stats: Array.from(map.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ko")),
+    };
+  }
+
+  function gameSummaryHtml(monthBase) {
+    const summary = monthGameStats(monthBase);
+    if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-total"><span class="cs-game-total-number">0</span><span class="cs-game-total-label">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC77C\uC815</span></div><div class="cs-game-empty">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC5C6\uC74C</div></div>';
+    const visible = summary.stats.slice(0, 6);
+    const statsHtml = visible.map((item, idx) =>
+      '<button type="button" class="cs-game-stat' + (item.label === state.selectedGame ? " cs-selected" : "") + '" data-game-filter="' + escapeHtml(item.label) + '">' +
+      '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + (idx + 1) + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
+      '<span class="cs-game-stat-count">' + item.count + '\uD68C</span></button>'
+    ).join("");
+    const clearHtml = state.selectedGame ? '<button type="button" class="cs-game-clear" id="cs-game-clear">\uD544\uD130 \uD574\uC81C</button>' : "";
+    return '<div class="cs-game-summary"><div class="cs-game-total"><span class="cs-game-total-number">' + summary.gameDays + '</span><span class="cs-game-total-label">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC77C\uC815</span>' + clearHtml + '</div><div class="cs-game-stats">' + statsHtml + '</div></div>';
   }
 
   function compactCellContentHtml(entry) {
@@ -630,13 +681,14 @@
     const isOff = !!entry && entry.status === "off";
     const notes = entryNotes(entry);
     const games = gameItems(entry);
-    const hoverable = !!entry && (state.gameOnly ? games.length > 0 : (!isOff || notes.length > 0));
+    const selectedMatch = gameHasSelected(games);
+    const hoverable = !!entry && (state.gameOnly ? games.length > 0 && selectedMatch : (!isOff || notes.length > 0));
 
     const classes = ["cs-cell"];
     if (compact) classes.push("cs-month-cell");
     if (isToday) classes.push("cs-cell-today");
     if (isPast || isOff) classes.push("cs-cell-muted");
-    if (!entry || (state.gameOnly && !games.length)) classes.push("cs-cell-unknown");
+    if (!entry || (state.gameOnly && (!games.length || !selectedMatch))) classes.push("cs-cell-unknown");
     if (!compact && (!entry || isOff)) classes.push("cs-cell-center");
     if (hoverable) classes.push("cs-cell-hoverable");
 
@@ -644,7 +696,7 @@
     let dateRow = '<div class="cs-cell-date">' + dateLabel + "</div>";
     let body = "";
     if (state.gameOnly) {
-      body = gameImagesHtml(entry, compact);
+      body = gameChipsHtml(entry, compact);
     } else if (!entry) {
       body = compact ? "" : '<div class="cs-cell-center-body">' +
         '<div class="cs-cell-time"><img class="cs-undetermined-icon" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
@@ -705,6 +757,7 @@
 
     const pill = pillState();
     const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
+    const gameSummary = state.gameOnly ? gameSummaryHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
@@ -725,6 +778,7 @@
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
       "</div>" +
+      gameSummary +
       '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       '<div class="cs-popover" id="cs-popover">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
@@ -1068,6 +1122,16 @@
     if (next) next.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset += 1; else state.pageOffset += 1; render(); });
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; render(); });
     if (gameToggle) gameToggle.addEventListener("click", () => { closePopover(); state.gameOnly = !state.gameOnly; render(); });
+    s.querySelectorAll("[data-game-filter]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const label = el.getAttribute("data-game-filter") || "";
+        state.selectedGame = state.selectedGame === label ? "" : label;
+        closePopover();
+        render();
+      });
+    });
+    const gameClear = s.getElementById("cs-game-clear");
+    if (gameClear) gameClear.addEventListener("click", () => { state.selectedGame = ""; closePopover(); render(); });
     if (refresh) refresh.addEventListener("click", async () => {
       refresh.textContent = "…";
       await refreshData(true);
