@@ -15,6 +15,8 @@
   const UNDETERMINED_ICON_URL = api.runtime.getURL("icons/undetermined.png");
   const NAVER_CAFE_ICON_URL = api.runtime.getURL("icons/naver_cafe.png");
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
+  const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
+  const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
 
   // ----------------------------------------------------------
   // 상태
@@ -228,9 +230,11 @@
     .cs-view-toggle:hover, .cs-view-toggle:focus-visible, .cs-view-toggle.cs-open { color: #efeff1; background: #2b2d31; border-color: #4a4c52; }
     .cs-view-icon { line-height: 1; font-size: 18px; pointer-events: none; }
     .cs-view-icon svg { display: block; width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .cs-view-icon img { display: block; width: 23px; height: 23px; object-fit: contain; }
+    .cs-view-toggle.cs-open .cs-view-icon img { filter: none; }
     .cs-view-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 11px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
     .cs-view-toggle:hover .cs-view-tip, .cs-view-toggle:focus-visible .cs-view-tip { opacity: 1; visibility: visible; transform: translateY(0); }
-    .cs-game-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
+    .cs-view-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
     .cs-month-label { position: absolute; left: 50%; top: 13px; transform: translateX(-50%); color: #c9cacd; font-size: 18px; line-height: 1; font-weight: 900; white-space: nowrap; pointer-events: none; }
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
@@ -257,7 +261,7 @@
     .cs-game-chip.cs-selected { color: #062b20; background: #00c878; border-color: #00c878; }
     .cs-game-chip.cs-muted { color: #777a80; background: rgba(127,127,127,0.08); border-color: rgba(127,127,127,0.18); }
     .cs-month-cell .cs-game-chip-list { gap: 3px; margin-top: 5px; flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
-    .cs-month-cell .cs-game-chip { flex: 0 0 auto; width: 100%; max-width: 100%; padding: 3px 4px; font-size: 10px; border-radius: 6px; }
+    .cs-month-cell .cs-game-chip { flex: 0 0 auto; width: 100%; max-width: 100%; padding: 3px 4px; font-size: 12px; border-radius: 6px; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
       border-radius: 8px; padding: 16px; padding-right: 30px; text-align: center; min-height: 66px; }
@@ -489,9 +493,10 @@
     :host(.cs-light-theme) .cs-arrow { color: #008a43; }
     :host(.cs-light-theme) .cs-arrow:disabled { color: #b8bcc1; }
     :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
+    :host(.cs-light-theme) .cs-view-toggle:not(.cs-open) .cs-view-icon img { filter: brightness(0) saturate(100%) invert(34%) sepia(7%) saturate(472%) hue-rotate(174deg) brightness(92%) contrast(87%); }
     :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
     :host(.cs-light-theme) .cs-view-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
-    :host(.cs-light-theme) .cs-game-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
+    :host(.cs-light-theme) .cs-view-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
     :host(.cs-light-theme) .cs-month-label { color: #6f747b; }
     :host(.cs-light-theme) .cs-month-weekday { color: #8b9097; }
     :host(.cs-light-theme) .cs-month-blank { background: #fafafa; border: 1px solid #f0f1f2; }
@@ -599,7 +604,7 @@
   // ----------------------------------------------------------
   function gameLabel(entry, game) {
     if (typeof game === "string") return game.trim();
-    return String((game && game.label) || (entry && (entry.titleShort || entry.title)) || "\uAC8C\uC784").trim();
+    return String((game && game.label) || (entry && (entry.titleShort || entry.title)) || "게임").trim();
   }
 
   function gameItems(entry) {
@@ -611,7 +616,7 @@
   function gameChipsHtml(entry, compact) {
     const allGames = gameItems(entry);
     const games = allGames;
-    if (!games.length) return compact ? "" : '<div class="cs-game-empty">\uAC8C\uC784 \uC5C6\uC74C</div>';
+    if (!games.length) return compact ? "" : '<div class="cs-game-empty">게임 \uC5C6\uC74C</div>';
     return '<div class="cs-game-chip-list">' + games.map((game) => {
       const chipClass = game.label === state.selectedGame ? " cs-selected" : (state.selectedGame ? " cs-muted" : "");
       return '<span class="cs-game-chip' + chipClass + '" title="' + escapeHtml(game.label) + '">' +
@@ -642,12 +647,12 @@
 
   function gameSummaryHtml(monthBase) {
     const summary = monthGameStats(monthBase);
-    if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">\uC774\uBC88 \uB2EC \uAC8C\uC784 \uC5C6\uC74C</div></div>';
+    if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">이번 달 게임 없음</div></div>';
     const visible = summary.stats.slice(0, 5);
     const statsHtml = visible.map((item, idx) =>
       '<button type="button" class="cs-game-stat' + (item.label === state.selectedGame ? " cs-selected" : "") + '" data-game-filter="' + escapeHtml(item.label) + '">' +
       '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + (idx + 1) + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
-      '<span class="cs-game-stat-count">' + item.count + '\uC77C \uBC29\uC1A1</span></button>'
+      '<span class="cs-game-stat-count">' + item.count + '일 방송</span></button>'
     ).join("");
     return '<div class="cs-game-summary"><div class="cs-game-stats">' + statsHtml + '</div></div>';
   }
@@ -723,7 +728,7 @@
   }
 
   function monthGridHtml(monthBase) {
-    const weekdays = ["\uC77C", "\uC6D4", "\uD654", "\uC218", "\uBAA9", "\uAE08", "\uD1A0"];
+    const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
     let html = weekdays.map((day) => '<div class="cs-month-weekday">' + day + "</div>").join("");
     const firstDay = monthBase.getDay();
     const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
@@ -768,8 +773,8 @@
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
       monthLabel +
-      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + '"><span class="cs-view-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 13h3M8.5 11.5v3M15.5 12.4h.1M18 14.4h.1"/><path d="M8.2 8.8h7.6c2.5 0 4.1 1.7 4.5 4.9l.2 1.4c.2 1.5-.6 2.7-1.9 2.7-.8 0-1.4-.4-2-1.1l-.9-1.1H8.3l-.9 1.1c-.6.7-1.2 1.1-2 1.1-1.3 0-2.1-1.2-1.9-2.7l.2-1.4c.4-3.2 2-4.9 4.5-4.9Z"/></svg></span><span class="cs-view-tip">' + (state.gameOnly ? "\uC804\uCCB4 \uBCF4\uAE30" : "\uAC8C\uC784\uB9CC \uBCF4\uAE30") + "</span></button>" : "") +
-      '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + '"><span class="cs-view-icon" aria-hidden="true">\u25A6</span><span class="cs-view-tip">' + (state.monthExpanded ? "5\uC77C \uBCF4\uAE30" : "\uC6D4\uAC04 \uBCF4\uAE30") + "</span></button>" +
+      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "게임만 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "게임만 보기") + "</span></button>" : "") +
+      '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "주간 보기" : "월간 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.monthExpanded ? "주간 보기" : "월간 보기") + "</span></button>" +
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
       "</div>" +

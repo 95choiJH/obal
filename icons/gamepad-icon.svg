@@ -1,0 +1,23 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Gamepad icon</title>
+  <desc>White outline game controller with mint green accent buttons.</desc>
+
+  <path
+    d="M20.5 20H43.5C48.4 20 52.7 23.2 54.1 27.9L58.1 41.3C59.5 46 56 50.7 51.1 50.7C48.9 50.7 46.8 49.7 45.4 48L41.8 43.7H22.2L18.6 48C17.2 49.7 15.1 50.7 12.9 50.7C8 50.7 4.5 46 5.9 41.3L9.9 27.9C11.3 23.2 15.6 20 20.5 20Z"
+    stroke="white"
+    stroke-width="3.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path d="M21 27V37" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M16 32H26" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+
+  <circle cx="43.5" cy="28.5" r="2.8" fill="#00FFA3"/>
+  <circle cx="49.5" cy="34.5" r="2.8" fill="#00FFA3"/>
+
+  <path d="M28 20L30.8 15.5H33.2L36 20" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="30" cy="36" r="1.6" fill="white"/>
+  <circle cx="35" cy="36" r="1.6" fill="white"/>
+</svg>
