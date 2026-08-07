@@ -70,13 +70,14 @@ function normalizePart(p) {
 
 function normalizeGameImage(item) {
   if (typeof item === "string") {
-    const url = item.trim();
-    return url ? { url, label: "" } : null;
+    const value = item.trim();
+    if (!value) return null;
+    return /^https?:\/\//i.test(value) ? { url: value, label: "" } : { url: "", label: value };
   }
   if (!item || typeof item !== "object") return null;
   const url = String(item.url || item.imageUrl || item.src || "").trim();
-  if (!url) return null;
-  return { url, label: String(item.label || item.title || "").trim() };
+  const label = String(item.label || item.title || item.name || item.game || "").trim();
+  return (label || url) ? { url, label } : null;
 }
 // vods 항목을 {url, label} 형태로 정규화. label이 없으면 "방송 다시보기"가 기본값.
 function normalizeVod(v) {

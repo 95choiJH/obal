@@ -430,11 +430,13 @@
     .cs-pop-note-box { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px;
       padding: 8px 10px; background: #1f2023; border: 1px solid #3a3c40; border-radius: 8px; }
     .cs-pop-note-list { min-width: max-content; display: flex; flex-direction: column; gap: 6px; }
-    .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.5;
+    .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.65;
       white-space: pre; overflow-wrap: normal; word-break: normal; }
 
     .cs-pop-parts-box { margin-top: 8px; padding: 8px 10px; background: #1f2023;
-      border: 1px solid #3a3c40; border-radius: 8px; }
+      border: 1px solid #3a3c40; border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
+    .cs-pop-part { min-width: 0; }
+    .cs-pop-part .cs-pop-row { margin-bottom: 0; }
     .cs-pop-members { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 4px 0; }
     .cs-member-avatar { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center;
       justify-content: center; width: 22px; height: 22px; vertical-align: middle; line-height: 0;
@@ -462,13 +464,20 @@
     .cs-vod-btn-disabled { background: rgba(157,158,163,0.12); color: #6b6d73; cursor: default; }
     .cs-vod-btn-disabled:hover { background: rgba(157,158,163,0.12); }
 
-    .cs-info-title { color: #efeff1; font-size: 16px; font-weight: 600; margin-bottom: 10px; }
-    .cs-info-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-    .cs-info-item { display: flex; align-items: flex-start; gap: 8px;
-      color: #c9cacd; font-size: 14px; line-height: 2; }
-    .cs-info-dot { flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%;
-      background: #00FFA3; margin-top: 14px; }
-    .cs-info-text { white-space: pre-line; overflow-wrap: anywhere; }
+    .cs-info-frame { padding: 12px 13px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.025); }
+    .cs-info-title { color: #efeff1; font-size: 13px; line-height: 1.2; font-weight: 800; margin-bottom: 8px; }
+    .cs-info-list { list-style: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-item { position: relative; display: block; padding: 10px 0 10px 13px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #c9cacd; font-size: 13px; line-height: 1.55; }
+    .cs-info-item::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 12px; width: 2px; border-radius: 2px; background: rgba(0,255,163,0.55); }
+    .cs-info-dot { display: none; }
+    .cs-info-text { display: block; white-space: pre-line; overflow-wrap: anywhere; }
+    .cs-info-mention { color: #efeff1; font-weight: 700; text-decoration: none; }
+    .cs-info-mention:hover { color: #00FFA3; text-decoration: underline; text-underline-offset: 3px; }
+    .cs-info-tag { color: #9d9ea3; font-weight: 700; }
+    .cs-info-tag::before { content: "#"; color: #6b6d73; margin-right: 1px; }
+    .cs-info-section .cs-inline-feedback-trigger, .cs-info-media-trigger { height: auto; min-height: 0; padding: 0 2px; border: 0; border-radius: 0; background: transparent; color: #93c5fd; font-size: inherit; font-weight: 700; line-height: inherit; vertical-align: baseline; }
+    .cs-info-section .cs-inline-feedback-trigger:hover, .cs-info-media-trigger:hover, .cs-info-media-trigger.cs-open { background: transparent; color: #bfdbfe; text-decoration: underline; text-underline-offset: 3px; }
+    .cs-info-media-trigger::before { content: ""; display: none; }
 
     /* 비라이브 채널 화면: _action 첫 위치의 일정 버튼 + absolute 패널 */
     .cs-channel-launch { position: relative; display: inline-flex; align-items: center; }
@@ -486,6 +495,7 @@
     :host(.cs-light-theme) .cs-wrapper { background: #ffffff; border-color: #e1e3e6; }
     :host(.cs-light-theme) .cs-section { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-section { background: #f8f9fa; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-info-frame { background: #ffffff; border-color: #e5e7ea; }
     :host(.cs-light-theme) .cs-title,
     :host(.cs-light-theme) .cs-info-title { color: #1e2024; }
     :host(.cs-light-theme) .cs-pill-on { color: #008a43; background: rgba(3,169,80,0.1); }
@@ -509,7 +519,14 @@
     :host(.cs-light-theme) .cs-cell-title,
     :host(.cs-light-theme) .cs-part-text,
     :host(.cs-light-theme) .cs-pop-text,
-    :host(.cs-light-theme) .cs-info-item { color: #4b4f55; }
+    :host(.cs-light-theme) .cs-info-list { border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-info-item::before { background: rgba(3,169,80,0.55); }
+    :host(.cs-light-theme) .cs-info-mention { color: #1e2024; }
+    :host(.cs-light-theme) .cs-info-mention:hover { color: #008a43; }
+    :host(.cs-light-theme) .cs-info-tag { color: #6f747b; }
+    :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger, :host(.cs-light-theme) .cs-info-media-trigger { color: #1d4ed8; background: transparent; border: 0; }
+    :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger.cs-open { color: #1e40af; background: transparent; }
     :host(.cs-light-theme) .cs-cell-today .cs-cell-date,
     :host(.cs-light-theme) .cs-cell-today .cs-cell-time { color: #008a43; }
     :host(.cs-light-theme) .cs-cell-today .cs-cell-title,
@@ -659,7 +676,7 @@
 
   function compactCellContentHtml(entry) {
     if (entry.parts && entry.parts.length) {
-      return entry.parts.slice(0, 2).map((p, idx) => {
+      return entry.parts.map((p, idx) => {
         const tagClass = p.speculative ? "cs-part-tag cs-part-tag-speculative" :
           isSpecialPart(p) ? "cs-part-tag cs-part-tag-collab" : "cs-part-tag";
         const tagLabel = partDisplayLabel(p, idx);
@@ -706,7 +723,7 @@
         ? '<div class="cs-cell-title">\uD734\uBC29</div>'
         : '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>');
     } else if (compact) {
-      body = (entry.start ? '<div class="cs-cell-time">' + escapeHtml(entry.start) + "</div>" : "") + compactCellContentHtml(entry);
+      body = compactCellContentHtml(entry);
     } else if (isPast) {
       body = '<div style="margin-top:12px;">' + cellContentHtml(entry) + "</div>";
     } else {
@@ -816,15 +833,16 @@
     const itemsHtml = items
       .map((text) =>
         '<li class="cs-info-item"><span class="cs-info-dot"></span>' +
-        '<span class="cs-info-text">' + directiveHtml(text) + "</span></li>"
+        '<span class="cs-info-text">' + directiveHtml(text, { infoMode: true }) + "</span></li>"
       )
       .join("");
 
     return (
       '<div class="cs-section cs-info-section">' +
+      '<div class="cs-info-frame">' +
       '<div class="cs-info-title">소식 및 정보</div>' +
       '<ul class="cs-info-list">' + itemsHtml + "</ul>" +
-      "</div>"
+      "</div></div>"
     );
   }
 
@@ -916,11 +934,13 @@
     };
     return render(String(value || ""));
   }
-  function mediaTriggerHtml(label, url) {
+  function mediaTriggerHtml(label, url, options) {
     const safeUrl = safeMediaUrl(url);
     const safeLabel = label || "media";
-    if (!safeUrl) return directiveHtml(safeLabel, { disableProfileLinks: true });
-    return '<button type="button" class="cs-inline-media-trigger" data-media-label="' + escapeHtml(safeLabel) + '" data-media-url="' + escapeHtml(safeUrl) + '"><span class="cs-inline-media-label">' + directiveHtml(safeLabel, { disableProfileLinks: true }) + "</span></button>";
+    const infoMode = !!(options && options.infoMode);
+    if (!safeUrl) return directiveHtml(safeLabel, { disableProfileLinks: true, infoMode });
+    const cls = "cs-inline-media-trigger" + (infoMode ? " cs-info-media-trigger" : "");
+    return '<button type="button" class="' + cls + '" data-media-label="' + escapeHtml(safeLabel) + '" data-media-url="' + escapeHtml(safeUrl) + '"><span class="cs-inline-media-label">' + directiveHtml(safeLabel, { disableProfileLinks: true, infoMode }) + "</span></button>";
   }
   function safeMediaUrl(value) {
     try {
@@ -961,8 +981,12 @@
   }
 
   function renderDirectiveToken(kind, text, profiles, options) {
-    if (kind === "t") return '<span class="cs-text-badge">' + directiveHtml(text, options) + "</span>";
     const profile = profiles[text] || { channelId: "", channelName: text, channelImageUrl: "" };
+    if (options && options.infoMode) {
+      if (kind === "t") return '<span class="cs-info-tag">' + styledTextHtml(text) + "</span>";
+      return infoProfileTextHtml(profile, options && options.disableProfileLinks);
+    }
+    if (kind === "t") return '<span class="cs-text-badge">' + directiveHtml(text, options) + "</span>";
     return '<span class="cs-inline-profile">' + channelAvatarLinkHtml(profile, options && options.disableProfileLinks) + "</span>";
   }
   function directiveHtml(value, options) {
@@ -970,7 +994,7 @@
     const profiles = (state.data && state.data.directiveProfiles) || {};
     const trimmed = raw.trim();
     const wholeMedia = parseMediaDirectiveAt(trimmed, 0);
-    if (wholeMedia && wholeMedia.end === trimmed.length) return mediaTriggerHtml(wholeMedia.label, wholeMedia.url);
+    if (wholeMedia && wholeMedia.end === trimmed.length) return mediaTriggerHtml(wholeMedia.label, wholeMedia.url, options);
     const wholeBracket = trimmed.match(/^:(s|t)\[/i);
     if (wholeBracket) {
       const end = findDirectiveBracketEnd(trimmed, 2);
@@ -991,7 +1015,7 @@
       const media = parseMediaDirectiveAt(raw, i);
       if (media) {
         flushPlain(i);
-        html += mediaTriggerHtml(media.label, media.url);
+        html += mediaTriggerHtml(media.label, media.url, options);
         i = media.end;
         plainStart = i;
         continue;
@@ -1037,6 +1061,15 @@
     return /^[0-9a-f]{32}$/i.test(id);
   }
 
+  function infoProfileTextHtml(c, disableLink) {
+    if (!c) return "";
+    const name = String(c.channelName || "").trim() || "이름 없음";
+    if (!disableLink && isRealChzzkChannelRef(c)) {
+      const url = "https://chzzk.naver.com/live/" + encodeURIComponent(c.channelId);
+      return '<a class="cs-info-mention" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(name) + "</a>";
+    }
+    return '<span class="cs-info-mention">' + escapeHtml(name) + "</span>";
+  }
   function channelAvatarLinkHtml(c, disableLink) {
     if (!c) return "";
     const tip = '<span class="cs-member-tip">' + escapeHtml(c.channelName || "이름 없음") + "</span>";
@@ -1594,15 +1627,14 @@
   }
 
   // 사용자 지정 구조 규칙:
-  // "_thumbnail*"와 "_is_live*" 클래스를 함께 가진 요소를 찾고,
+  // "_thumbnail*" 클래스를 함께 가진 요소를 찾고,
   // 그 조상 중 "_details*" 클래스를 가진 요소를 앵커로 사용 (그 다음에 삽입)
   function findDetailsAnchor() {
     const nodes = document.querySelectorAll('[class*="_thumbnail"]');
     for (const el of nodes) {
       const cls = (el.getAttribute("class") || "").split(/\s+/);
       const hasThumb = cls.some((c) => c.startsWith("_thumbnail"));
-      const hasLive = cls.some((c) => c.startsWith("_is_live"));
-      if (!hasThumb || !hasLive) continue;
+      if (!hasThumb) continue;
       let p = el.parentElement;
       while (p && p !== document.body) {
         const pcls = (p.getAttribute("class") || "").split(/\s+/);

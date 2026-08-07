@@ -641,8 +641,9 @@ function infoItemHtml(u, i) {
   // ---- 합방 멤버 검색 (치지직 검색 API는 브라우저에서 직접 부르면 CORS로 막혀서,
   //      Supabase Edge Function(chzzk-search)을 프록시로 거친다) ----
   async function searchChzzkChannels(keyword) {
-    const url =
-      cfg.supabaseUrl.replace(/\/+$/, "") + "/functions/v1/chzzk-search?keyword=" + encodeURIComponent(keyword);
+    const isLocalAdmin = location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+    const url = (isLocalAdmin ? "" : cfg.supabaseUrl.replace(/\/+$/, "")) +
+      "/functions/v1/chzzk-search?keyword=" + encodeURIComponent(keyword);
     try {
       const res = await fetch(url, {
         headers: { apikey: cfg.supabaseKey, Authorization: "Bearer " + cfg.supabaseKey },
