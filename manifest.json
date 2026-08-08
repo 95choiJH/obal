@@ -1,17 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "\uC624\uBC45\uC54C",
-  "version": "0.1.1",
-  "description": "\uCE58\uC9C0\uC9C1 \uC2A4\uD2B8\uB9AC\uBA38 \uBC29\uC1A1 \uC77C\uC815\uC744 \uCC44\uB110 \uD398\uC774\uC9C0\uC5D0 \uD45C\uC2DC\uD558\uB294 \uD655\uC7A5 \uD504\uB85C\uADF8\uB7A8\uC785\uB2C8\uB2E4.",
+  "name": "오뱅알",
+  "version": "0.1.6",
+  "description": "치지직 스트리머 '따효니'님의 방송 일정을 채널 페이지에 표시하는 확장 프로그램입니다.",
   "minimum_chrome_version": "121",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "https://*.supabase.co/*"
+    "https://ggebdrlvzrgoyumlrnxe.supabase.co/*"
   ],
   "action": {
-    "default_title": "\uC624\uBC45\uC54C",
+    "default_title": "오뱅알",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

@@ -138,6 +138,83 @@ create policy "admin users can read admin_users"
   to authenticated
   using (user_id = auth.uid());
 
+-- Durable rate-limit counters for public Edge Functions. The table is not
+-- directly accessible to browser clients; only the service-role-only RPC below
+-- can update it.
+create table if not exists public.edge_rate_limits (
+  scope text not null,
+  client_key text not null,
+  window_start timestamptz not null,
+  request_count integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (scope, client_key)
+);
+
+create index if not exists edge_rate_limits_updated_at_idx
+  on public.edge_rate_limits (updated_at);
+
+alter table public.edge_rate_limits enable row level security;
+revoke all on public.edge_rate_limits from anon, authenticated;
+
+create or replace function public.check_edge_rate_limit(
+  p_scope text,
+  p_client_key text,
+  p_window_seconds integer,
+  p_max_requests integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_window_start timestamptz;
+  v_request_count integer;
+begin
+  if coalesce(length(p_scope), 0) < 1
+    or coalesce(length(p_client_key), 0) < 1
+    or p_window_seconds < 1
+    or p_window_seconds > 86400
+    or p_max_requests < 1
+    or p_max_requests > 10000 then
+    return false;
+  end if;
+
+  v_window_start := pg_catalog.to_timestamp(
+    pg_catalog.floor(extract(epoch from pg_catalog.clock_timestamp()) / p_window_seconds) * p_window_seconds
+  );
+
+  insert into public.edge_rate_limits as limits (
+    scope, client_key, window_start, request_count, updated_at
+  ) values (
+    left(p_scope, 80), left(p_client_key, 128), v_window_start, 1, pg_catalog.now()
+  )
+  on conflict (scope, client_key) do update
+  set window_start = case
+        when limits.window_start < v_window_start then v_window_start
+        else limits.window_start
+      end,
+      request_count = case
+        when limits.window_start < v_window_start then 1
+        else limits.request_count + 1
+      end,
+      updated_at = pg_catalog.now()
+  returning request_count into v_request_count;
+
+  -- Opportunistic cleanup keeps abandoned client counters bounded without a
+  -- separate scheduled job.
+  if pg_catalog.random() < 0.01 then
+    delete from public.edge_rate_limits
+    where updated_at < pg_catalog.now() - interval '1 day';
+  end if;
+
+  return v_request_count <= p_max_requests;
+end;
+$$;
+
+revoke all on function public.check_edge_rate_limit(text, text, integer, integer) from public, anon, authenticated;
+grant execute on function public.check_edge_rate_limit(text, text, integer, integer) to service_role;
+
 -- Example, replace with the UUID from Supabase Auth > Users:
 -- insert into public.admin_users (user_id) values ('24e50812-e5aa-4636-8aa0-a6e15d3b7322');
 

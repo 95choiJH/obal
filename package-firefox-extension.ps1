@@ -22,7 +22,9 @@ $allowedIconFiles = @(
   "icons\on_break.png",
   "icons\undetermined.png",
   "icons\naver_cafe.png",
-  "icons\video_donation.png"
+  "icons\video_donation.png",
+  "icons\gamepad-icon.svg",
+  "icons\calendar-icon.svg"
 )
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }

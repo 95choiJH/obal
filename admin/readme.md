@@ -25,6 +25,10 @@ values ('Supabase Auth > Users에서 복사한 UUID');
 
 ## 필요한 Edge Functions
 
+먼저 `supabase/rls-hardening.sql`을 SQL Editor에서 실행해
+`check_edge_rate_limit` RPC와 비공개 카운터 테이블을 생성한 다음 배포하세요.
+두 함수는 rate-limit 저장소를 확인할 수 없으면 요청을 `503`으로 차단하도록 구성되어 있으므로 순서가 중요합니다.
+
 ```powershell
 npx supabase functions deploy chzzk-search
 npx supabase functions deploy submit-feedback
