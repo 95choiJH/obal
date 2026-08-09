@@ -175,7 +175,7 @@
   function pillState() {
     const e = entryFor(state.todayKey);
     if (!e) {
-      return { cls: "cs-pill-unknown", html: '<img class="cs-undetermined-icon cs-undetermined-icon-pill" src="' + UNDETERMINED_ICON_URL + '" alt="" />오늘 방송 미정' };
+      return { cls: "cs-pill-unknown", html: '오늘 방송 미정' };
     }
     if (e.status === "off") {
       return { cls: "cs-pill-off", html: '오늘 휴방' };
@@ -217,10 +217,10 @@
     .cs-dot { width: 5px; height: 5px; border-radius: 50%; }
     .cs-break-icon { display: block; object-fit: contain; border-radius: 4px; }
     .cs-break-icon-pill { width: 16px; height: 16px; }
-    .cs-cell-time .cs-break-icon { width: max(46px, 65%); height: 100%; margin: 0 auto; }
+    .cs-cell-time .cs-break-icon { width: max(46px, 60%); height: 100%; margin: 0 auto; }
     .cs-undetermined-icon { display: block; object-fit: contain; }
     .cs-undetermined-icon-pill { width: 16px; height: 16px; }
-    .cs-cell-time .cs-undetermined-icon { width: max(46px, 65%); height: 100%; margin: 0 auto; }
+    .cs-cell-time .cs-undetermined-icon { width: max(46px, 56%); height: 100%; margin: 0 auto; }
 
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
       font-size: 20px; line-height: 1; padding: 2px 4px; }
@@ -247,7 +247,7 @@
     .cs-month-cell .cs-cell-time { margin-top: 7px; font-size: 12px; }
     .cs-month-cell .cs-cell-title { margin-top: 4px; font-size: 12px; line-height: 1.35; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .cs-month-cell .cs-cell-center-body { text-align: center; }
-    .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { width: max(46px, 80%); }
+    .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { width: max(46px, 70%); }
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 12px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
