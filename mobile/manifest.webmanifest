@@ -1,0 +1,25 @@
+{
+  "name": "오뱅알 모바일",
+  "short_name": "오뱅알",
+  "description": "치지직 방송 일정과 예정 컨텐츠를 모바일에서 확인합니다.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7f8",
+  "theme_color": "#101418",
+  "icons": [
+    {
+      "src": "../icons/icon128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "../icons/오뱅알.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

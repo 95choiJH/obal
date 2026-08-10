@@ -1,0 +1,94 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b1c1f" />
+  <meta name="description" content="치지직 방송 일정을 모바일에서 확인합니다." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="오뱅알" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>오뱅알 일정</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="../icons/icon128.png" />
+  <link rel="icon" href="../icons/icon48.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar compact-topbar">
+      <a class="brand" href="./index.html" aria-label="오뱅알 홈">
+        <img class="brand-icon" src="../icons/icon48.png" alt="" />
+      </a>
+      <div class="topbar-actions">
+        <p class="topbar-updated" id="updatedLabel">최신 데이터를 확인하고 있습니다.</p>
+        <button class="icon-button" type="button" id="infoBtn" aria-label="소식 및 정보" title="소식 및 정보">
+          <span aria-hidden="true">i</span>
+        </button>
+        <button class="icon-button" type="button" id="refreshBtn" aria-label="새로고침" title="새로고침">
+          <span aria-hidden="true">↻</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="main schedule-only">
+      <section class="schedule-view active" id="monthView" aria-labelledby="monthHeading">
+        <div class="month-head">
+          <button class="month-nav" type="button" id="prevMonthBtn" aria-label="이전 달"><span class="month-nav-icon" aria-hidden="true">‹</span></button>
+          <h2 id="monthHeading">월간 일정</h2>
+          <button class="month-nav" type="button" id="nextMonthBtn" aria-label="다음 달"><span class="month-nav-icon" aria-hidden="true">›</span></button>
+        </div>
+        <div class="month-grid" id="monthGrid" aria-live="polite"></div>
+      </section>
+
+      <section class="schedule-view active selected-schedule-view" id="weekView" aria-labelledby="selectedScheduleHeading">
+        <div class="selected-schedule-head">
+          <div>
+            <h2 id="selectedScheduleHeading">오늘 일정</h2>
+          </div>
+        </div>
+        <div class="schedule-list calendar-list" id="scheduleList" aria-live="polite">
+          <div class="schedule-card loading"><div class="skeleton line"></div><div class="skeleton block"></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+
+  <div class="info-popup" id="infoPopup" hidden>
+    <div class="info-popup-panel" role="dialog" aria-modal="true" aria-labelledby="infoPopupTitle">
+      <div class="info-popup-head">
+        <h2 id="infoPopupTitle">소식 및 정보</h2>
+        <button class="info-popup-close" type="button" data-info-close aria-label="닫기">×</button>
+      </div>
+      <div class="mobile-info-list info-popup-list" id="infoList" aria-live="polite">
+        <div class="mobile-info-card loading"><div class="skeleton line wide"></div><div class="skeleton block"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="media-popup" id="mediaPopup" hidden>
+    <div class="media-popup-panel" role="dialog" aria-modal="true" aria-labelledby="mediaPopupTitle">
+      <div class="media-popup-head">
+        <h2 id="mediaPopupTitle">미디어</h2>
+        <button class="media-popup-close" type="button" data-media-close aria-label="닫기">×</button>
+      </div>
+      <div class="media-popup-body" id="mediaPopupBody"></div>
+    </div>
+  </div>
+
+  <template id="emptyTemplate">
+    <div class="empty-state">
+      <strong>표시할 일정이 없습니다.</strong>
+      <span>관리자 페이지에서 일정이 등록되면 여기에 표시됩니다.</span>
+    </div>
+  </template>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
