@@ -738,7 +738,7 @@
 
     return '<div class="' + classes.join(" ") + '" data-date="' + key + '"' +
       (hoverable ? ' data-hoverable="1"' : "") + ">" +
-      dateRow + body + (state.gameOnly ? "" : timeIndicatorsHtml(entry, isPast)) + "</div>";
+      dateRow + body + (state.gameOnly || compact ? "" : timeIndicatorsHtml(entry, isPast)) + "</div>";
   }
 
   function fiveDayGridHtml(windowStart) {
@@ -1033,6 +1033,19 @@
         i = media.end;
         plainStart = i;
         continue;
+      }
+      if (raw.slice(i, i + 3).toLowerCase() === ":m[") {
+        const end = findDirectiveBracketEnd(raw, i + 2);
+        if (end > i) {
+          const body = raw.slice(i + 3, end);
+          const braceOpen = body.lastIndexOf("{");
+          const label = (braceOpen >= 0 ? body.slice(0, braceOpen) : body).trim();
+          flushPlain(i);
+          if (label) html += directiveHtml(label, options);
+          i = end + 1;
+          plainStart = i;
+          continue;
+        }
       }
       const bracket = raw.slice(i).match(/^:(s|t)\[/i);
       if (bracket) {
