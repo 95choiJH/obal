@@ -12,7 +12,9 @@
 
   const api = typeof browser !== "undefined" ? browser : chrome;
   const BREAK_ICON_URL = api.runtime.getURL("icons/on_break.png");
+  const BREAK_LIGHT_ICON_URL = api.runtime.getURL("icons/on_break-white.png");
   const UNDETERMINED_ICON_URL = api.runtime.getURL("icons/undetermined.png");
+  const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined-white.png");
   const NAVER_CAFE_ICON_URL = api.runtime.getURL("icons/naver_cafe.png");
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
   const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
@@ -216,11 +218,27 @@
     .cs-pill-off { background: rgba(157,158,163,0.12); color: #9d9ea3; }
     .cs-dot { width: 5px; height: 5px; border-radius: 50%; }
     .cs-break-icon { display: block; object-fit: contain; border-radius: 4px; }
+    .cs-break-icon-light { display: none !important; }
     .cs-break-icon-pill { width: 16px; height: 16px; }
     .cs-cell-time .cs-break-icon { width: max(46px, 60%); height: 100%; margin: 0 auto; }
+    .cs-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
+    .cs-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
+    .cs-cell.cs-cell-off .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
+    .cs-cell.cs-cell-off .cs-cell-time { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; }
+    .cs-cell.cs-cell-off .cs-cell-time .cs-break-icon { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
+    .cs-cell.cs-cell-off .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+    .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time { position: absolute; inset: 0; overflow: hidden; }
+    .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.1); transform-origin: bottom center; }
     .cs-undetermined-icon { display: block; object-fit: contain; }
+    .cs-undetermined-icon-light { display: none !important; }
     .cs-undetermined-icon-pill { width: 16px; height: 16px; }
     .cs-cell-time .cs-undetermined-icon { width: max(46px, 56%); height: 100%; margin: 0 auto; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) { position: relative; gap: 0; padding: 0; overflow: hidden; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; left: 50%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.35); transform-origin: bottom center; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
 
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
       font-size: 20px; line-height: 1; padding: 2px 4px; }
@@ -242,12 +260,16 @@
     .cs-month-weekday { color: #6b6d73; font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0 4px; }
     .cs-month-blank { min-height: 88px; border-radius: 8px; background: rgba(255,255,255,0.02); }
     .cs-month-grid .cs-month-cell { min-height: 88px; padding: 9px 8px 35px; text-align: left; }
-    .cs-month-grid .cs-month-cell.cs-cell-off { gap: 4px; padding-bottom: 9px; }
+    .cs-month-grid .cs-month-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
     .cs-month-cell .cs-cell-date { font-size: 12px; font-weight: 700; }
+    .cs-month-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 7px; z-index: 2; text-align: center; }
     .cs-month-cell .cs-cell-time { margin-top: 7px; font-size: 12px; }
     .cs-month-cell .cs-cell-title { margin-top: 4px; font-size: 12px; line-height: 1.35; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .cs-month-cell .cs-cell-center-body { text-align: center; }
-    .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { width: max(46px, 70%); }
+    .cs-month-cell.cs-cell-off .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
+    .cs-month-cell.cs-cell-off .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.3); transform-origin: bottom center; }
+    .cs-month-cell.cs-cell-off .cs-cell-title { top: 24px; }
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 12px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
@@ -267,7 +289,7 @@
     .cs-month-cell .cs-game-chip { flex: 0 0 auto; width: 100%; max-width: 100%; padding: 3px 4px; font-size: 12px; border-radius: 6px; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
     .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
-      border-radius: 8px; padding: 16px; text-align: center; min-height: 66px; }
+      border-radius: 8px; padding: 16px; padding-bottom: 35px; text-align: center; min-height: 183px; }
     .cs-cell-center { display: flex; flex-direction: column; gap: 16px; }
     .cs-cell-center .cs-cell-date,
     .cs-cell-center .cs-cell-date-row { flex: 0 0 auto; }
@@ -515,6 +537,12 @@
     :host(.cs-light-theme) .cs-month-weekday { color: #8b9097; }
     :host(.cs-light-theme) .cs-month-blank { background: #fafafa; border: 1px solid #f0f1f2; }
     :host(.cs-light-theme) .cs-cell { background: #f5f6f7; border-color: transparent; }
+    :host(.cs-light-theme) .cs-break-icon-dark { display: none !important; }
+    :host(.cs-light-theme) .cs-break-icon-light { display: block !important; }
+    :host(.cs-light-theme) .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-break-icon-light { transform: translateX(-50%) translateY(1.5%) scale(1.1) !important; }
+    :host(.cs-light-theme) .cs-month-cell.cs-cell-off .cs-break-icon-light { transform: translateX(-50%) translateY(1.5%) scale(1.3) !important; }
+    :host(.cs-light-theme) .cs-undetermined-icon-dark { display: none !important; }
+    :host(.cs-light-theme) .cs-undetermined-icon-light { display: block !important; transform: translateX(-50%) scale(1.35) !important; }
     :host(.cs-light-theme) .cs-cell-hoverable:hover { background: #eceef0; border-color: #d3d6da; }
     :host(.cs-light-theme) .cs-cell-today { background: rgba(0,199,90,0.09); border-color: rgba(0,199,90,0.5); }
     :host(.cs-light-theme) .cs-cell-today.cs-cell-hoverable:hover { background: rgba(0,199,90,0.15); }
@@ -535,10 +563,15 @@
     :host(.cs-light-theme) .cs-cell-today .cs-cell-time { color: #008a43; }
     :host(.cs-light-theme) .cs-cell-today .cs-cell-title,
     :host(.cs-light-theme) .cs-cell-today .cs-part-text { color: #1e2024; }
+    :host(.cs-light-theme) .cs-cell:not(.cs-cell-muted):not(.cs-cell-today):not(.cs-cell-unknown) .cs-cell-title,
+    :host(.cs-light-theme) .cs-cell:not(.cs-cell-muted):not(.cs-cell-today):not(.cs-cell-unknown) .cs-part-text { color: #2f343a; }
+    :host(.cs-light-theme) .cs-cell:not(.cs-cell-muted):not(.cs-cell-today):not(.cs-cell-unknown) .cs-cell-time { color: #008a43; }
     :host(.cs-light-theme) .cs-cell-muted .cs-cell-time,
     :host(.cs-light-theme) .cs-cell-muted .cs-cell-title,
     :host(.cs-light-theme) .cs-cell-muted .cs-part-text,
     :host(.cs-light-theme) .cs-cell-unknown .cs-cell-title { color: #a3a7ad; }
+    :host(.cs-light-theme) .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { color: #506070; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.72); }
+    :host(.cs-light-theme) .cs-cell.cs-cell-off .cs-cell-title { color: #506070; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.72); }
     :host(.cs-light-theme) .cs-part-tag { color: #008f43; background: rgba(0,199,90,0.1); }
     :host(.cs-light-theme) .cs-part-tag-collab { color: #7557c9; background: rgba(117,87,201,0.12); }
     :host(.cs-light-theme) .cs-part-tag-speculative { color: #9a6b00; background: rgba(232,194,104,0.2); }
@@ -586,6 +619,9 @@
     :host(.cs-light-theme) .cs-popover { background: #ffffff; border-color: #d8dadd; box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
     :host(.cs-light-theme) .cs-pop-arrow { background: #ffffff; border-color: #d8dadd; }
     :host(.cs-light-theme) .cs-pop-date { color: #1e2024; }
+    :host(.cs-light-theme) .cs-pop-text { color: #2f343a; }
+    :host(.cs-light-theme) .cs-pop-row .cs-cell-time,
+    :host(.cs-light-theme) .cs-pop-icon:not(.cs-pop-icon-collab):not(.cs-pop-icon-speculative) { color: #008a43; }
     :host(.cs-light-theme) .cs-pop-parts-box,
     :host(.cs-light-theme) .cs-pop-note-box { background: #f5f6f7; border-color: #dfe1e4; }
     :host(.cs-light-theme) .cs-pop-note-text { color: #4b4f55; }
@@ -720,11 +756,11 @@
       body = gameChipsHtml(entry, compact);
     } else if (!entry) {
       body = compact ? "" : '<div class="cs-cell-center-body">' +
-        '<div class="cs-cell-time"><img class="cs-undetermined-icon" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
+        '<div class="cs-cell-time"><img class="cs-undetermined-icon cs-undetermined-icon-dark" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /><img class="cs-undetermined-icon cs-undetermined-icon-light" src="' + UNDETERMINED_LIGHT_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
         '<div class="cs-cell-title">\uBBF8\uC815</div></div>';
     } else if (isOff) {
       const dot = notes.length ? '<span class="cs-memo-dot"></span>' : "";
-      body = dot + '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>';
+      body = dot + '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon cs-break-icon-dark" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /><img class="cs-break-icon cs-break-icon-light" src="' + BREAK_LIGHT_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>';
     } else if (compact) {
       body = compactCellContentHtml(entry);
     } else if (isPast) {
@@ -804,7 +840,7 @@
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
       monthLabel +
-      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "게임만 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "게임만 보기") + "</span></button>" : "") +
+      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
       '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "주간 보기" : "월간 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.monthExpanded ? "주간 보기" : "월간 보기") + "</span></button>" +
       '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
       '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +

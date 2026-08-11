@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$OutputPath = "dist\obaengal-extension.zip"
 )
 
@@ -20,7 +20,9 @@ $allowedIconFiles = @(
   "icons\icon48.png",
   "icons\icon128.png",
   "icons\on_break.png",
+  "icons\on_break-white.png",
   "icons\undetermined.png",
+  "icons\undetermined-white.png",
   "icons\naver_cafe.png",
   "icons\video_donation.png",
   "icons\gamepad-icon.svg",
