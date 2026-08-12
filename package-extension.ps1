@@ -34,7 +34,7 @@ $allowedIconFiles = @(
   "images\gnimti-back.png"
 )
 $allowedGnimtiFiles = Get-ChildItem -LiteralPath (Join-Path $root "images\gnimti") -Recurse -File -Filter "*.png" | ForEach-Object {
-  [System.IO.Path]::GetRelativePath($root, $_.FullName)
+  $_.FullName.Substring($root.Length + 1)
 }
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
@@ -53,5 +53,16 @@ foreach ($relative in ($allowedFiles + $allowedIconFiles + $allowedGnimtiFiles))
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
 $zipDir = Split-Path -Parent $zip
 if (-not (Test-Path -LiteralPath $zipDir)) { New-Item -ItemType Directory -Path $zipDir | Out-Null }
-Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force
+
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+  foreach ($file in Get-ChildItem -LiteralPath $stage -Recurse -File) {
+    $relativePath = $file.FullName.Substring($stage.Length + 1).Replace("\", "/")
+    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $relativePath, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+  }
+} finally {
+  $archive.Dispose()
+}
 Write-Host "Extension package created: $zip"
