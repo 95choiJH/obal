@@ -33,6 +33,18 @@ async function setCache(data, fetchedAt) {
   });
 }
 
+async function getProfileCache() {
+  return new Promise((resolve) => {
+    api.storage.local.get(["chzzkProfileCache"], (result) => resolve((result && result.chzzkProfileCache) || {}));
+  });
+}
+
+async function setProfileCache(cache) {
+  return new Promise((resolve) => {
+    api.storage.local.set({ chzzkProfileCache: cache || {} }, () => resolve());
+  });
+}
+
 function normalizeChannelRef(c) {
   if (!c || typeof c !== "object") return null;
   if (!c.channelId && !c.channelName) return null;
@@ -46,7 +58,7 @@ function normalizeChannelRef(c) {
 // parts 항목을 {content, collab, official, otherChannel, members, hostChannel} 형태로 정규화 (구버전은 문자열 하나였음)
 function normalizePart(p) {
   if (typeof p === "string") {
-    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
   }
   if (p && typeof p === "object") {
     return {
@@ -63,9 +75,10 @@ function normalizePart(p) {
       speculative: !!p.speculative,
       members: Array.isArray(p.members) ? p.members.map(normalizeChannelRef).filter(Boolean) : [],
       hostChannel: normalizeChannelRef(p.hostChannel),
+      notes: normalizeNotes(p.notes || p.note),
     };
   }
-  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
 }
 
 function normalizeGameImage(item) {
@@ -174,6 +187,55 @@ function directiveNames(value) {
   return Array.from(raw.matchAll(/:s(?:\[([^\]]+)\]|\s+([^\s:]+))/gi), (match) => (match[1] || match[2]).trim());
 }
 
+const GNIMTI_PROFILE_NAMES = [
+  "김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙",
+  "꼴랑이", "멋사", "삼식", "소우릎", "플레임", "헤징",
+  "네클릿", "뱅", "샘웨", "앰비션", "크캣", "햇살살",
+  "괴물쥐", "눈꽃", "명예훈장", "실프", "이선생", "플러리",
+  "갱맘", "니니아", "던", "두니주니", "서새봄냥", "채현찌", "초승달", "큐베", "피닉스박",
+];
+const GNIMTI_PROFILE_OVERRIDES = {
+  "김뿡": "17f0cfcba4ff608de5eabb5110d134d0",
+  "김호러": "",
+  "러너": "",
+  "룩삼": "",
+  "승우아빠": "",
+  "울프": "",
+  "윤가놈": "",
+  "인간젤리": "",
+  "철면수심": "",
+  "캡틴잭": "",
+  "크랭크": "",
+  "푸린": "",
+  "한동숙": "",
+  "꼴랑이": "",
+  "멋사": "",
+  "삼식": "",
+  "소우릎": "",
+  "플레임": "",
+  "헤징": "",
+  "네클릿": "",
+  "뱅": "",
+  "샘웨": "",
+  "앰비션": "",
+  "크캣": "",
+  "햇살살": "",
+  "괴물쥐": "",
+  "눈꽃": "",
+  "명예훈장": "",
+  "실프": "",
+  "이선생": "",
+  "플러리": "",
+  "갱맘": "",
+  "니니아": "",
+  "던": "",
+  "두니주니": "",
+  "서새봄냥": "458f6ec20b034f49e0fc6d03921646d2",
+  "채현찌": "",
+  "초승달": "",
+  "큐베": "",
+  "피닉스박": "",
+};
 async function resolveDirectiveProfiles(channels) {
   const names = new Set();
   const collect = (value) => { directiveNames(value).forEach((name) => names.add(name)); };
@@ -182,28 +244,53 @@ async function resolveDirectiveProfiles(channels) {
     (channel.schedule || []).forEach((entry) => {
       collect(entry.title); collect(entry.titleShort); collect(entry.note);
       (entry.notes || []).forEach(collect);
-      (entry.parts || []).forEach((part) => collect(part.content));
+      (entry.parts || []).forEach((part) => { collect(part.content); (part.notes || []).forEach(collect); });
       (entry.vods || []).forEach((vod) => collect(vod.label));
       (entry.gameImages || []).forEach((game) => collect(game.label));
     });
   });
+  GNIMTI_PROFILE_NAMES.forEach((name) => names.add(name));
+
   const profiles = {};
+  const profileCache = await getProfileCache();
+  let cacheChanged = false;
   const base = CHZZK_SCHEDULE_CONFIG.supabaseUrl.replace(/\/+$/, "");
   await Promise.all(Array.from(names).map(async (name) => {
+    const key = String(name || "").trim();
+    if (!key) return;
+    const overrideId = String(GNIMTI_PROFILE_OVERRIDES[key] || "").trim();
+    const idCacheKey = overrideId ? "id:v2:" + overrideId : "";
+    const cached = normalizeChannelRef(overrideId ? profileCache[idCacheKey] : profileCache[key]);
+    if (cached) {
+      profiles[key] = cached;
+      return;
+    }
     try {
-      const res = await fetch(base + "/functions/v1/chzzk-search?keyword=" + encodeURIComponent(name), {
+      const res = await fetch(base + "/functions/v1/chzzk-search?keyword=" + encodeURIComponent(key), {
         headers: { apikey: CHZZK_SCHEDULE_CONFIG.supabaseKey, Authorization: "Bearer " + CHZZK_SCHEDULE_CONFIG.supabaseKey },
       });
       if (!res.ok) return;
       const json = await res.json();
       const items = (json && json.content && json.content.data) || [];
       const list = items.map((item) => item && item.channel).filter(Boolean);
-      const exact = list.find((c) => String(c.channelName || "").trim().toLowerCase() === name.toLowerCase());
-      const found = exact || (list.length === 1 ? list[0] : null);
-      if (found) profiles[name] = normalizeChannelRef(found);
+      const override = overrideId ? list.find((c) => String(c.channelId || "").trim() === overrideId) : null;
+      const exact = list.find((c) => String(c.channelName || "").trim().toLowerCase() === key.toLowerCase());
+      const found = overrideId
+        ? (override || { channelId: overrideId, channelName: key, channelImageUrl: "" })
+        : (exact || list[0] || null);
+      const normalized = normalizeChannelRef(found);
+      if (normalized) {
+        if (overrideId) normalized.channelId = overrideId;
+        if (!normalized.channelName) normalized.channelName = key;
+        profiles[key] = normalized;
+        profileCache[key] = normalized;
+        if (idCacheKey) profileCache[idCacheKey] = normalized;
+        cacheChanged = true;
+      }
     } catch (e) {
     }
   }));
+  if (cacheChanged) await setProfileCache(profileCache);
   return profiles;
 }
 
@@ -223,6 +310,12 @@ async function fetchFromSupabase() {
   return { version: 1, updatedAt: latestUpdate, channels, directiveProfiles };
 }
 
+async function attachCachedProfiles(data) {
+  if (!data || typeof data !== "object") return data;
+  const profileCache = await getProfileCache();
+  data.directiveProfiles = { ...(data.directiveProfiles || {}), ...profileCache };
+  return data;
+}
 async function fetchSchedule(force) {
   const now = Date.now();
   const cached = await getCache();
@@ -234,7 +327,7 @@ async function fetchSchedule(force) {
 
   // 캐시가 신선하면 그대로 반환
   if (!force && cached.scheduleData && cached.fetchedAt && now - cached.fetchedAt < ttl) {
-    return { ok: true, data: cached.scheduleData, fetchedAt: cached.fetchedAt, fromCache: true };
+    return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 
   try {
@@ -246,7 +339,7 @@ async function fetchSchedule(force) {
     if (cached.scheduleData) {
       return {
         ok: true,
-        data: cached.scheduleData,
+        data: await attachCachedProfiles(cached.scheduleData),
         fetchedAt: cached.fetchedAt,
         fromCache: true,
         stale: true,

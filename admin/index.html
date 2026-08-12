@@ -262,6 +262,8 @@
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface2);
     color: var(--text-dim); padding: 8px 10px; font-size: 13px; line-height: 1.45; }
   .note-editor-wrap { flex: 1 1 auto; min-width: 0; }
+  .part-notes-wrap { margin: 9px 0 0; padding: 9px; border: 1px solid rgba(127,127,127,0.14); border-radius: 8px; background: rgba(0,0,0,0.06); }
+  .part-note-item:last-of-type { margin-bottom: 8px; }
   .note-item .directive-editor.multiline { width: 100%; min-height: 58px; padding: 8px 10px;
     color: var(--text-dim); font-size: 13px; line-height: 1.45; }
   .note-item .icon-btn { margin-top: 3px; }
@@ -423,6 +425,7 @@
   @media (prefers-color-scheme: light) {
     .topbar, .savebar { background: rgba(245,246,247,0.94); }
     .schedule-editor-section { background: rgba(0,0,0,0.025); }
+    .part-notes-wrap { background: rgba(0,0,0,0.025); }
     .part-item, .vod-item, .game-image-item { background: rgba(255,255,255,0.7); }
     .style-btn { background: #ffffff; }
     .style-btn:hover { background: #f5f6f7; }

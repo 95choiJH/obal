@@ -54,6 +54,7 @@
         speculative: !!p.speculative,
         members: (p.members || []).map((m) => m.channelId),
         hostChannel: (p.hostChannel && p.hostChannel.channelId) || "",
+        notes: normalizeNotes(p.notes),
       })),
       gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "" })),
       vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "" })),
@@ -628,6 +629,21 @@ function infoItemHtml(u, i) {
     return '<button class="icon-btn" data-delvod="' + i + "-" + vi + '" aria-label="다시보기 삭제">' + trashSvg() + "</button>";
   }
 
+  function partNotesListHtml(i, pi, p) {
+    const notes = p.notes || [];
+    const items = notes.map((note, ni) =>
+      '<div class="note-item part-note-item">' +
+        '<div class="note-editor-wrap">' +
+          '<textarea data-part-note="' + i + '-' + pi + '-' + ni + '" placeholder="이 부에 대한 메모">' + esc(note.content || "") + '</textarea>' +
+          '<div class="directive-preview" data-part-note-preview="' + i + '-' + pi + '-' + ni + '" style="margin:4px 0 0">' + directivePreviewHtml(note.content || "", null) + '</div>' +
+        '</div>' +
+        '<button type="button" class="flag-toggle' + (note.hidden ? " on" : "") + '" data-part-note-hidden="' + i + '-' + pi + '-' + ni + '" title="확장 프로그램에서 이 부 메모를 숨깁니다">숨김</button>' +
+        '<button type="button" class="icon-btn" data-del-part-note="' + i + '-' + pi + '-' + ni + '" aria-label="부 메모 삭제">' + trashSvg() + '</button>' +
+      '</div>'
+    ).join("");
+    return '<div class="part-notes-wrap"><div class="schedule-editor-section-head">부 메모</div>' + items +
+      '<button type="button" class="add-btn small" data-add-part-note="' + i + '-' + pi + '">+ 부 메모 추가</button></div>';
+  }
   function partItemHtml(i, p, pi, partCount) {
     const collabOn = !!p.collab;
     const officialOn = !!p.official;
@@ -666,6 +682,7 @@ function infoItemHtml(u, i) {
           '</div>' +
         '</div>';
     }
+    html += partNotesListHtml(i, pi, p);
     if (officialOn || otherOn) {
       html += '<div class="collab-box">' + hostChannelBoxHtml(i, pi, p.hostChannel) + '</div>';
     }
@@ -1619,7 +1636,7 @@ function infoItemHtml(u, i) {
     return toolbar;
   }
   function bindDirectiveEditors() {
-    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((source) => {
       if (source.dataset.directiveEditorBound) return;
       source.dataset.directiveEditorBound = "1";
@@ -1864,7 +1881,7 @@ function infoItemHtml(u, i) {
   }
   function bindDirectiveAutocompletes() {
     bindDirectiveEditors();
-    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((el) => {
       if (el.dataset.directiveAutocompleteBound) return;
       el.dataset.directiveAutocompleteBound = "1";
@@ -2056,7 +2073,7 @@ function infoItemHtml(u, i) {
 
   function normalizePart(p) {
     if (typeof p === "string") {
-      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
     }
     if (p && typeof p === "object") {
       return {
@@ -2073,9 +2090,10 @@ function infoItemHtml(u, i) {
         speculative: !!p.speculative,
         members: Array.isArray(p.members) ? p.members.map(normalizeChannelRef).filter(Boolean) : [],
         hostChannel: normalizeChannelRef(p.hostChannel),
+        notes: normalizeNotes(p.notes || p.note),
       };
     }
-    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
   }
 
   function findDirectiveBracketEnd(raw, openIndex) {
@@ -2253,6 +2271,41 @@ function infoItemHtml(u, i) {
         markDirty();
       };
     });
+    document.querySelectorAll("[data-part-note]").forEach((el) => {
+      const [i, pi, ni] = el.getAttribute("data-part-note").split("-").map(Number);
+      el.oninput = () => {
+        rows[i].parts[pi].notes = rows[i].parts[pi].notes || [];
+        rows[i].parts[pi].notes[ni] = { ...(rows[i].parts[pi].notes[ni] || {}), content: el.value };
+        const preview = document.querySelector('[data-part-note-preview="' + i + '-' + pi + '-' + ni + '"]');
+        if (preview) preview.innerHTML = directivePreviewHtml(el.value, null);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-add-part-note]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi] = el.getAttribute("data-add-part-note").split("-").map(Number);
+        rows[i].parts[pi].notes = rows[i].parts[pi].notes || [];
+        rows[i].parts[pi].notes.push({ content: "", hidden: false });
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-part-note-hidden]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi, ni] = el.getAttribute("data-part-note-hidden").split("-").map(Number);
+        rows[i].parts[pi].notes[ni] = { ...(rows[i].parts[pi].notes[ni] || {}), hidden: !rows[i].parts[pi].notes[ni].hidden };
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-del-part-note]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi, ni] = el.getAttribute("data-del-part-note").split("-").map(Number);
+        rows[i].parts[pi].notes.splice(ni, 1);
+        render();
+        markDirty();
+      };
+    });
     document.querySelectorAll("[data-cafetoggle]").forEach((el) => {
       el.onclick = () => {
         const i = +el.getAttribute("data-cafetoggle");
@@ -2298,7 +2351,7 @@ function infoItemHtml(u, i) {
       el.onclick = () => {
         const i = +el.getAttribute("data-addpart");
         rows[i].parts = rows[i].parts || [];
-        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null });
+        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] });
         render();
         markDirty();
       };
@@ -2541,6 +2594,7 @@ function infoItemHtml(u, i) {
             speculative: !!p.speculative,
             members: p.members || [],
             hostChannel: p.hostChannel || null,
+            notes: serializeNotes(p.notes),
           }))
           .filter((p) => p.content);
         const cleanGameImages = (r.gameImages || [])

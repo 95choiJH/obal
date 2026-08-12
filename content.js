@@ -19,6 +19,15 @@
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
   const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
   const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
+  const GNIMTI_IMAGE_URL = api.runtime.getURL("images/gnimti.png");
+  const GNIMTI_POPUP_IMAGE_URL = api.runtime.getURL("images/gnimti-back.png");
+  const GNIMTI_BUTTON_IMAGE_URL = api.runtime.getURL("images/gnimti-btn.png");
+  const GNIMTI_LOGO_IMAGE_URL = api.runtime.getURL("images/gnimti-logo.png");
+  const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
+  const GNIMTI_ROSTER_IMAGE_URLS = [
+    api.runtime.getURL("images/gnimti/roster1.png"),
+    api.runtime.getURL("images/gnimti/roster2.png"),
+  ];
 
   // ----------------------------------------------------------
   // 상태
@@ -153,6 +162,16 @@
     return note ? [note] : [];
   }
 
+  function partNotes(part) {
+    if (!part) return [];
+    if (Array.isArray(part.notes)) return part.notes.map(visibleNoteText).filter(Boolean);
+    const note = visibleNoteText(part.note);
+    return note ? [note] : [];
+  }
+
+  function entryHasPartNotes(entry) {
+    return !!(entry && entry.parts && entry.parts.some((part) => partNotes(part).length > 0));
+  }
   function hasEntryBefore(key) {
     for (const k of state.byDate.keys()) if (k < key) return true;
     return false;
@@ -204,6 +223,7 @@
     .cs-schedule-section { position: relative; border-radius: 10px; }
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
       background: rgba(15,16,18,0.28); }
+    .cs-info-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
 
     .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .cs-title { color: #efeff1; font-size: 16px; font-weight: 600; }
@@ -308,6 +328,7 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-cell-part { display: flex; align-items: center; gap: 5px; min-width: 0; margin-top: 5px; text-align: left; overflow: hidden; }
     .cs-cell-date-row + .cs-cell-part { margin-top: 14px; }
+    .cs-part-memo-icon { flex: 0 0 auto; color: #8b8d92; font-size: 12px; line-height: 1; opacity: 0.88; }
     .cs-part-tag { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%;
       color: #00FFA3; background: rgba(0,255,163,0.12);
       font-size: 12px; font-weight: 500; border-radius: 8px; padding: 4px 6px;
@@ -393,13 +414,14 @@
       pointer-events: none; transform: translateY(2px); transition: opacity 0.12s, transform 0.12s; }
     .cs-cafe-time-indicator:hover .cs-cafe-time-tip, .cs-video-time-indicator:hover .cs-video-time-tip { opacity: 1; visibility: visible; transform: translateY(0); }
 
-    .cs-footer { display: flex; align-items: center; justify-content: flex-end;
-      gap: 6px; padding: 9px 14px; border-top: 1px solid #2e3033;
+    .cs-footer { display: flex; align-items: center; justify-content: space-between;
+      gap: 6px; padding: 9px 14px; border-top: 1px solid #2e3033; flex-wrap: wrap;
       border-radius: 0 0 10px 10px; background: rgba(15,16,18,0.45); }
-    .cs-notice { display: flex; flex-direction: column; width: 100%; }
+    .cs-notice { display: flex; flex-direction: column; }
     .cs-schedule-notice { flex: 1 1 auto; min-width: 0; margin-right: 12px; color: #6b6d73;
       font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-schedule-notice + .cs-schedule-notice { margin-top: 5px; }
+    .cs-footer-meta-frame { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; }
     .cs-updated { flex-shrink: 0; color: #6b6d73; font-size: 12px; }
     .cs-refresh { background: none; border: none; cursor: pointer; color: #6b6d73;
       font-size: 16px; line-height: 1; padding: 2px; }
@@ -459,11 +481,15 @@
     .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.65;
       white-space: pre; overflow-wrap: normal; word-break: normal; }
 
-    .cs-pop-parts-box { margin-top: 8px; padding: 8px 10px; background: #1f2023;
-      border: 1px solid #3a3c40; border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
-    .cs-pop-part { min-width: 0; }
+    .cs-pop-parts-box { margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+    .cs-pop-part { min-width: 0; padding: 8px; border: 1px solid rgba(157,158,163,0.18); border-radius: 7px; background: rgba(0,0,0,0.18); }
     .cs-pop-part .cs-pop-row { margin-bottom: 0; }
-    .cs-pop-members { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 4px 0; }
+    .cs-pop-part-main { align-items: center; }
+    .cs-pop-members-row { display: flex; align-items: center; gap: 7px; margin: 6px 0 0; min-width: 0; }
+    .cs-pop-members-label { flex: 0 0 auto; color: #9d9ea3; font-size: 11px; font-weight: 700; line-height: 1; }
+    .cs-pop-members-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; background: rgba(157,158,163,0.14); color: #c9cacd; font-size: 11px; font-weight: 800; line-height: 1; }
+    .cs-pop-part-notes { margin: 7px 0 0; padding-top: 7px; border-top: 1px solid rgba(0,255,163,0.16); }
+    .cs-pop-members { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 0; }
     .cs-member-avatar { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center;
       justify-content: center; width: 22px; height: 22px; vertical-align: middle; line-height: 0;
       text-decoration: none; cursor: default; box-sizing: border-box; }
@@ -490,13 +516,66 @@
     .cs-vod-btn-disabled { background: rgba(157,158,163,0.12); color: #6b6d73; cursor: default; }
     .cs-vod-btn-disabled:hover { background: rgba(157,158,163,0.12); }
 
-    .cs-info-frame { padding: 12px 13px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.025); }
+    .cs-info-frame { min-width: 0; height: 100%; padding: 12px 13px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.025); }
     .cs-info-title { color: #efeff1; font-size: 13px; line-height: 1.2; font-weight: 800; margin-bottom: 8px; }
     .cs-info-list { list-style: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid rgba(255,255,255,0.06); }
     .cs-info-item { position: relative; display: block; padding: 10px 0 10px 13px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #c9cacd; font-size: 13px; line-height: 1.55; }
     .cs-info-item::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 12px; width: 2px; border-radius: 2px; background: rgba(0,255,163,0.55); }
     .cs-info-dot { display: none; }
     .cs-info-text { display: block; white-space: pre-line; overflow-wrap: anywhere; }
+    .cs-info-empty { padding: 10px 0; color: #8b8d92; font-size: 13px; line-height: 1.55; }
+    .cs-info-new-frame { position: relative; padding: 0; overflow: hidden; cursor: pointer; transform: translateZ(0); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+    .cs-info-new-frame:hover, .cs-info-new-frame:focus-visible { transform: scale(1.025); border-color: rgba(0,255,163,0.34); box-shadow: 0 8px 24px rgba(0,0,0,0.24); }
+    .cs-info-cover { display: block; width: 100%; height: 100%; min-height: 0; object-fit: cover; aspect-ratio: 18 / 5;}
+    .cs-info-cover-btn { position: absolute; right: -7px; bottom: 8px; width: min(30%, 110px); height: auto; display: block; pointer-events: none; }
+    .cs-gnimti-popup { position: fixed; inset: 0; z-index: 2147483647; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,0.72); overflow: hidden; overscroll-behavior: contain; }
+    .cs-gnimti-popup.cs-open { display: flex; }
+    .cs-gnimti-dialog { position: relative; display: flex; flex-direction: column; width: min(100%, calc(100vw - 48px)); max-height: calc(100vh - 48px); border: 1px solid rgba(157,158,163,0.26); border-radius: 10px; background: #101113; box-shadow: 0 18px 48px rgba(0,0,0,0.5); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.52) rgba(9,10,12,0.62); }
+    .cs-gnimti-close { position: absolute; top: 10px; right: 10px; z-index: 2; width: 30px; height: 30px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; background: rgba(0,0,0,0.55); color: #efeff1; font-size: 20px; line-height: 1; cursor: pointer; }
+    .cs-gnimti-close:hover { background: rgba(0,0,0,0.72); }
+    .cs-gnimti-visual { position: relative; width: 100%; min-height: 115px; overflow: hidden; }
+    .cs-gnimti-visual::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 72%; z-index: 0; pointer-events: none; background: linear-gradient(0deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.5) 42%, rgba(0,0,0,0) 100%); }
+    .cs-gnimti-image { display: block; width: 100%; height: auto; max-height: 115px; aspect-ratio: 4 / 1; object-fit: cover; }
+    .cs-gnimti-logo { position: absolute; left: 50%; top: 50%; z-index: 1; transform: translate(-50%, -50%); width: min(38%, 260px); object-fit: contain; pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.52)); }
+    .cs-gnimti-button-image { position: absolute; right: -10px; bottom: 14px; width: min(30%, 180px); height: auto; display: block; }
+    .cs-gnimti-tabs { position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 48px); }
+    .cs-gnimti-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 10px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; background: rgba(8,9,12,0.72); color: #c9cacd; font-size: 12px; font-weight: 800; line-height: 1; cursor: pointer; backdrop-filter: blur(4px); transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease; }
+    .cs-gnimti-tab:hover { transform: translateY(-1px); border-color: rgba(0,255,163,0.34); color: #efeff1; }
+    .cs-gnimti-tab.cs-active { border-color: rgba(0,255,163,0.56); background: rgba(0,255,163,0.16); color: #bfffe7; }
+    .cs-gnimti-placeholder { min-height: 260px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); color: #9d9ea3; font-size: 13px; font-weight: 800; }
+    .cs-gnimti-tierlist, .cs-gnimti-roster-board { grid-column: 1 / -1; min-width: 0; max-height: calc(100vh - 210px); border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(0,0,0,0.24); overflow: auto; overscroll-behavior: contain; padding: 10px; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.52) rgba(9,10,12,0.62); }
+    .cs-gnimti-tierlist img, .cs-gnimti-roster-board img { display: block; width: auto; max-height: 600px; border-radius: 6px; object-fit: contain; margin: 0 auto; }
+    .cs-gnimti-roster-board { display: flex; flex-direction: column; gap: 12px; }
+    .cs-gnimti-roster-board img { display: block; width: 100%; height: auto; max-height: 600px; }
+    .cs-gnimti-tierlist::-webkit-scrollbar, .cs-gnimti-roster-board::-webkit-scrollbar { width: 10px; height: 10px; }
+    .cs-gnimti-tierlist::-webkit-scrollbar-track, .cs-gnimti-roster-board::-webkit-scrollbar-track { background: linear-gradient(180deg, rgba(9,10,12,0.8), rgba(20,22,26,0.86)); border-left: 1px solid rgba(255,255,255,0.05); }
+    .cs-gnimti-tierlist::-webkit-scrollbar-thumb, .cs-gnimti-roster-board::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,255,163,0.62), rgba(82,118,255,0.44)); border: 2px solid rgba(13,14,17,0.96); border-radius: 999px; box-shadow: 0 0 10px rgba(0,255,163,0.16); }
+    .cs-gnimti-tierlist::-webkit-scrollbar-thumb:hover, .cs-gnimti-roster-board::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,255,163,0.78), rgba(82,118,255,0.58)); }
+    .cs-gnimti-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.5fr); gap: 14px; padding: 16px; min-height: 0; overflow: visible; }
+    .cs-gnimti-dialog::-webkit-scrollbar { width: 10px; height: 10px; }
+    .cs-gnimti-dialog::-webkit-scrollbar-track { background: linear-gradient(180deg, rgba(9,10,12,0.8), rgba(20,22,26,0.86)); border-left: 1px solid rgba(255,255,255,0.05); }
+    .cs-gnimti-dialog::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,255,163,0.62), rgba(82,118,255,0.44)); border: 2px solid rgba(13,14,17,0.96); border-radius: 999px; box-shadow: 0 0 10px rgba(0,255,163,0.16); }
+    .cs-gnimti-dialog::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,255,163,0.78), rgba(82,118,255,0.58)); }
+    .cs-gnimti-roster { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; overflow: visible; padding-right: 2px; }
+    .cs-gnimti-column { min-width: 0; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); overflow: hidden; }
+    .cs-gnimti-position { padding: 9px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; text-align: center; }
+    .cs-gnimti-members { display: flex; flex-direction: column; gap: 0; padding: 5px; }
+    .cs-gnimti-member { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 7px 5px; border: 0; border-radius: 7px; background: transparent; text-decoration: none; cursor: pointer; text-align: left; }
+    .cs-gnimti-member:hover, .cs-gnimti-member.cs-selected { background: rgba(255,255,255,0.06); }
+    .cs-gnimti-member.cs-selected { outline: 1px solid rgba(0,255,163,0.28); }
+    .cs-gnimti-avatar { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.12); background: #2b2d31; color: #c9cacd; font-size: 12px; font-weight: 800; overflow: hidden; }
+    .cs-gnimti-avatar .cs-member-avatar-img, .cs-gnimti-avatar .cs-member-avatar-img img { width: 100%; height: 100%; border: 0; border-radius: 50%; }
+    .cs-gnimti-name { flex: 1 1 auto; min-width: 0; color: #c9cacd; font-size: 12px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-gnimti-detail { align-self: flex-start; min-width: 0; display: flex; flex-direction: column; gap: 10px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); padding: 12px; overflow: hidden; }
+    .cs-gnimti-detail-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .cs-gnimti-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-gnimti-images { flex: 1 1 auto; min-height: 0; display: flex; }
+    .cs-gnimti-card { min-width: 0; min-height: 0; width: 100%; display: flex; gap: 30px; align-items: center; border-radius: 8px; background: rgba(0,0,0,0.24); overflow: hidden; padding: 24px 55px; }
+    .cs-gnimti-stat-item { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .cs-gnimti-stat-label { display: flex; align-items: center; justify-content: center; min-height: 24px; border-radius: 999px; background: rgba(0,255,163,0.11); color: #bfffe7; font-size: 12px; font-weight: 800; line-height: 1; }
+    .cs-gnimti-stat-label-team { background: rgba(82,118,255,0.14); color: #c9d4ff; }
+    .cs-gnimti-stat-item img { display: block; width: 100%; height: 45%; min-height: 0; object-fit: contain; }
+    .cs-gnimti-empty-detail { margin: auto; color: #8b8d92; font-size: 13px; font-weight: 600; }
     .cs-info-mention { color: #efeff1; font-weight: 700; text-decoration: none; }
     .cs-info-mention:hover { color: #00FFA3; text-decoration: underline; text-underline-offset: 3px; }
     .cs-info-tag { color: #9d9ea3; font-weight: 700; }
@@ -553,6 +632,33 @@
     :host(.cs-light-theme) .cs-pop-text,
     :host(.cs-light-theme) .cs-info-list { border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
+    :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { border-color: rgba(3,169,80,0.38); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
+    :host(.cs-light-theme) .cs-gnimti-dialog { background: #ffffff; border-color: rgba(0,0,0,0.12); box-shadow: 0 18px 42px rgba(0,0,0,0.18); }
+    :host(.cs-light-theme) .cs-gnimti-tab { background: rgba(255,255,255,0.82); border-color: rgba(0,0,0,0.12); color: #4b4f55; }
+    :host(.cs-light-theme) .cs-gnimti-tab:hover { border-color: rgba(3,169,80,0.34); color: #1e2024; }
+    :host(.cs-light-theme) .cs-gnimti-tab.cs-active { border-color: rgba(3,169,80,0.48); background: rgba(3,169,80,0.12); color: #007a3a; }
+    :host(.cs-light-theme) .cs-gnimti-placeholder { background: #f8f9fa; border-color: #e1e3e6; color: #6f747b; }
+    :host(.cs-light-theme) .cs-gnimti-tierlist, :host(.cs-light-theme) .cs-gnimti-roster-board { background: #eef0f2; border-color: #e1e3e6; scrollbar-color: rgba(3,169,80,0.48) rgba(238,240,242,0.96); }
+    :host(.cs-light-theme) .cs-gnimti-tierlist::-webkit-scrollbar-track, :host(.cs-light-theme) .cs-gnimti-roster-board::-webkit-scrollbar-track { background: linear-gradient(180deg, #f4f6f8, #e7eaee); border-left-color: rgba(0,0,0,0.06); }
+    :host(.cs-light-theme) .cs-gnimti-tierlist::-webkit-scrollbar-thumb, :host(.cs-light-theme) .cs-gnimti-roster-board::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(3,169,80,0.56), rgba(72,93,210,0.36)); border-color: #f8f9fa; box-shadow: none; }
+    :host(.cs-light-theme) .cs-gnimti-tierlist::-webkit-scrollbar-thumb:hover, :host(.cs-light-theme) .cs-gnimti-roster-board::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(3,169,80,0.7), rgba(72,93,210,0.48)); }
+    :host(.cs-light-theme) .cs-gnimti-dialog { scrollbar-color: rgba(3,169,80,0.48) rgba(238,240,242,0.96); }
+    :host(.cs-light-theme) .cs-gnimti-dialog::-webkit-scrollbar-track { background: linear-gradient(180deg, #f4f6f8, #e7eaee); border-left-color: rgba(0,0,0,0.06); }
+    :host(.cs-light-theme) .cs-gnimti-dialog::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(3,169,80,0.56), rgba(72,93,210,0.36)); border-color: #f8f9fa; box-shadow: none; }
+    :host(.cs-light-theme) .cs-gnimti-dialog::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(3,169,80,0.7), rgba(72,93,210,0.48)); }
+    :host(.cs-light-theme) .cs-gnimti-column { background: #f8f9fa; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-gnimti-position { color: #1e2024; border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-gnimti-member:hover { background: #eef0f2; }
+    :host(.cs-light-theme) .cs-gnimti-avatar { background: #e1e3e6; border-color: #d3d6da; color: #555a61; }
+    :host(.cs-light-theme) .cs-gnimti-name { color: #2f343a; }
+    :host(.cs-light-theme) .cs-gnimti-detail { background: #f8f9fa; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-gnimti-detail-title { color: #1e2024; }
+    :host(.cs-light-theme) .cs-gnimti-card { background: #eef0f2; }
+
+    :host(.cs-light-theme) .cs-gnimti-stat-label { background: rgba(3,169,80,0.12); color: #007a3a; }
+    :host(.cs-light-theme) .cs-gnimti-stat-label-team { background: rgba(72,93,210,0.12); color: #3344aa; }
+    :host(.cs-light-theme) .cs-gnimti-member.cs-selected { background: #eef0f2; outline-color: rgba(3,169,80,0.34); }
     :host(.cs-light-theme) .cs-info-item::before { background: rgba(3,169,80,0.55); }
     :host(.cs-light-theme) .cs-info-mention { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-mention:hover { color: #008a43; }
@@ -576,6 +682,11 @@
     :host(.cs-light-theme) .cs-part-tag-collab { color: #7557c9; background: rgba(117,87,201,0.12); }
     :host(.cs-light-theme) .cs-part-tag-speculative { color: #9a6b00; background: rgba(232,194,104,0.2); }
     :host(.cs-light-theme) .cs-cell-muted .cs-part-tag { color: #969ba1; background: #e9ebed; border-color: transparent; }
+    :host(.cs-light-theme) .cs-part-memo-icon { color: #8b9097; }
+    :host(.cs-light-theme) .cs-pop-part { background: #eef0f2; border-color: #d8dadd; }
+    :host(.cs-light-theme) .cs-pop-members-label { color: #6f747b; }
+    :host(.cs-light-theme) .cs-pop-members-chip { background: #e1e3e6; color: #555a61; }
+    :host(.cs-light-theme) .cs-pop-part-notes { border-top-color: rgba(3,169,80,0.18); }
     :host(.cs-light-theme) .cs-text-badge { color: #7557c9; background: rgba(117,87,201,0.1); border-color: rgba(117,87,201,0.25); }
     :host(.cs-light-theme) .cs-game-stat { background: #ffffff; border-color: #d8dadd; }
     :host(.cs-light-theme) .cs-game-stat { color: #33373c; }
@@ -622,7 +733,6 @@
     :host(.cs-light-theme) .cs-pop-text { color: #2f343a; }
     :host(.cs-light-theme) .cs-pop-row .cs-cell-time,
     :host(.cs-light-theme) .cs-pop-icon:not(.cs-pop-icon-collab):not(.cs-pop-icon-speculative) { color: #008a43; }
-    :host(.cs-light-theme) .cs-pop-parts-box,
     :host(.cs-light-theme) .cs-pop-note-box { background: #f5f6f7; border-color: #dfe1e4; }
     :host(.cs-light-theme) .cs-pop-note-text { color: #4b4f55; }
     :host(.cs-light-theme) .cs-member-avatar-img { border-color: #d3d6da; }
@@ -642,6 +752,18 @@
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 35px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 12px; }
       .cs-game-stats { grid-template-columns: 1fr; }
+      .cs-gnimti-popup { padding: 14px; }
+      .cs-gnimti-dialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
+      .cs-gnimti-tabs { left: 10px; right: 42px; bottom: 10px; max-width: none; gap: 5px; }
+      .cs-gnimti-logo { width: min(48%, 190px); max-height: 64%; }
+      .cs-gnimti-tab { min-height: 26px; padding: 0 8px; font-size: 11px; }
+      .cs-gnimti-content { grid-template-columns: 1fr; padding: 12px; overflow: visible; }
+      .cs-gnimti-tierlist, .cs-gnimti-roster-board { max-height: calc(100vh - 180px); padding: 8px; }
+      .cs-gnimti-roster { grid-template-columns: 1fr; overflow: visible; }
+      .cs-gnimti-card { grid-template-columns: 1fr; }
+      .cs-gnimti-stat-item img { max-height: 260px; }
+      .cs-info-layout { grid-template-columns: 1fr; }
+      .cs-footer-meta-frame { gap: 6px; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
     }
 
@@ -738,7 +860,8 @@
     const isOff = !!entry && entry.status === "off";
     const notes = entryNotes(entry);
     const games = gameItems(entry);
-    const hoverable = !!entry && (state.gameOnly ? games.length > 0 : (!isOff || notes.length > 0));
+    const hasPartNotes = entryHasPartNotes(entry);
+    const hoverable = !!entry && (state.gameOnly ? games.length > 0 : (!isOff || notes.length > 0 || hasPartNotes));
 
     const classes = ["cs-cell"];
     if (compact) classes.push("cs-month-cell");
@@ -759,7 +882,7 @@
         '<div class="cs-cell-time"><img class="cs-undetermined-icon cs-undetermined-icon-dark" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /><img class="cs-undetermined-icon cs-undetermined-icon-light" src="' + UNDETERMINED_LIGHT_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
         '<div class="cs-cell-title">\uBBF8\uC815</div></div>';
     } else if (isOff) {
-      const dot = notes.length ? '<span class="cs-memo-dot"></span>' : "";
+      const dot = (notes.length || hasPartNotes) ? '<span class="cs-memo-dot"></span>' : "";
       body = dot + '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon cs-break-icon-dark" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /><img class="cs-break-icon cs-break-icon-light" src="' + BREAK_LIGHT_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>';
     } else if (compact) {
       body = compactCellContentHtml(entry);
@@ -858,9 +981,11 @@
             '<p class="cs-schedule-notice" title="◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.">◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.</p>' +
       '<p class="cs-schedule-notice" title="◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.">◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.</p>' +
       '</div>' +
+      '<div class="cs-footer-meta-frame">' +
       '<button type="button" class="cs-feedback-open' + (state.feedbackOpen ? " cs-open" : "") + '" id="cs-feedback-open" aria-expanded="' + String(state.feedbackOpen) + '">문의·제보</button>' +
       '<span class="cs-updated">' + updatedLabel + "</span>" +
       '<button class="cs-refresh" id="cs-refresh" title="새로고침">⟳</button>' +
+      "</div>" +
       "</div>" +
       feedbackPanelHtml() +
       "</div>";
@@ -889,10 +1014,15 @@
 
     return (
       '<div class="cs-section cs-info-section">' +
+      '<div class="cs-info-layout">' +
       '<div class="cs-info-frame">' +
       '<div class="cs-info-title">소식 및 정보</div>' +
       '<ul class="cs-info-list">' + itemsHtml + "</ul>" +
-      "</div></div>"
+      "</div>" +
+      '<div class="cs-info-frame cs-info-new-frame" role="button" tabindex="0" aria-label="그님티">' +
+      '<img class="cs-info-cover" src="' + GNIMTI_IMAGE_URL + '" alt="" />' +
+      '<img class="cs-info-cover-btn" src="' + GNIMTI_BUTTON_IMAGE_URL + '" alt="" />' +
+      "</div></div></div>"
     );
   }
 
@@ -1169,7 +1299,8 @@
             display = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
           }
           const tagHtml = tagLabel ? '<span class="' + tagClass + '">' + escapeHtml(tagLabel) + "</span>" : "";
-          return '<div class="cs-cell-part">' + tagHtml + display + "</div>";
+          const memoDot = partNotes(p).length ? '<span class="cs-part-memo-icon" title="메모 있음" aria-label="메모 있음">✎</span>' : "";
+          return '<div class="cs-cell-part">' + tagHtml + display + memoDot + "</div>";
         })
         .join("");
     }
@@ -1249,6 +1380,13 @@
       if (open && feedbackMessage) setTimeout(() => feedbackMessage.focus(), 0);
     };
     if (root) root.onclick = (event) => {
+      const gnimtiFrame = event.target.closest && event.target.closest(".cs-info-new-frame");
+      if (gnimtiFrame) {
+        event.preventDefault();
+        event.stopPropagation();
+        showGnimtiPopup();
+        return;
+      }
       const mediaImage = event.target.closest && event.target.closest(".cs-media-expandable");
       if (mediaImage) {
         event.preventDefault();
@@ -1266,6 +1404,12 @@
       }
       if (!(event.target.closest && event.target.closest(".cs-media-popover"))) closeMediaPopover();
     };
+    const gnimtiFrame = s.querySelector(".cs-info-new-frame");
+    if (gnimtiFrame) gnimtiFrame.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " " && event.code !== "Space" && event.code !== "Spacebar") return;
+      event.preventDefault();
+      showGnimtiPopup();
+    });
     if (feedbackOpen) feedbackOpen.addEventListener("click", () => setFeedbackOpen(!state.feedbackOpen));
     s.querySelectorAll(".cs-inline-feedback-trigger").forEach((trigger) => {
       trigger.addEventListener("click", (event) => {
@@ -1426,15 +1570,21 @@
             popContent = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
           }
           let group = '<div class="cs-pop-part">' +
-            '<div class="cs-pop-row">' + (label ? '<span class="' + iconClass + '">' + escapeHtml(label) + "</span>" : "") +
+            '<div class="cs-pop-row cs-pop-part-main">' + (label ? '<span class="' + iconClass + '">' + escapeHtml(label) + "</span>" : "") +
             popContent + "</div>";
           if ((p.official || p.otherChannel) && p.hostChannel) {
-            group += '<div class="cs-pop-members">' + channelAvatarLinkHtml(p.hostChannel) + "</div>";
+            group += '<div class="cs-pop-members-row"><span class="cs-pop-members-label">진행</span><div class="cs-pop-members">' + channelAvatarLinkHtml(p.hostChannel) + "</div></div>";
           }
           if (p.collab && p.members && p.members.length) {
-            group += '<div class="cs-pop-members">' +
+            group += '<div class="cs-pop-members-row"><span class="cs-pop-members-chip">멤버</span><div class="cs-pop-members">' +
               p.members.map((member) => channelAvatarLinkHtml(member)).join("") +
-              "</div>";
+              "</div></div>";
+          }
+          const notesForPart = partNotes(p);
+          if (notesForPart.length) {
+            group += '<div class="cs-pop-part-notes"><div class="cs-pop-note-list">' + notesForPart.map((note) =>
+              '<div class="cs-pop-note-text">' + directiveHtml(note) + "</div>"
+            ).join("") + "</div></div>";
           }
           group += "</div>";
           return group;
@@ -1483,6 +1633,124 @@
     }
   }
 
+  function gnimtiRosterColumns() {
+    return [
+      { position: "탑(13)", folder: "TOP", members: ["김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙"] },
+      { position: "정글", folder: "JG", members: ["꼴랑이", "멋사", "삼식", "소우릎", "플레임", "헤징"] },
+      { position: "미드", folder: "MID", members: ["네클릿", "뱅", "샘웨", "앰비션", "크캣", "햇살살"] },
+      { position: "원딜", folder: "AD", members: ["괴물쥐", "눈꽃", "명예훈장", "실프", "이선생", "플러리"] },
+      { position: "서포터", folder: "SUP", members: ["갱맘", "니니아", "던", "두니주니", "서새봄냥", "채현찌", "초승달", "큐베", "피닉스박"] },
+    ];
+  }
+
+  function gnimtiMemberInfo(name) {
+    for (const column of gnimtiRosterColumns()) {
+      if (column.members.includes(name)) return { name, position: column.position, folder: column.folder };
+    }
+    return { name, position: "", folder: "" };
+  }
+
+  function gnimtiMemberImages(name) {
+    const info = gnimtiMemberInfo(name);
+    if (!info.folder) return [];
+    return [1, 2].map((index) => api.runtime.getURL("images/gnimti/" + info.folder + "/" + name + index + ".png"));
+  }
+
+  function gnimtiMemberProfile(name) {
+    const profiles = (state.data && state.data.directiveProfiles) || {};
+    return profiles[name] || profiles[String(name || "").trim()] || { channelId: "", channelName: name, channelImageUrl: "" };
+  }
+
+  function gnimtiMemberHtml(name, selectedName) {
+    const profile = gnimtiMemberProfile(name);
+    const displayName = String((profile && profile.channelName) || name || "").trim();
+    const avatar = '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>';
+    const nameHtml = '<span class="cs-gnimti-name">' + escapeHtml(displayName) + '</span>';
+    return '<button type="button" class="cs-gnimti-member' + (name === selectedName ? " cs-selected" : "") + '" data-gnimti-member="' + escapeHtml(name) + '">' + avatar + nameHtml + '</button>';
+  }
+
+  function gnimtiMemberDetailHtml(name) {
+    if (!name) return '<aside class="cs-gnimti-detail"><div class="cs-gnimti-empty-detail">멤버를 선택하세요</div></aside>';
+    const profile = gnimtiMemberProfile(name);
+    const displayName = String((profile && profile.channelName) || name || "").trim();
+    const info = gnimtiMemberInfo(name);
+    const images = gnimtiMemberImages(name);
+    return '<aside class="cs-gnimti-detail" data-gnimti-detail="1">' +
+      '<div class="cs-gnimti-detail-head">' +
+      '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>' +
+      '<div class="cs-gnimti-detail-title">' + escapeHtml(displayName) + (info.position ? ' · ' + escapeHtml(info.position) : '') + '</div>' +
+      '</div>' +
+      '<div class="cs-gnimti-images"><div class="cs-gnimti-card">' + images.map((src, index) => {
+        const label = index === 0 ? "본인 평가" : "분석관팀 평가";
+        const labelClass = index === 0 ? "cs-gnimti-stat-label" : "cs-gnimti-stat-label cs-gnimti-stat-label-team";
+        return '<figure class="cs-gnimti-stat-item"><figcaption class="' + labelClass + '">' + label + '</figcaption>' +
+          '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(displayName + ' ' + label) + '" />' +
+          '</figure>';
+      }).join("") + '</div></div></aside>';
+  }
+
+  function gnimtiTabsHtml(activeTab) {
+    const current = activeTab || "members";
+    const tabs = [
+      { key: "members", label: "8\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00" },
+      { key: "tier", label: "8\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" },
+      { key: "roster", label: "8\uC6D4 \uB85C\uC2A4\uD130" },
+    ];
+    return '<div class="cs-gnimti-tabs" role="tablist" aria-label="\uADF8\uB2D8\uD2F0 \uBA54\uB274">' + tabs.map((tab) =>
+      '<button type="button" class="cs-gnimti-tab' + (tab.key === current ? " cs-active" : "") + '" data-gnimti-tab="' + tab.key + '" role="tab" aria-selected="' + (tab.key === current ? "true" : "false") + '">' + tab.label + '</button>'
+    ).join("") + '</div>';
+  }
+
+  function gnimtiPlaceholderHtml(label) {
+    return '<div class="cs-gnimti-content"><div class="cs-gnimti-placeholder">' + escapeHtml(label) + '</div></div>';
+  }
+  function gnimtiTierlistHtml() {
+    return '<div class="cs-gnimti-content"><div class="cs-gnimti-tierlist"><img src="' + GNIMTI_TIERLIST_IMAGE_URL + '" alt="8\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" /></div></div>';
+  }
+
+  function gnimtiRosterBoardHtml() {
+    return '<div class="cs-gnimti-content"><div class="cs-gnimti-roster-board">' + GNIMTI_ROSTER_IMAGE_URLS.map((src, index) =>
+      '<img src="' + src + '" alt="8\uC6D4 \uB85C\uC2A4\uD130 ' + (index + 1) + '" />'
+    ).join("") + '</div></div>';
+  }
+
+  function gnimtiContentHtml(tab, selectedName) {
+    if (tab === "tier") return gnimtiTierlistHtml();
+    if (tab === "roster") return gnimtiRosterBoardHtml();
+    return gnimtiRosterHtml(selectedName);
+  }
+  function gnimtiRosterHtml(selectedName) {
+    const columns = gnimtiRosterColumns();
+    const activeName = selectedName || (columns[0] && columns[0].members[0]) || "";
+    const roster = '<div class="cs-gnimti-roster">' + columns.map((column) =>
+      '<section class="cs-gnimti-column">' +
+      '<div class="cs-gnimti-position">' + escapeHtml(column.position) + '</div>' +
+      '<div class="cs-gnimti-members">' + column.members.map((name) => gnimtiMemberHtml(name, activeName)).join("") + '</div></section>'
+    ).join("") + '</div>';
+    return '<div class="cs-gnimti-content">' + roster + gnimtiMemberDetailHtml(activeName) + '</div>';
+  }
+
+  function renderGnimtiTab(pop, tab) {
+    if (!pop) return;
+    const nextTab = tab || "members";
+    pop.setAttribute("data-gnimti-tab", nextTab);
+    pop.querySelectorAll("[data-gnimti-tab]").forEach((button) => {
+      const active = button.getAttribute("data-gnimti-tab") === nextTab;
+      button.classList.toggle("cs-active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    const content = pop.querySelector(".cs-gnimti-content");
+    if (content) content.outerHTML = gnimtiContentHtml(nextTab);
+    const dialog = pop.querySelector(".cs-gnimti-dialog");
+    if (dialog) dialog.scrollTop = 0;
+  }
+  function updateGnimtiDetail(pop, name) {
+    const current = pop && pop.querySelector(".cs-gnimti-detail");
+    if (current) current.outerHTML = gnimtiMemberDetailHtml(name);
+    if (pop) pop.querySelectorAll(".cs-gnimti-member").forEach((button) => {
+      button.classList.toggle("cs-selected", button.getAttribute("data-gnimti-member") === name);
+    });
+  }
   function mediaEmbedHtml(url, label) {
     const safeUrl = safeMediaUrl(url);
     if (!safeUrl) return '<span class="cs-media-link">' + escapeHtml(url) + "</span>";
@@ -1494,6 +1762,69 @@
     return '<a class="cs-media-link" href="' + escapeHtml(safeUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(safeUrl) + "</a>";
   }
 
+  function closeGnimtiPopup() {
+    const pop = state.shadow && state.shadow.getElementById("cs-gnimti-popup");
+    if (pop) pop.classList.remove("cs-open");
+  }
+
+  function ensureGnimtiPopup() {
+    const s = state.shadow;
+    let pop = s && s.getElementById("cs-gnimti-popup");
+    if (pop) return pop;
+    pop = document.createElement("div");
+    pop.id = "cs-gnimti-popup";
+    pop.className = "cs-gnimti-popup";
+    pop.setAttribute("role", "dialog");
+    pop.setAttribute("aria-modal", "true");
+    pop.setAttribute("aria-label", "그님티");
+    pop.innerHTML =
+      '<div class="cs-gnimti-dialog">' +
+      '<button type="button" class="cs-gnimti-close" id="cs-gnimti-close" aria-label="닫기">×</button>' +
+      '<div class="cs-gnimti-visual">' +
+      '<img class="cs-gnimti-image" src="' + GNIMTI_POPUP_IMAGE_URL + '" alt="" />' +
+      '<img class="cs-gnimti-logo" src="' + GNIMTI_LOGO_IMAGE_URL + '" alt="" />' +
+      gnimtiTabsHtml("members") +
+      '</div>' +
+      gnimtiContentHtml("members") +
+      '</div>';
+    pop.addEventListener("click", (event) => {
+      if (event.target === pop) closeGnimtiPopup();
+    });
+    pop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeGnimtiPopup();
+    });
+    const close = pop.querySelector("#cs-gnimti-close");
+    if (close) close.addEventListener("click", closeGnimtiPopup);
+    const dialog = pop.querySelector(".cs-gnimti-dialog");
+    if (dialog) dialog.addEventListener("click", (event) => {
+      const tabButton = event.target.closest && event.target.closest("[data-gnimti-tab]");
+      if (tabButton && dialog.contains(tabButton)) {
+        event.preventDefault();
+        event.stopPropagation();
+        renderGnimtiTab(pop, tabButton.getAttribute("data-gnimti-tab") || "members");
+        return;
+      }
+      const member = event.target.closest && event.target.closest("[data-gnimti-member]");
+      if (member && dialog.contains(member)) {
+        event.preventDefault();
+        updateGnimtiDetail(pop, member.getAttribute("data-gnimti-member") || "");
+      }
+      event.stopPropagation();
+    });
+    s.appendChild(pop);
+    return pop;
+  }
+
+  function showGnimtiPopup() {
+    closeMediaPopover();
+    closePopover();
+    const pop = ensureGnimtiPopup();
+    const activeTab = pop.getAttribute("data-gnimti-tab") || "members";
+    renderGnimtiTab(pop, activeTab);
+    pop.classList.add("cs-open");
+    const close = pop.querySelector("#cs-gnimti-close");
+    if (close) setTimeout(() => close.focus(), 0);
+  }
   function closeOriginalImage() {
     const viewer = state.shadow && state.shadow.getElementById("cs-media-viewer");
     if (viewer) viewer.classList.remove("cs-open");
