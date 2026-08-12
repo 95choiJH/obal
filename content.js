@@ -1657,7 +1657,7 @@
   }
 
   function gnimtiMemberProfile(name) {
-    const profiles = (state.data && state.data.directiveProfiles) || {};
+    const profiles = (state.data && state.data.gnimtiProfiles) || {};
     return profiles[name] || profiles[String(name || "").trim()] || { channelId: "", channelName: name, channelImageUrl: "" };
   }
 

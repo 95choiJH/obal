@@ -96,14 +96,19 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url);
+  const channelId = (url.searchParams.get("channelId") || "").trim();
   const keyword = (url.searchParams.get("keyword") || "").trim().slice(0, MAX_KEYWORD_LENGTH);
 
-  if (!keyword) return jsonResponse(req, { content: { data: [] } });
+  if (channelId && !/^[0-9a-f]{32}$/i.test(channelId)) {
+    return jsonResponse(req, { error: "Invalid channel ID" }, 400);
+  }
+  if (!channelId && !keyword) return jsonResponse(req, { content: { data: [] } });
 
-  const upstream =
-    "https://api.chzzk.naver.com/service/v1/search/channels?keyword=" +
-    encodeURIComponent(keyword) +
-    "&offset=0&size=8&withFirstChannelContent=false";
+  const upstream = channelId
+    ? "https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(channelId)
+    : "https://api.chzzk.naver.com/service/v1/search/channels?keyword=" +
+      encodeURIComponent(keyword) +
+      "&offset=0&size=8&withFirstChannelContent=false";
 
   try {
     const res = await fetch(upstream, { headers: { Accept: "application/json" } });

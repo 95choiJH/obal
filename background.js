@@ -1,9 +1,10 @@
 // background.js — Supabase에서 일정을 읽어 캐싱 + content script에 제공
 // Chrome: service worker / Firefox: event page 양쪽에서 동작
 
-if (typeof CHZZK_SCHEDULE_CONFIG === "undefined" && typeof importScripts === "function") {
+if (typeof importScripts === "function") {
   try {
-    importScripts("config.js");
+    importScripts("streamer-ids.js");
+    if (typeof CHZZK_SCHEDULE_CONFIG === "undefined") importScripts("config.js");
   } catch (e) {
   }
 }
@@ -187,55 +188,7 @@ function directiveNames(value) {
   return Array.from(raw.matchAll(/:s(?:\[([^\]]+)\]|\s+([^\s:]+))/gi), (match) => (match[1] || match[2]).trim());
 }
 
-const GNIMTI_PROFILE_NAMES = [
-  "김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙",
-  "꼴랑이", "멋사", "삼식", "소우릎", "플레임", "헤징",
-  "네클릿", "뱅", "샘웨", "앰비션", "크캣", "햇살살",
-  "괴물쥐", "눈꽃", "명예훈장", "실프", "이선생", "플러리",
-  "갱맘", "니니아", "던", "두니주니", "서새봄냥", "채현찌", "초승달", "큐베", "피닉스박",
-];
-const GNIMTI_PROFILE_OVERRIDES = {
-  "김뿡": "17f0cfcba4ff608de5eabb5110d134d0",
-  "김호러": "",
-  "러너": "",
-  "룩삼": "",
-  "승우아빠": "",
-  "울프": "",
-  "윤가놈": "",
-  "인간젤리": "",
-  "철면수심": "",
-  "캡틴잭": "",
-  "크랭크": "",
-  "푸린": "",
-  "한동숙": "",
-  "꼴랑이": "",
-  "멋사": "",
-  "삼식": "",
-  "소우릎": "",
-  "플레임": "",
-  "헤징": "",
-  "네클릿": "",
-  "뱅": "",
-  "샘웨": "",
-  "앰비션": "",
-  "크캣": "",
-  "햇살살": "",
-  "괴물쥐": "",
-  "눈꽃": "",
-  "명예훈장": "",
-  "실프": "",
-  "이선생": "",
-  "플러리": "",
-  "갱맘": "",
-  "니니아": "",
-  "던": "",
-  "두니주니": "",
-  "서새봄냥": "458f6ec20b034f49e0fc6d03921646d2",
-  "채현찌": "",
-  "초승달": "",
-  "큐베": "",
-  "피닉스박": "",
-};
+const GNIMTI_PROFILE_OVERRIDES = globalThis.CHZZK_STREAMER_IDS || {};
 async function resolveDirectiveProfiles(channels) {
   const names = new Set();
   const collect = (value) => { directiveNames(value).forEach((name) => names.add(name)); };
@@ -249,8 +202,6 @@ async function resolveDirectiveProfiles(channels) {
       (entry.gameImages || []).forEach((game) => collect(game.label));
     });
   });
-  GNIMTI_PROFILE_NAMES.forEach((name) => names.add(name));
-
   const profiles = {};
   const profileCache = await getProfileCache();
   let cacheChanged = false;
@@ -258,9 +209,7 @@ async function resolveDirectiveProfiles(channels) {
   await Promise.all(Array.from(names).map(async (name) => {
     const key = String(name || "").trim();
     if (!key) return;
-    const overrideId = String(GNIMTI_PROFILE_OVERRIDES[key] || "").trim();
-    const idCacheKey = overrideId ? "id:v2:" + overrideId : "";
-    const cached = normalizeChannelRef(overrideId ? profileCache[idCacheKey] : profileCache[key]);
+    const cached = normalizeChannelRef(profileCache[key]);
     if (cached) {
       profiles[key] = cached;
       return;
@@ -273,24 +222,47 @@ async function resolveDirectiveProfiles(channels) {
       const json = await res.json();
       const items = (json && json.content && json.content.data) || [];
       const list = items.map((item) => item && item.channel).filter(Boolean);
-      const override = overrideId ? list.find((c) => String(c.channelId || "").trim() === overrideId) : null;
       const exact = list.find((c) => String(c.channelName || "").trim().toLowerCase() === key.toLowerCase());
-      const found = overrideId
-        ? (override || { channelId: overrideId, channelName: key, channelImageUrl: "" })
-        : (exact || list[0] || null);
+      const found = exact || list[0] || null;
       const normalized = normalizeChannelRef(found);
       if (normalized) {
-        if (overrideId) normalized.channelId = overrideId;
         if (!normalized.channelName) normalized.channelName = key;
         profiles[key] = normalized;
         profileCache[key] = normalized;
-        if (idCacheKey) profileCache[idCacheKey] = normalized;
         cacheChanged = true;
       }
     } catch (e) {
     }
   }));
   if (cacheChanged) await setProfileCache(profileCache);
+  return profiles;
+}
+
+async function resolveGnimtiProfiles() {
+  const profiles = {};
+  const entries = Object.entries(GNIMTI_PROFILE_OVERRIDES).filter(([, channelId]) =>
+    /^[0-9a-f]{32}$/i.test(String(channelId || "").trim())
+  );
+
+  await Promise.all(entries.map(async ([name, channelId]) => {
+    const id = String(channelId).trim();
+    let profile = { channelId: id, channelName: name, channelImageUrl: "" };
+    try {
+      const res = await fetch("https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(id), {
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const matched = json && json.content;
+        if (matched) profile = normalizeChannelRef(matched) || profile;
+      }
+    } catch (e) {
+    }
+    profile.channelId = id;
+    if (!profile.channelName) profile.channelName = name;
+    profiles[name] = profile;
+  }));
+
   return profiles;
 }
 
@@ -307,7 +279,8 @@ async function fetchFromSupabase() {
   }
 
   const directiveProfiles = await resolveDirectiveProfiles(channels);
-  return { version: 1, updatedAt: latestUpdate, channels, directiveProfiles };
+  const gnimtiProfiles = await resolveGnimtiProfiles();
+  return { version: 1, gnimtiProfileVersion: 3, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
 }
 
 async function attachCachedProfiles(data) {
@@ -326,7 +299,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.gnimtiProfileVersion === 3 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

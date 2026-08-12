@@ -12,7 +12,8 @@ $allowedFiles = @(
   "manifest.json",
   "background.js",
   "content.js",
-  "config.js"
+  "config.js",
+  "streamer-ids.js"
 )
 $allowedIconFiles = @(
   "icons\icon16.png",
@@ -56,7 +57,7 @@ if ($manifest.PSObject.Properties.Name -contains "minimum_chrome_version") {
   $manifest.PSObject.Properties.Remove("minimum_chrome_version")
 }
 $manifest.background = [ordered]@{
-  scripts = @("config.js", "background.js")
+  scripts = @("streamer-ids.js", "config.js", "background.js")
   service_worker = "background.js"
 }
 $manifest.browser_specific_settings.gecko.strict_min_version = "140.0"

@@ -12,7 +12,8 @@ $allowedFiles = @(
   "manifest.json",
   "background.js",
   "content.js",
-  "config.js"
+  "config.js",
+  "streamer-ids.js"
 )
 $allowedIconFiles = @(
   "icons\icon16.png",

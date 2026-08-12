@@ -8,7 +8,8 @@
     "storage"
   ],
   "host_permissions": [
-    "https://ggebdrlvzrgoyumlrnxe.supabase.co/*"
+    "https://ggebdrlvzrgoyumlrnxe.supabase.co/*",
+    "https://api.chzzk.naver.com/*"
   ],
   "action": {
     "default_title": "오뱅알",
