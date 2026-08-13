@@ -86,6 +86,56 @@
     setTimeout(() => t.classList.remove("show"), 2200);
   }
 
+  function backupTimestamp() {
+    return new Date().toISOString().replace(/[:.]/g, "-");
+  }
+
+  function backupDraftRows() {
+    return rows.map((r) => ({
+      ...r,
+      parts: (r.parts || []).map((p) => ({
+        ...p,
+        notes: normalizeNotes(p.notes || p.note),
+      })),
+      notes: normalizeNotes(r.notes || r.note),
+    }));
+  }
+
+  async function createScheduleBackup(reason) {
+    const infoTable = cfg.upcomingContentTableName || "upcoming_content";
+    const [{ data: scheduleData, error: scheduleError }, { data: infoData, error: infoError }] = await Promise.all([
+      sb.from(cfg.tableName).select("*").order("date", { ascending: true }),
+      sb.from(infoTable).select("*").order("sort_order", { ascending: true }).order("id", { ascending: true }),
+    ]);
+    if (scheduleError) throw scheduleError;
+    if (infoError) throw infoError;
+
+    const payload = {
+      version: 1,
+      reason: reason || "before-save",
+      createdAt: new Date().toISOString(),
+      channelId: cfg.channelId,
+      tables: {
+        [cfg.tableName]: scheduleData || [],
+        [infoTable]: infoData || [],
+      },
+      draft: {
+        rows: backupDraftRows(),
+        info: info.map((item) => ({ ...item })),
+        deletedIds: [...deletedIds],
+        deletedInfoIds: [...deletedInfoIds],
+      },
+    };
+
+    const filePath = cfg.channelId + "/" + backupTimestamp() + "-" + (reason || "before-save") + ".json";
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const { error: uploadError } = await sb.storage
+      .from("schedule-backups")
+      .upload(filePath, blob, { contentType: "application/json;charset=utf-8", upsert: false });
+    if (uploadError) throw uploadError;
+    return filePath;
+  }
+
   // ---- 로그인 ----
   async function doLogin() {
     const email = $("email").value.trim();
@@ -2569,6 +2619,8 @@ function infoItemHtml(u, i) {
     btn.innerHTML = '<span class="spin"></span>';
 
     try {
+      await createScheduleBackup("before-save");
+
       // 1) 삭제 처리
       if (deletedIds.length) {
         const { error } = await sb.from(cfg.tableName).delete().in("id", deletedIds);
