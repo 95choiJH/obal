@@ -1,4 +1,4 @@
-// content.js — 치지직 페이지에 일정 그리드를 주입
+﻿// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -24,6 +24,13 @@
   const GNIMTI_BUTTON_IMAGE_URL = api.runtime.getURL("images/gnimti-btn.png");
   const GNIMTI_LOGO_IMAGE_URL = api.runtime.getURL("images/gnimti-logo.png");
   const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
+  const GNIMTI_TIER_BACK_IMAGE_URLS = {
+    S: api.runtime.getURL("images/gnimti/tier-s-back.png"),
+    A: api.runtime.getURL("images/gnimti/tier-a-back.png"),
+    B: api.runtime.getURL("images/gnimti/tier-b-back.png"),
+    C: api.runtime.getURL("images/gnimti/tier-c-back.png"),
+    D: api.runtime.getURL("images/gnimti/tier-d-back.png"),
+  };
   const GNIMTI_ROSTER_IMAGE_URLS = [
     api.runtime.getURL("images/gnimti/roster1.png"),
     api.runtime.getURL("images/gnimti/roster2.png"),
@@ -479,7 +486,7 @@
       padding: 8px 10px; background: #1f2023; border: 1px solid #3a3c40; border-radius: 8px; }
     .cs-pop-note-list { min-width: max-content; display: flex; flex-direction: column; gap: 6px; }
     .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.65;
-      white-space: pre; overflow-wrap: normal; word-break: normal; }
+      white-space: pre; overflow-wrap: normal; word-break: normal; display: flex; align-items: center; }
 
     .cs-pop-parts-box { margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
     .cs-pop-part { min-width: 0; padding: 8px; border: 1px solid rgba(157,158,163,0.18); border-radius: 7px; background: rgba(0,0,0,0.18); }
@@ -560,19 +567,22 @@
     .cs-gnimti-column { min-width: 0; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); overflow: hidden; }
     .cs-gnimti-position { padding: 9px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; text-align: center; }
     .cs-gnimti-members { display: flex; flex-direction: column; gap: 0; padding: 5px; }
-    .cs-gnimti-member { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 7px 5px; border: 0; border-radius: 7px; background: transparent; text-decoration: none; cursor: pointer; text-align: left; }
+    .cs-gnimti-member { position: relative; z-index: 0; display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 7px 5px; border: 0; border-radius: 7px; background: transparent; text-decoration: none; cursor: pointer; text-align: left; }
     .cs-gnimti-member:hover, .cs-gnimti-member.cs-selected { background: rgba(255,255,255,0.06); }
-    .cs-gnimti-member.cs-selected { outline: 1px solid rgba(0,255,163,0.28); }
+    .cs-gnimti-member:hover { z-index: 1; }
+    .cs-gnimti-member.cs-selected { z-index: 2; box-shadow: inset 0 0 0 1px rgba(0,255,163,0.34); }
     .cs-gnimti-avatar { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.12); background: #2b2d31; color: #c9cacd; font-size: 12px; font-weight: 800; overflow: hidden; }
     .cs-gnimti-avatar .cs-member-avatar-img, .cs-gnimti-avatar .cs-member-avatar-img img { width: 100%; height: 100%; border: 0; border-radius: 50%; }
     .cs-gnimti-name { flex: 1 1 auto; min-width: 0; color: #c9cacd; font-size: 12px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cs-gnimti-member-tier-bg { position: relative; isolation: isolate; overflow: hidden; background-image: linear-gradient(90deg, rgba(16,17,19,0.86) 0%, rgba(16,17,19,0.54) 58%, rgba(16,17,19,0.16) 100%), var(--gnimti-tier-bg); background-size: auto 136%, cover; background-position: right 70%; background-repeat: no-repeat; }
+    .cs-gnimti-member-tier-bg:hover, .cs-gnimti-member-tier-bg.cs-selected { background-image: linear-gradient(90deg, rgba(22,24,28,0.78) 0%, rgba(22,24,28,0.46) 55%, rgba(22,24,28,0.08) 100%), var(--gnimti-tier-bg); background-size: auto 136%, cover; background-position: right 70%; background-repeat: no-repeat; }
     .cs-gnimti-detail { align-self: flex-start; min-width: 0; display: flex; flex-direction: column; gap: 10px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); padding: 12px; overflow: hidden; }
     .cs-gnimti-detail-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .cs-gnimti-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-gnimti-images { flex: 1 1 auto; min-height: 0; display: flex; }
-    .cs-gnimti-card { min-width: 0; min-height: 0; width: 100%; display: flex; gap: 30px; align-items: center; border-radius: 8px; background: rgba(0,0,0,0.24); overflow: hidden; padding: 24px 55px; }
+    .cs-gnimti-card { min-width: 0; min-height: 0; width: 100%; display: flex; gap: 30px; align-items: center; border-radius: 8px; background: rgba(0,0,0,0.24); overflow: hidden; padding: 24px 10%; }
     .cs-gnimti-stat-item { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-    .cs-gnimti-stat-label { display: flex; align-items: center; justify-content: center; min-height: 24px; border-radius: 999px; background: rgba(0,255,163,0.11); color: #bfffe7; font-size: 12px; font-weight: 800; line-height: 1; }
+    .cs-gnimti-stat-label { display: flex; align-items: center; justify-content: center; min-height: 24px; border-radius: 999px; background: rgba(0,255,163,0.11); color: #bfffe7; font-size: 12px; font-weight: 800; padding: 5px 10px; }
     .cs-gnimti-stat-label-team { background: rgba(82,118,255,0.14); color: #c9d4ff; }
     .cs-gnimti-stat-item img { display: block; width: 100%; height: 45%; min-height: 0; object-fit: contain; }
     .cs-gnimti-empty-detail { margin: auto; color: #8b8d92; font-size: 13px; font-weight: 600; }
@@ -652,13 +662,15 @@
     :host(.cs-light-theme) .cs-gnimti-member:hover { background: #eef0f2; }
     :host(.cs-light-theme) .cs-gnimti-avatar { background: #e1e3e6; border-color: #d3d6da; color: #555a61; }
     :host(.cs-light-theme) .cs-gnimti-name { color: #2f343a; }
+    :host(.cs-light-theme) .cs-gnimti-member-tier-bg { background-image: linear-gradient(90deg, rgba(248,249,250,0.92) 0%, rgba(248,249,250,0.62) 58%, rgba(248,249,250,0.2) 100%), var(--gnimti-tier-bg); }
+    :host(.cs-light-theme) .cs-gnimti-member-tier-bg:hover, :host(.cs-light-theme) .cs-gnimti-member-tier-bg.cs-selected { background-image: linear-gradient(90deg, rgba(238,240,242,0.88) 0%, rgba(238,240,242,0.58) 55%, rgba(238,240,242,0.16) 100%), var(--gnimti-tier-bg); background-size: auto 136%, cover; background-position: right 70%; background-repeat: no-repeat; }
     :host(.cs-light-theme) .cs-gnimti-detail { background: #f8f9fa; border-color: #e1e3e6; }
     :host(.cs-light-theme) .cs-gnimti-detail-title { color: #1e2024; }
     :host(.cs-light-theme) .cs-gnimti-card { background: #eef0f2; }
 
     :host(.cs-light-theme) .cs-gnimti-stat-label { background: rgba(3,169,80,0.12); color: #007a3a; }
     :host(.cs-light-theme) .cs-gnimti-stat-label-team { background: rgba(72,93,210,0.12); color: #3344aa; }
-    :host(.cs-light-theme) .cs-gnimti-member.cs-selected { background: #eef0f2; outline-color: rgba(3,169,80,0.34); }
+    :host(.cs-light-theme) .cs-gnimti-member.cs-selected { background: #eef0f2; box-shadow: inset 0 0 0 1px rgba(3,169,80,0.4); }
     :host(.cs-light-theme) .cs-info-item::before { background: rgba(3,169,80,0.55); }
     :host(.cs-light-theme) .cs-info-mention { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-mention:hover { color: #008a43; }
@@ -1635,7 +1647,7 @@
 
   function gnimtiRosterColumns() {
     return [
-      { position: "탑(13)", folder: "TOP", members: ["김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙"] },
+      { position: "탑", folder: "TOP", members: ["김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙"] },
       { position: "정글", folder: "JG", members: ["꼴랑이", "멋사", "삼식", "소우릎", "플레임", "헤징"] },
       { position: "미드", folder: "MID", members: ["네클릿", "뱅", "샘웨", "앰비션", "크캣", "햇살살"] },
       { position: "원딜", folder: "AD", members: ["괴물쥐", "눈꽃", "명예훈장", "실프", "이선생", "플러리"] },
@@ -1656,19 +1668,70 @@
     return [1, 2].map((index) => api.runtime.getURL("images/gnimti/" + info.folder + "/" + name + index + ".png"));
   }
 
+  const GNIMTI_MEMBER_TIERS = Object.freeze({
+    "김뿡": "A",
+    "김호러": "C",
+    "러너": "B",
+    "룩삼": "B",
+    "승우아빠": "C",
+    "울프": "A",
+    "윤가놈": "D",
+    "인간젤리": "A",
+    "철면수심": "D",
+    "캡틴잭": "A",
+    "크랭크": "D",
+    "푸린": "B",
+    "한동숙": "C",
+    "꼴랑이": "B",
+    "멋사": "C",
+    "삼식": "B",
+    "소우릎": "S",
+    "플레임": "S",
+    "헤징": "B",
+    "네클릿": "S",
+    "뱅": "S",
+    "샘웨": "B",
+    "앰비션": "S",
+    "크캣": "A",
+    "햇살살": "D",
+    "괴물쥐": "S",
+    "눈꽃": "A",
+    "명예훈장": "B",
+    "실프": "B",
+    "이선생": "C",
+    "플러리": "B",
+    "갱맘": "S",
+    "니니아": "C",
+    "던": "B",
+    "두니주니": "D",
+    "서새봄냥": "D",
+    "채현찌": "C",
+    "초승달": "D",
+    "큐베": "S",
+    "피닉스박": "A",
+  });
+
+  function gnimtiMemberTier(name) {
+    const tier = GNIMTI_MEMBER_TIERS[String(name || "").trim()] || "";
+    const imageUrl = GNIMTI_TIER_BACK_IMAGE_URLS[tier];
+    return imageUrl ? { tier, imageUrl } : null;
+  }
   function gnimtiMemberProfile(name) {
     const profiles = (state.data && state.data.gnimtiProfiles) || {};
     return profiles[name] || profiles[String(name || "").trim()] || { channelId: "", channelName: name, channelImageUrl: "" };
   }
 
+
   function gnimtiMemberHtml(name, selectedName) {
     const profile = gnimtiMemberProfile(name);
     const displayName = String((profile && profile.channelName) || name || "").trim();
+    const tier = gnimtiMemberTier(name);
     const avatar = '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>';
     const nameHtml = '<span class="cs-gnimti-name">' + escapeHtml(displayName) + '</span>';
-    return '<button type="button" class="cs-gnimti-member' + (name === selectedName ? " cs-selected" : "") + '" data-gnimti-member="' + escapeHtml(name) + '">' + avatar + nameHtml + '</button>';
+    const className = "cs-gnimti-member" + (tier ? " cs-gnimti-member-tier-bg" : "") + (name === selectedName ? " cs-selected" : "");
+    const style = tier ? ' style="--gnimti-tier-bg: url(' + escapeHtml(tier.imageUrl) + ')" title="' + escapeHtml(tier.tier + " 티어") + '"' : "";
+    return '<button type="button" class="' + className + '" data-gnimti-member="' + escapeHtml(name) + '"' + style + '>' + avatar + nameHtml + '</button>';
   }
-
   function gnimtiMemberDetailHtml(name) {
     if (!name) return '<aside class="cs-gnimti-detail"><div class="cs-gnimti-empty-detail">멤버를 선택하세요</div></aside>';
     const profile = gnimtiMemberProfile(name);
@@ -2319,6 +2382,7 @@
   watch();
   startAutoRefresh();
 })();
+
 
 
 
