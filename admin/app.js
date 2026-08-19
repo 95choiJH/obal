@@ -13,6 +13,7 @@
   let feedback = [];     // 문의·제보함 (읽기 전용)
   let feedbackFilter = "all";
   let feedbackTypeFilter = "all";
+  let activeAdminMenu = "schedule";
   let selectedScheduleDate = "";
   let scheduleMonthOffset = 0;
   let original = "";     // 원본 스냅샷 (dirty 판정용)
@@ -333,7 +334,7 @@
         button.disabled = true;
         const { error } = await sb.from(cfg.feedbackTableName || "feedback").update({ status }).eq("id", id);
         if (error) {
-          toast("상태 변경 실패: " + error.message);
+          toast("\ubb38\uc758 \uc0c1\ud0dc \ubcc0\uacbd \uc2e4\ud328: " + error.message);
           button.disabled = false;
           return;
         }
@@ -414,46 +415,134 @@
     rows.sort(compareScheduleDate);
     if (!selectedScheduleDate) selectedScheduleDate = rows.find((row) => row.date === todayKey()) ? todayKey() : ((rows[0] && rows[0].date) || todayKey());
 
-    const addHeader = '<div class="schedule-group-head"><p class="group-label">일정</p><button type="button" class="add-btn schedule-add-btn" data-addrow="1">+ 날짜</button></div>';
-    list.innerHTML = addHeader + scheduleCalendarHtml() + selectedScheduleDetailHtml();
+    if (list) {
+      const addHeader = '<div class="schedule-group-head"><p class="group-label">\uc77c\uc815</p><button type="button" class="add-btn schedule-add-btn" data-addrow="1">+ \ub0a0\uc9dc</button></div>';
+      list.innerHTML = addHeader + scheduleCalendarHtml() + selectedScheduleDetailHtml();
+      bindCards();
+    }
 
-    bindCards();
     renderInfo();
+    renderNotice();
+    setActiveAdminMenu(activeAdminMenu);
     bindDirectiveAutocompletes();
   }
+
   function sortInfoForVisibility() {
     info.sort((a, b) => Number(!!a.hidden) - Number(!!b.hidden));
+  }
+
+  function isNoticeInfoItem(item) {
+    return /^@notice\s*:/i.test(String((item && item.content) || "").trim());
+  }
+
+  function isExtensionVersionInfoItem(item) {
+    return /^@extension-version\s*:/i.test(String((item && item.content) || "").trim());
+  }
+
+  function noticeText(item) {
+    return String((item && item.content) || "").trim().replace(/^@notice\s*:\s*/i, "");
+  }
+
+  function noticeContent(value) {
+    return "@notice:" + String(value || "").trim();
   }
 
   function renderInfo() {
     sortInfoForVisibility();
     const list = $("infoList");
-    list.innerHTML = info.length
-      ? info.map((u, i) => infoItemHtml(u, i)).join("")
-      : '<div class="empty" style="padding:16px 0;">등록된 소식이 없습니다.</div>';
+    if (!list) return;
+    const visibleItems = info.map((u, i) => ({ u, i })).filter((item) => !isNoticeInfoItem(item.u));
+    list.innerHTML = visibleItems.length
+      ? visibleItems.map((item) => infoItemHtml(item.u, item.i)).join("")
+      : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uc18c\uc2dd\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
 
     const add = document.createElement("button");
     add.className = "add-btn info-add-card";
-    add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>항목 추가';
+    add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>\ud56d\ubaa9 \ucd94\uac00';
     add.onclick = addInfoRow;
     list.appendChild(add);
 
     bindInfoCards();
     bindDirectiveAutocompletes();
-  }
+  }
+
+  function noticeListHtml() {
+    const notices = info.map((u, i) => ({ u, i })).filter((item) => isNoticeInfoItem(item.u));
+    return notices.length ? notices.map((item) => {
+      const text = noticeText(item.u);
+      const fieldId = "notice-content-" + item.i;
+      return '<div class="card notice-card" data-notice-card="' + item.i + '">' +
+        '<div class="notice-field">' +
+          '<div class="notice-editor-shell">' +
+            '<div class="notice-card-head">' +
+              '<div class="notice-card-toolbar"></div>' +
+              '<div class="notice-card-actions">' + deleteNoticeBtn(item.i) + '</div>' +
+            '</div>' +
+            '<textarea id="' + fieldId + '" class="notice-textarea" data-notice-content="' + item.i + '" placeholder="\uacf5\uc9c0 \ub0b4\uc6a9\uc744 \uc785\ub825\ud558\uc138\uc694">' + esc(text) + '</textarea>' +
+          '</div>' +
+        '</div>' +
+      "</div>";
+    }).join("") : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uacf5\uc9c0\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
+  }
+
+  function renderNotice() {
+    const list = $("noticeList");
+    if (!list) return;
+    list.innerHTML = '<div class="schedule-group-head"><p class="group-label">\uacf5\uc9c0</p><button type="button" class="add-btn schedule-add-btn" data-add-notice="1">+ \uacf5\uc9c0</button></div>' + noticeListHtml();
+    bindNoticeCards();
+    bindDirectiveAutocompletes();
+  }
+
+  function deleteNoticeBtn(i) {
+    return '<button class="icon-btn" data-notice-del="' + i + '" aria-label="\uc0ad\uc81c">' + trashSvg() + "</button>";
+  }
+
+  function bindNoticeCards() {
+    document.querySelectorAll("[data-add-notice]").forEach((el) => {
+      el.onclick = () => {
+        info.push({ id: null, content: noticeContent(""), hidden: true });
+        renderNotice();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-notice-content]").forEach((el) => {
+      const i = +el.getAttribute("data-notice-content");
+      el.oninput = () => {
+        info[i].content = noticeContent(el.value);
+        info[i].hidden = true;
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-notice-del]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-notice-del");
+        if (info[i].id) deletedInfoIds.push(info[i].id);
+        info.splice(i, 1);
+        renderNotice();
+        markDirty();
+      };
+    });
+  }
 function infoItemHtml(u, i) {
+    const text = u.content || "";
+    const fieldId = "info-content-" + i;
     return (
-      '<div class="card" data-ii="' + i + '">' +
-        '<div class="row info-card-row" style="margin-bottom:0;">' +
-          '<div class="move-col">' +
-            '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="위로 이동">▲</button>' +
-            '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="아래로 이동">▼</button>' +
-          "</div>" +
-          '<div style="flex:1;min-width:0"><textarea data-if="content" data-ii="' + i + '" placeholder="소식 내용을 입력하세요">' + esc(u.content) + '</textarea>' +
-          '<div class="directive-preview" data-info-preview="' + i + '" style="margin:4px 0 0">' + directivePreviewHtml(u.content, null) + '</div></div>' +
-          '<button type="button" class="flag-toggle' + (u.hidden ? " on" : "") + '" data-ihiddentoggle="' + i + '" title="확장 프로그램에서 이 소식을 숨깁니다">숨김</button>' +
-          deleteInfoBtn(i) +
-        "</div>" +
+      '<div class="card info-card" data-ii="' + i + '">' +
+        '<div class="info-field">' +
+          '<div class="info-editor-shell">' +
+            '<div class="info-card-head">' +
+              '<div class="info-card-toolbar"></div>' +
+              '<div class="info-card-actions">' +
+                '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="\uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
+                '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="\uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
+                '<button type="button" class="flag-toggle' + (u.hidden ? " on" : "") + '" data-ihiddentoggle="' + i + '" title="\ud655\uc7a5 \ud504\ub85c\uadf8\ub7a8\uc5d0\uc11c \uc774 \uc18c\uc2dd\uc744 \uc228\uae41\ub2c8\ub2e4">\uc228\uae40</button>' +
+                deleteInfoBtn(i) +
+              '</div>' +
+            '</div>' +
+            '<textarea id="' + fieldId + '" class="info-textarea" data-if="content" data-ii="' + i + '" placeholder="\uc18c\uc2dd \ub0b4\uc6a9\uc744 \uc785\ub825\ud558\uc138\uc694">' + esc(text) + '</textarea>' +
+          '</div>' +
+          '<div class="directive-preview" data-info-preview="' + i + '" style="margin:6px 0 0">' + directivePreviewHtml(text, null) + '</div>' +
+        '</div>' +
       "</div>"
     );
   }
@@ -725,16 +814,19 @@ function infoItemHtml(u, i) {
     if (collabOn) {
       html +=
         '<div class="collab-box">' +
+          '<div class="host-label">멤버</div>' +
           '<div class="member-chips" id="chips-' + i + '-' + pi + '">' + memberChipsHtml(i, pi, p.members) + '</div>' +
           '<div class="member-search-wrap">' +
-            '<input type="text" class="member-search" data-msearch="' + i + '-' + pi + '" placeholder="합방 멤버 검색" autocomplete="off" />' +
+            '<input type="text" class="member-search" data-msearch="' + i + '-' + pi + '" placeholder="멤버 검색 (치지직 스트리머 이름)" autocomplete="off" />' +
             '<div class="member-results" id="results-' + i + '-' + pi + '"></div>' +
           '</div>' +
         '</div>';
     }
     html += partNotesListHtml(i, pi, p);
     if (officialOn || otherOn) {
-      html += '<div class="collab-box">' + hostChannelBoxHtml(i, pi, p.hostChannel) + '</div>';
+      const hostLabel = otherOn ? "송출" : "진행";
+      const hostPlaceholder = otherOn ? "송출 채널 검색 (치지직 스트리머 이름)" : "진행 채널 검색 (치지직 스트리머 이름)";
+      html += '<div class="collab-box">' + hostChannelBoxHtml(i, pi, p.hostChannel, hostLabel, hostPlaceholder) + '</div>';
     }
     html += '</div>';
     return html;
@@ -756,8 +848,10 @@ function infoItemHtml(u, i) {
     return previews.join('<span style="width:6px"></span>') + '<span class="directive-ok">적용 미리보기</span>';
   }
 
-  function hostChannelBoxHtml(i, pi, hostChannel) {
-    let inner = '<div class="host-label">어느 채널 방송인가요?</div>';
+  function hostChannelBoxHtml(i, pi, hostChannel, label, placeholder) {
+    const hostLabel = label || "진행";
+    const hostPlaceholder = placeholder || "채널 검색 (치지직 스트리머 이름)";
+    let inner = '<div class="host-label">' + esc(hostLabel) + '</div>';
     if (hostChannel) {
       inner +=
         '<span class="member-chip">' +
@@ -768,7 +862,7 @@ function infoItemHtml(u, i) {
     } else {
       inner +=
         '<div class="member-search-wrap">' +
-          '<input type="text" class="member-search" data-hsearch="' + i + "-" + pi + '" placeholder="채널 검색 (치지직 스트리머 이름)" autocomplete="off" />' +
+          '<input type="text" class="member-search" data-hsearch="' + i + "-" + pi + '" placeholder="' + esc(hostPlaceholder) + '" autocomplete="off" />' +
           '<div class="member-results" id="hresults-' + i + "-" + pi + '"></div>' +
         "</div>";
     }
@@ -975,7 +1069,7 @@ function infoItemHtml(u, i) {
     }
     const label = cleanInlineDirectiveInput(rawLabel, []);
     return ":" + kind + "[" + label + "]";
-  }
+  }
 
   function makeInlineDirectiveInput(kind, value, placeholder, widthClass) {
     const input = document.createElement("input");
@@ -1686,7 +1780,7 @@ function infoItemHtml(u, i) {
     return toolbar;
   }
   function bindDirectiveEditors() {
-    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-part-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((source) => {
       if (source.dataset.directiveEditorBound) return;
       source.dataset.directiveEditorBound = "1";
@@ -1698,7 +1792,10 @@ function infoItemHtml(u, i) {
       editor.setAttribute("role", "textbox");
       editor.dataset.placeholder = source.getAttribute("placeholder") || "";
       source.insertAdjacentElement("afterend", editor);
-      source.insertAdjacentElement("afterend", makeStyleToolbar(source, editor));
+      const toolbar = makeStyleToolbar(source, editor);
+      const toolbarSlot = (source.classList.contains("info-textarea") ? source.closest(".info-editor-shell").querySelector(".info-card-toolbar") : (source.classList.contains("notice-textarea") ? source.closest(".notice-editor-shell").querySelector(".notice-card-toolbar") : null));
+      if (toolbarSlot) toolbarSlot.appendChild(toolbar);
+      else source.insertAdjacentElement("afterend", toolbar);
       source._directiveEditor = editor;
       editor._directiveSource = source;
       renderDirectiveEditor(source, editor);
@@ -1931,7 +2028,7 @@ function infoItemHtml(u, i) {
   }
   function bindDirectiveAutocompletes() {
     bindDirectiveEditors();
-    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-part-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((el) => {
       if (el.dataset.directiveAutocompleteBound) return;
       el.dataset.directiveAutocompleteBound = "1";
@@ -2619,7 +2716,13 @@ function infoItemHtml(u, i) {
     btn.innerHTML = '<span class="spin"></span>';
 
     try {
-      await createScheduleBackup("before-save");
+      let backupWarning = "";
+      try {
+        await createScheduleBackup("before-save");
+      } catch (backupError) {
+        backupWarning = (backupError && backupError.message) || String(backupError || "");
+        console.warn("Schedule backup failed", backupError);
+      }
 
       // 1) 삭제 처리
       if (deletedIds.length) {
@@ -2693,11 +2796,13 @@ function infoItemHtml(u, i) {
       let order = 0;
       for (const u of info) {
         const content = (u.content || "").trim();
+        const noticeMatch = content.match(/^@notice\s*:\s*(.*)$/i);
+        const keepContent = content && (!noticeMatch || noticeMatch[1].trim());
         if (u.id) {
-          if (content) infoToUpdate.push({ id: u.id, content, hidden: !!u.hidden, sort_order: order++ });
+          if (keepContent) infoToUpdate.push({ id: u.id, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
           else infoDeleteIds.push(u.id);
-        } else if (content) {
-          infoToInsert.push({ channel_id: cfg.channelId, content, hidden: !!u.hidden, sort_order: order++ });
+        } else if (keepContent) {
+          infoToInsert.push({ channel_id: cfg.channelId, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
         }
       }
       if (infoDeleteIds.length) {
@@ -2715,7 +2820,7 @@ function infoItemHtml(u, i) {
         if (error) throw error;
       }
 
-      toast("저장되었습니다");
+      toast(backupWarning ? "\uc800\uc7a5\ub418\uc5c8\uc9c0\ub9cc \ubc31\uc5c5\uc740 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4" : "\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4");
       rows.forEach((row) => { delete row._newlyAdded; });
       rows.sort(compareScheduleDate);
       await loadAll();
@@ -2728,11 +2833,20 @@ function infoItemHtml(u, i) {
   }
 
   // ---- 진입 ----
+  function setActiveAdminMenu(menu) {
+    activeAdminMenu = menu || "schedule";
+    document.querySelectorAll("[data-admin-menu]").forEach((button) => {
+      const active = button.getAttribute("data-admin-menu") === activeAdminMenu;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+    });
+    document.querySelectorAll("[data-admin-panel]").forEach((panel) => {
+      panel.hidden = panel.getAttribute("data-admin-panel") !== activeAdminMenu;
+    });
+  }
+
   function setFeedbackDrawer(open) {
-    const shell = $("feedbackDrawerShell");
-    shell.hidden = !open;
-    document.body.style.overflow = open ? "hidden" : "";
-    $("feedbackToggle").setAttribute("aria-expanded", String(open));
+    if (open) setActiveAdminMenu("feedback");
   }
 
   async function enterApp() {
@@ -2752,9 +2866,13 @@ function infoItemHtml(u, i) {
     $("logoutBtn").onclick = doLogout;
     $("saveBtn").onclick = doSave;
     $("feedbackRefresh").onclick = loadFeedback;
-    $("feedbackToggle").onclick = () => setFeedbackDrawer(true);
-    $("feedbackDrawerClose").onclick = () => setFeedbackDrawer(false);
-    $("feedbackBackdrop").onclick = () => setFeedbackDrawer(false);
+    document.querySelectorAll("[data-admin-menu]").forEach((button) => {
+      button.onclick = () => {
+        const menu = button.getAttribute("data-admin-menu");
+        setActiveAdminMenu(menu);
+        if (menu === "feedback") loadFeedback();
+      };
+    });
     document.querySelectorAll("[data-feedback-filter]").forEach((button) => {
       button.onclick = () => {
         feedbackFilter = button.getAttribute("data-feedback-filter");
@@ -2762,9 +2880,6 @@ function infoItemHtml(u, i) {
           item.classList.toggle("active", item === button));
         renderFeedbackList();
       };
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !$("feedbackDrawerShell").hidden) setFeedbackDrawer(false);
     });
     window.addEventListener("beforeunload", (e) => {
       if (snapshot() !== original) { e.preventDefault(); e.returnValue = ""; }

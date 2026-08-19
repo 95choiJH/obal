@@ -154,10 +154,28 @@ function rowsToChannels(rows) {
 }
 
 // 소식 행 배열을 channels[cid].info 목록으로 병합 (sort_order로 이미 정렬된 상태로 들어옴)
+function extensionVersionFromInfoItems(rows) {
+  for (const r of rows || []) {
+    const content = String((r && r.content) || "").trim();
+    const match = content.match(/^@extension-version\s*:\s*([0-9]+(?:\.[0-9]+){0,3})\s*$/i);
+    if (match) return match[1];
+  }
+  return "";
+}
+
+function noticesFromInfoItems(rows) {
+  return (rows || [])
+    .map((r) => String((r && r.content) || "").trim().match(/^@notice\s*:\s*([\s\S]+)$/i))
+    .filter(Boolean)
+    .map((match) => match[1].trim())
+    .filter(Boolean);
+}
+
 function mergeInfoItems(channels, rows) {
   for (const r of rows) {
     const cid = r.channel_id;
-    if (!cid || !r.content || r.hidden) continue;
+    const content = String(r.content || "").trim();
+    if (!cid || !content || r.hidden || /^@notice\s*:/i.test(content) || /^@extension-version\s*:/i.test(content)) continue;
     if (!channels[cid]) {
       channels[cid] = { name: r.channel_name || "", timezone: "Asia/Seoul", schedule: [], info: [] };
     }
@@ -272,15 +290,19 @@ async function fetchFromSupabase() {
   const { channels, latestUpdate } = rowsToChannels(scheduleRows);
 
   // 소식 테이블은 아직 없을 수 있으므로(선택 기능), 실패해도 일정 기능에는 영향 없게 함
+  let latestExtensionVersion = "";
+  let notices = [];
   try {
     const infoRows = await fetchTable(c.upcomingContentTableName || "upcoming_content", "sort_order.asc,id.asc");
+    latestExtensionVersion = extensionVersionFromInfoItems(infoRows);
+    notices = noticesFromInfoItems(infoRows);
     mergeInfoItems(channels, infoRows);
   } catch (e) {
   }
 
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
-  return { version: 1, gnimtiProfileVersion: 3, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
+  return { version: 1, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
 }
 
 async function attachCachedProfiles(data) {

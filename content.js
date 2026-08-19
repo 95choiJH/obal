@@ -11,6 +11,7 @@
   "use strict";
 
   const api = typeof browser !== "undefined" ? browser : chrome;
+  const EXTENSION_VERSION = (api.runtime.getManifest && api.runtime.getManifest().version) || "0";
   const BREAK_ICON_URL = api.runtime.getURL("icons/on_break.png");
   const BREAK_LIGHT_ICON_URL = api.runtime.getURL("icons/on_break-white.png");
   const UNDETERMINED_ICON_URL = api.runtime.getURL("icons/undetermined.png");
@@ -50,6 +51,7 @@
     monthOffset: 0,
     gameOnly: false,
     selectedGame: "",
+    noticeIndex: 0,
     host: null,          // shadow host element
     shadow: null,
     mode: null,          // "inline" | "floating"
@@ -235,6 +237,19 @@
     .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .cs-title { color: #efeff1; font-size: 16px; font-weight: 600; }
     .cs-spacer { flex: 1; }
+    .cs-update-notice-wrap { margin: 0 30px -1px; }
+    .cs-update-notice { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; margin: 0; padding: 8px 10px 9px 11px; border: 1px solid rgba(0,255,163,0.38); border-bottom: 0; border-radius: 7px 7px 0 0; background: #124233; color: #d7f7ea; font-size: 12px; font-weight: 700; line-height: 1.35; box-shadow: 0 -2px 10px rgba(0,0,0,0.18); }
+    .cs-update-notice-wrap + .cs-wrapper { border-top-left-radius: 0; border-top-right-radius: 0; }
+    .cs-update-notice-badge { flex: 0 0 auto; display: inline-flex; align-items: center; height: 19px; padding: 0 7px; border-radius: 999px; background: rgba(0,255,163,0.18); color: #8fffd5; font-size: 11px; font-weight: 900; line-height: 1; }
+    .cs-update-notice-text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: csNoticeSwap 0.22s ease-out both; }
+    @keyframes csNoticeSwap { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) { .cs-update-notice-text { animation: none; } }
+    .cs-update-notice-strong { color: #f2fff9; font-weight: 900; }
+    .cs-update-notice-controls { flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center; gap: 3px; }
+    .cs-update-notice-arrow { width: 23px; height: 23px; border: 1px solid rgba(143,255,213,0.28); border-radius: 6px; background: rgba(255,255,255,0.07); color: #d7f7ea; font-size: 17px; font-weight: 900; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .cs-update-notice-arrow:hover { background: rgba(255,255,255,0.15); color: #ffffff; }
+    .cs-update-refresh { flex: 0 0 auto; border: 1px solid rgba(143,255,213,0.38); border-radius: 6px; background: rgba(255,255,255,0.08); color: #d7f7ea; padding: 5px 8px; font-size: 12px; font-weight: 900; line-height: 1; cursor: pointer; white-space: nowrap; }
+    .cs-update-refresh:hover { background: rgba(255,255,255,0.15); color: #ffffff; }
 
     .cs-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 13px;
       font-weight: 600; padding: 3px 10px; border-radius: 10px; line-height: 1.4; }
@@ -474,14 +489,20 @@
     .cs-pop-date-row { display: flex; align-items: center; justify-content: space-between;
       gap: 8px; margin-bottom: 6px; white-space: nowrap; }
     .cs-pop-date { color: #efeff1; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .cs-pop-title { min-width: 0; margin: 0 0 8px; padding: 7px 9px; border-left: 3px solid #00FFA3; border-radius: 7px; background: rgba(0,255,163,0.1); color: #f4fff9; font-size: 15px; font-weight: 800; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
     .cs-pop-row { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-height: 24px; margin-bottom: 4px; }
     .cs-pop-row:last-child { margin-bottom: 0; }
     .cs-pop-icon { display: inline-flex; align-items: center; gap: 3px;
       color: #9d9ea3; font-size: 12px; line-height: 1.5; }
     .cs-pop-icon-collab { color: #c4b5fd; }
     .cs-pop-icon-speculative { color: #e8c268; }
+    .cs-pop-part-label { flex: 0 0 auto; min-width: 30px; justify-content: center; padding: 3px 7px; border-radius: 999px; font-weight: 800; line-height: 1.1; color: #7dffcf; background: rgba(0,255,163,0.12); }
+    .cs-pop-part-text { font-weight: 800; color: #F2F3F5; }
     .cs-pop-text { color: #c9cacd; font-size: 14px; line-height: 1.5;
       white-space: pre; overflow-wrap: normal; word-break: normal; }
+    .cs-pop-part-text .cs-info-mention, .cs-pop-part-text .cs-inline-profile, .cs-pop-part-text .cs-text-badge { color: inherit; }
+    .cs-tag-tone, .cs-part-tag.cs-tag-tone, .cs-text-badge.cs-tag-tone { color: var(--cs-tag-color); background: var(--cs-tag-bg); border-color: var(--cs-tag-border); }
+    .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     .cs-pop-note-box { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px;
       padding: 8px 10px; background: #1f2023; border: 1px solid #3a3c40; border-radius: 8px; }
     .cs-pop-note-list { min-width: max-content; display: flex; flex-direction: column; gap: 6px; }
@@ -605,9 +626,19 @@
       width: min(1330px, calc(100vw - 40px)); z-index: 9999; display: none; }
     .cs-channel-panel.cs-open { display: block; }
     .cs-channel-panel .cs-wrapper { margin: 0; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+    .cs-channel-panel .cs-update-notice-wrap, .cs-float-panel .cs-update-notice-wrap { margin: 0 0 -1px; }
+    .cs-channel-panel .cs-update-notice, .cs-float-panel .cs-update-notice { width: 100%; max-width: 100%; }
 
     /* 치지직 라이트 모드 */
     :host(.cs-light-theme) .cs-wrapper { background: #ffffff; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-update-notice { border-color: rgba(3,169,80,0.32); background: #e8f7ef; color: #276047; box-shadow: 0 -2px 10px rgba(0,0,0,0.07); }
+    :host(.cs-light-theme) .cs-update-notice-badge { background: rgba(3,169,80,0.13); color: #047344; }
+    :host(.cs-light-theme) .cs-update-notice-strong { color: #153b2a; }
+    :host(.cs-light-theme) .cs-update-notice-arrow { border-color: rgba(3,169,80,0.22); background: rgba(3,169,80,0.07); color: #047344; }
+    :host(.cs-light-theme) .cs-update-notice-arrow:hover { background: rgba(3,169,80,0.14); color: #035c36; }
+    :host(.cs-light-theme) .cs-update-refresh { border-color: rgba(3,169,80,0.28); background: rgba(3,169,80,0.08); color: #047344; }
+    :host(.cs-light-theme) .cs-update-refresh:hover { background: rgba(3,169,80,0.15); color: #035c36; }
+
     :host(.cs-light-theme) .cs-section { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-section { background: #f8f9fa; border-color: #e1e3e6; }
     :host(.cs-light-theme) .cs-info-frame { background: #ffffff; border-color: #e5e7ea; }
@@ -641,6 +672,7 @@
     :host(.cs-light-theme) .cs-part-text,
     :host(.cs-light-theme) .cs-pop-text,
     :host(.cs-light-theme) .cs-info-list { border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-pop-title { border-left-color: #03a950; background: rgba(3,169,80,0.1); color: #083d26; }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
     :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { border-color: rgba(3,169,80,0.38); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
@@ -745,6 +777,10 @@
     :host(.cs-light-theme) .cs-pop-text { color: #2f343a; }
     :host(.cs-light-theme) .cs-pop-row .cs-cell-time,
     :host(.cs-light-theme) .cs-pop-icon:not(.cs-pop-icon-collab):not(.cs-pop-icon-speculative) { color: #008a43; }
+    :host(.cs-light-theme) .cs-pop-part-label { color: #007a3a; background: rgba(3,169,80,0.12); }
+    :host(.cs-light-theme) .cs-pop-part-text { color: #F2F3F5; }
+    :host(.cs-light-theme) .cs-tag-tone, :host(.cs-light-theme) .cs-part-tag.cs-tag-tone, :host(.cs-light-theme) .cs-text-badge.cs-tag-tone { color: var(--cs-tag-light-color); background: var(--cs-tag-light-bg); border-color: var(--cs-tag-light-border); }
+    :host(.cs-light-theme) .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     :host(.cs-light-theme) .cs-pop-note-box { background: #f5f6f7; border-color: #dfe1e4; }
     :host(.cs-light-theme) .cs-pop-note-text { color: #4b4f55; }
     :host(.cs-light-theme) .cs-member-avatar-img { border-color: #d3d6da; }
@@ -968,6 +1004,7 @@
     const updatedLabel = formatUpdated();
 
     root.innerHTML =
+      updateNoticeHtml() +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section">' +
       '<div class="cs-header">' +
@@ -1036,6 +1073,62 @@
       '<img class="cs-info-cover-btn" src="' + GNIMTI_BUTTON_IMAGE_URL + '" alt="" />' +
       "</div></div></div>"
     );
+  }
+
+  function compareVersions(a, b) {
+    const left = String(a || "0").split(".").map((part) => parseInt(part, 10) || 0);
+    const right = String(b || "0").split(".").map((part) => parseInt(part, 10) || 0);
+    const len = Math.max(left.length, right.length);
+    for (let i = 0; i < len; i++) {
+      const diff = (left[i] || 0) - (right[i] || 0);
+      if (diff) return diff > 0 ? 1 : -1;
+    }
+    return 0;
+  }
+
+  function shouldShowUpdateNotice() {
+    const latest = state.data && state.data.latestExtensionVersion;
+    return !!latest && compareVersions(latest, EXTENSION_VERSION) > 0;
+  }
+
+  function noticeItems() {
+    const items = [];
+    if (shouldShowUpdateNotice()) {
+      items.push({ type: "update", text: "\uc0c8 \ubc84\uc804\uc774 \uc5c5\ub370\uc774\ud2b8\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ud398\uc774\uc9c0\ub97c \uc0c8\ub85c\uace0\uce68 \ud574\uc8fc\uc138\uc694." });
+    }
+    ((state.data && state.data.notices) || []).forEach((text) => {
+      const value = String(text || "").trim();
+      if (value) items.push({ type: "notice", text: value });
+    });
+    return items;
+  }
+
+  function updateNoticeHtml() {
+    const items = noticeItems();
+    if (!items.length) return "";
+    const item = items[state.noticeIndex % items.length];
+    const action = item.type === "update"
+      ? '<button type="button" class="cs-update-refresh" id="cs-update-refresh">\uc0c8\ub85c\uace0\uce68</button>'
+      : "";
+    const controls = items.length > 1
+      ? '<span class="cs-update-notice-controls" aria-label="\uacf5\uc9c0 \uc774\ub3d9">' +
+        '<button type="button" class="cs-update-notice-arrow" id="cs-notice-prev" aria-label="\uc774\uc804 \uacf5\uc9c0">\u2039</button>' +
+        '<button type="button" class="cs-update-notice-arrow" id="cs-notice-next" aria-label="\ub2e4\uc74c \uacf5\uc9c0">\u203a</button>' +
+        '</span>'
+      : "";
+    return '<div class="cs-update-notice-wrap"><div class="cs-update-notice" role="note">' +
+      '<span class="cs-update-notice-badge">\uacf5\uc9c0</span>' +
+      '<span class="cs-update-notice-text"><span class="cs-update-notice-strong">' + directiveHtml(item.text) + '</span></span>' +
+      action +
+      controls +
+      '</div></div>';
+  }
+
+  function rotateNoticeIfNeeded() {
+    const items = noticeItems();
+    if (items.length < 2 || !state.shadow || document.visibilityState !== "visible") return;
+    state.noticeIndex = (state.noticeIndex + 1) % items.length;
+    render();
   }
 
   function feedbackPanelHtml() {
@@ -1172,13 +1265,70 @@
     return -1;
   }
 
+  function tagToneStyleAttr(tag) {
+    const text = String(tag || "").trim();
+    if (!text) return "";
+    const fixed = {
+      "언급": [44, 232, 184, 104, 154, 107, 0],
+      "합방": [205, 125, 211, 252, 3, 105, 161],
+      "공방": [222, 191, 96, 165, 37, 99, 235],
+      "타방송": [252, 216, 180, 254, 109, 40, 217],
+      "광고": [340, 251, 113, 133, 180, 35, 82],
+      "야방": [27, 251, 146, 60, 194, 93, 22],
+    };
+    const tone = fixed[text];
+    if (tone) {
+      const [hue, dr, dg, db, lr, lg, lb] = tone;
+      return ' style="--cs-tag-color: rgb(' + dr + ' ' + dg + ' ' + db + '); --cs-tag-bg: hsl(' + hue + ' 88% 60% / 0.16); --cs-tag-border: hsl(' + hue + ' 88% 68% / 0.32); --cs-tag-light-color: rgb(' + lr + ' ' + lg + ' ' + lb + '); --cs-tag-light-bg: hsl(' + hue + ' 85% 50% / 0.13); --cs-tag-light-border: hsl(' + hue + ' 72% 42% / 0.24);"';
+    }
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    const hue = Math.abs(hash) % 360;
+    return ' style="--cs-tag-color: hsl(' + hue + ' 88% 76%); --cs-tag-bg: hsl(' + hue + ' 88% 60% / 0.16); --cs-tag-border: hsl(' + hue + ' 88% 68% / 0.32); --cs-tag-light-color: hsl(' + hue + ' 72% 32%); --cs-tag-light-bg: hsl(' + hue + ' 85% 50% / 0.13); --cs-tag-light-border: hsl(' + hue + ' 72% 42% / 0.24);"';
+  }
+
+  function firstDirectiveTag(value) {
+    const raw = String(value || "");
+    const trimmed = raw.trim();
+    const wholeBracket = trimmed.match(/^:t\[/i);
+    if (wholeBracket) {
+      const end = findDirectiveBracketEnd(trimmed, 2);
+      if (end === trimmed.length - 1) return trimmed.slice(3, end).trim();
+    }
+    const wholeSpace = trimmed.match(/^:t\s+(.+)$/i);
+    if (wholeSpace) return wholeSpace[1].trim();
+    let i = 0;
+    while (i < raw.length) {
+      const bracket = raw.slice(i).match(/^:t\[/i);
+      if (bracket) {
+        const end = findDirectiveBracketEnd(raw, i + 2);
+        if (end > i) return raw.slice(i + 3, end).trim();
+      }
+      const inline = raw.slice(i).match(/^:t\s+([^\s:]+)/i);
+      if (inline) return inline[1].trim();
+      i += 1;
+    }
+    return "";
+  }
+
+  function firstPartTag(p) {
+    if (!p) return "";
+    if (p.speculative) return "언급";
+    const flags = partFlagLabels(p);
+    return flags.length ? flags[0] : "";
+  }
+
   function renderDirectiveToken(kind, text, profiles, options) {
     const profile = profiles[text] || { channelId: "", channelName: text, channelImageUrl: "" };
     if (options && options.infoMode) {
       if (kind === "t") return '<span class="cs-info-tag">' + styledTextHtml(text) + "</span>";
       return infoProfileTextHtml(profile, options && options.disableProfileLinks);
     }
-    if (kind === "t") return '<span class="cs-text-badge">' + directiveHtml(text, options) + "</span>";
+    if (kind === "t") {
+      const toneClass = options && options.tagTone ? " cs-tag-tone" : "";
+      const toneAttr = options && options.tagTone ? tagToneStyleAttr(text) : "";
+      return '<span class="cs-text-badge' + toneClass + '"' + toneAttr + '>' + directiveHtml(text, options) + "</span>";
+    }
     return '<span class="cs-inline-profile">' + channelAvatarLinkHtml(profile, options && options.disableProfileLinks) + "</span>";
   }
   function directiveHtml(value, options) {
@@ -1328,6 +1478,9 @@
     const prev = s.getElementById("cs-prev");
     const next = s.getElementById("cs-next");
     const refresh = s.getElementById("cs-refresh");
+    const updateRefresh = s.getElementById("cs-update-refresh");
+    const noticePrev = s.getElementById("cs-notice-prev");
+    const noticeNext = s.getElementById("cs-notice-next");
     const monthToggle = s.getElementById("cs-month-toggle");
     const gameToggle = s.getElementById("cs-game-toggle");
     const grid = s.getElementById("cs-grid");
@@ -1357,8 +1510,21 @@
       });
     });
     if (refresh) refresh.addEventListener("click", async () => {
-      refresh.textContent = "…";
+      refresh.textContent = "...";
       await refreshData(true);
+      render();
+    });
+    if (updateRefresh) updateRefresh.addEventListener("click", () => window.location.reload());
+    if (noticePrev) noticePrev.addEventListener("click", () => {
+      const items = noticeItems();
+      if (items.length < 2) return;
+      state.noticeIndex = (state.noticeIndex - 1 + items.length) % items.length;
+      render();
+    });
+    if (noticeNext) noticeNext.addEventListener("click", () => {
+      const items = noticeItems();
+      if (items.length < 2) return;
+      state.noticeIndex = (state.noticeIndex + 1) % items.length;
       render();
     });
 
@@ -1560,6 +1726,11 @@
     }
     html += "</div>";
 
+    const titleText = String(entry.title || entry.titleShort || "").trim();
+    if (titleText) {
+      html += '<div class="cs-pop-title">' + directiveHtml(titleText, { tagTone: true }) + "</div>";
+    }
+
     // 시간 줄: 과거 일정과 휴방에서는 생략
     if (!isPast && !isOff) {
       const timeText = entry.start
@@ -1575,17 +1746,26 @@
         .map((p, idx) => {
           const iconClass = p.speculative ? "cs-pop-icon cs-pop-icon-speculative" :
             isSpecialPart(p) ? "cs-pop-icon cs-pop-icon-collab" : "cs-pop-icon";
+          const firstTag = firstPartTag(p);
+          const tagToneAttr = tagToneStyleAttr(firstTag);
+          const tagToneClass = firstTag ? " cs-tag-tone" : "";
+          const partLabelClass = iconClass + " cs-pop-part-label" + tagToneClass;
           const label = partDisplayLabel(p, idx);
-          let popContent = '<span class="cs-pop-text">' + directiveHtml(p.content) + "</span>";
-          if (p.displayType === "tag") popContent = '<span class="cs-text-badge">' + directiveHtml(p.content) + "</span>";
+          let popContent = '<span class="cs-pop-text cs-pop-part-text">' + directiveHtml(p.content, { tagTone: true }) + "</span>";
+          if (p.displayType === "tag") {
+            const contentToneAttr = firstTag ? tagToneAttr : tagToneStyleAttr(p.content);
+            popContent = '<span class="cs-text-badge cs-pop-part-text cs-tag-tone"' + contentToneAttr + '>' + directiveHtml(p.content, { tagTone: true }) + "</span>";
+          }
           if (p.displayType === "profile" && p.profile) {
             popContent = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
           }
           let group = '<div class="cs-pop-part">' +
-            '<div class="cs-pop-row cs-pop-part-main">' + (label ? '<span class="' + iconClass + '">' + escapeHtml(label) + "</span>" : "") +
+            '<div class="cs-pop-row cs-pop-part-main">' + (label ? '<span class="' + partLabelClass + '"' + tagToneAttr + '>' + escapeHtml(label) + "</span>" : "") +
             popContent + "</div>";
           if ((p.official || p.otherChannel) && p.hostChannel) {
-            group += '<div class="cs-pop-members-row"><span class="cs-pop-members-label">진행</span><div class="cs-pop-members">' + channelAvatarLinkHtml(p.hostChannel) + "</div></div>";
+            const hostLabel = p.otherChannel ? "송출" : "진행";
+            const hostLabelClass = p.otherChannel ? "cs-pop-members-chip" : "cs-pop-members-label";
+            group += '<div class="cs-pop-members-row"><span class="' + hostLabelClass + '">' + hostLabel + '</span><div class="cs-pop-members">' + channelAvatarLinkHtml(p.hostChannel) + "</div></div>";
           }
           if (p.collab && p.members && p.members.length) {
             group += '<div class="cs-pop-members-row"><span class="cs-pop-members-chip">멤버</span><div class="cs-pop-members">' +
@@ -1595,7 +1775,7 @@
           const notesForPart = partNotes(p);
           if (notesForPart.length) {
             group += '<div class="cs-pop-part-notes"><div class="cs-pop-note-list">' + notesForPart.map((note) =>
-              '<div class="cs-pop-note-text">' + directiveHtml(note) + "</div>"
+              '<div class="cs-pop-note-text">' + directiveHtml(note, { tagTone: true }) + "</div>"
             ).join("") + "</div></div>";
           }
           group += "</div>";
@@ -1607,7 +1787,7 @@
     if (notes.length) {
       html += '<div class="cs-pop-note-box"><span class="cs-pop-icon">✎</span>' +
         '<div class="cs-pop-note-list">' + notes.map((note) =>
-          '<div class="cs-pop-note-text">' + directiveHtml(note) + "</div>"
+          '<div class="cs-pop-note-text">' + directiveHtml(note, { tagTone: true }) + "</div>"
         ).join("") + "</div></div>";
     }
 
@@ -1795,7 +1975,8 @@
 
   function renderGnimtiTab(pop, tab) {
     if (!pop) return;
-    const nextTab = tab || "members";
+    const tabs = gnimtiTabs();
+    const nextTab = tabs.some((item) => item.id === tab) ? tab : ((tabs[0] && tabs[0].id) || "members");
     pop.setAttribute("data-gnimti-tab", nextTab);
     pop.querySelectorAll("[data-gnimti-tab]").forEach((button) => {
       const active = button.getAttribute("data-gnimti-tab") === nextTab;
@@ -2371,6 +2552,7 @@
 
   function startAutoRefresh() {
     setInterval(runAutoRefreshIfDue, 30000);
+    setInterval(rotateNoticeIfNeeded, 3000);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") runAutoRefreshIfDue();
     });
