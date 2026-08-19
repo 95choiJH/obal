@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "오뱅알",
-  "version": "0.1.6",
+  "version": "1.2.1",
   "description": "치지직 스트리머 '따효니'님의 방송 일정을 채널 페이지에 표시하는 확장 프로그램입니다.",
   "minimum_chrome_version": "121",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "https://ggebdrlvzrgoyumlrnxe.supabase.co/*"
+    "https://ggebdrlvzrgoyumlrnxe.supabase.co/*",
+    "https://api.chzzk.naver.com/*"
   ],
   "action": {
     "default_title": "오뱅알",
@@ -37,11 +38,27 @@
     {
       "resources": [
         "icons/on_break.png",
+        "icons/on_break-white.png",
         "icons/undetermined.png",
+        "icons/undetermined-white.png",
         "icons/naver_cafe.png",
         "icons/video_donation.png",
         "icons/gamepad-icon.svg",
-        "icons/calendar-icon.svg"
+        "icons/calendar-icon.svg",
+        "images/gnimti.png",
+        "images/gnimti-btn.png",
+        "images/gnimti-logo.png",
+        "images/gnimti-back.png",
+        "images/gnimti2.png",
+        "images/gnimti/tierlist.png",
+        "images/gnimti/tier-s-back.png",
+        "images/gnimti/tier-a-back.png",
+        "images/gnimti/tier-b-back.png",
+        "images/gnimti/tier-c-back.png",
+        "images/gnimti/tier-d-back.png",
+        "images/gnimti/roster1.png",
+        "images/gnimti/roster2.png",
+        "images/gnimti/*/*.png"
       ],
       "matches": [
         "https://chzzk.naver.com/*"

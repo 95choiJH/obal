@@ -95,6 +95,10 @@
   .game-image-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .game-image-head input { flex: 1 1 auto; min-width: 0; }
   .game-meta-hint { margin-top: 5px; color: var(--text-mute); font-size: 12px; line-height: 1.35; }
+  .game-autocomplete-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+  .game-autocomplete-wrap input { width: 100%; }
+  .game-results { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; margin-top: 0; box-shadow: 0 12px 28px rgba(0,0,0,0.38); }
+  .game-results:empty { display: none; }
   .vod-item { padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: rgba(127,127,127,0.04); margin-bottom: 8px; }
   .vod-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
   .vod-head .style-toolbar { margin: 0; }
@@ -258,6 +262,8 @@
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface2);
     color: var(--text-dim); padding: 8px 10px; font-size: 13px; line-height: 1.45; }
   .note-editor-wrap { flex: 1 1 auto; min-width: 0; }
+  .part-notes-wrap { margin: 9px 0 0; padding: 9px; border: 1px solid rgba(127,127,127,0.14); border-radius: 8px; background: rgba(0,0,0,0.06); }
+  .part-note-item:last-of-type { margin-bottom: 8px; }
   .note-item .directive-editor.multiline { width: 100%; min-height: 58px; padding: 8px 10px;
     color: var(--text-dim); font-size: 13px; line-height: 1.45; }
   .note-item .icon-btn { margin-top: 3px; }
@@ -368,6 +374,194 @@
   @media (prefers-color-scheme: light) {
     .feedback-drawer .feedback-details a { color: #2563eb; }
   }
+
+  /* 모바일 프론트 UI 정렬 */
+  :root {
+    --bg: #101114; --surface: #1b1c1f; --surface2: #232427;
+    --border: #2e3033; --border-strong: #3a3c40;
+    --text: #efeff1; --text-dim: #c9cacd; --text-mute: #777a80;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f7; --surface: #ffffff; --surface2: #f0f2f4;
+      --border: #dfe2e6; --border-strong: #cfd4da;
+      --text: #1e2024; --text-dim: #555a61; --text-mute: #8b9097;
+    }
+  }
+  body { background: var(--bg); }
+  input, textarea, .directive-editor { background: var(--surface2); border-color: var(--border); color: var(--text); }
+  input:focus, textarea:focus, .directive-editor:focus { border-color: #00c878; box-shadow: 0 0 0 2px rgba(0,255,163,0.08); }
+  .topbar { background: rgba(16,17,20,0.94); border-color: var(--border); backdrop-filter: blur(10px); }
+  .topbar strong { color: var(--text); font-size: 16px; font-weight: 700; }
+  .topbar .ico { border-radius: 10px; background: #00c878; color: #062b20; }
+  .list { padding: 12px 14px 110px; }
+  .schedule-group-head, .info-head { margin: 14px 2px 10px; }
+  .group-label { color: var(--text-dim); font-size: 13px; font-weight: 800; }
+  .card { border-color: var(--border); border-radius: 10px; background: var(--surface); padding: 12px 14px; margin-bottom: 10px; }
+  .card.off { background: rgba(157,158,163,0.08); }
+  .card-head { gap: 7px; padding-bottom: 9px; margin-bottom: 10px; border-bottom: 1px solid rgba(127,127,127,0.12); }
+  .card-date { height: 30px; color: var(--text-dim); font-weight: 800; }
+  .row input.time { width: 82px; height: 34px; color: var(--text); font-weight: 700; }
+  .schedule-editor-section { margin: 10px 0; padding: 10px; border: 1px solid rgba(127,127,127,0.13); border-radius: 9px; background: rgba(0,0,0,0.08); }
+  .schedule-editor-section-head { margin: 0 0 8px; color: var(--text-dim); font-size: 12px; line-height: 1; font-weight: 900; }
+  .part-item, .vod-item, .game-image-item { border-color: rgba(127,127,127,0.16); background: rgba(255,255,255,0.025); border-radius: 8px; }
+  .part-item { padding: 9px; margin-bottom: 8px; border: 1px solid rgba(127,127,127,0.16); }
+  .part-item:last-child { border-bottom: 1px solid rgba(127,127,127,0.16); padding-bottom: 9px; }
+  .style-toolbar { gap: 5px; margin-bottom: 6px; }
+  .style-btn { border-color: var(--border-strong); background: #232427; color: var(--text-dim); border-radius: 7px; }
+  .style-btn:hover { border-color: #00c878; color: var(--text); background: #2b2d31; }
+  .insert-btn { color: #00FFA3; background: rgba(0,255,163,0.08); border-color: rgba(0,255,163,0.22); }
+  .directive-token { border-radius: 7px; }
+  .flag-toggle { border-color: var(--border-strong); background: rgba(255,255,255,0.02); border-radius: 8px; color: var(--text-dim); opacity: 0.72; }
+  .flag-toggle.on { border-color: #00c878; background: rgba(0,255,163,0.1); color: #00FFA3; opacity: 1; }
+  .toggle { background: #3a3c40; }
+  .toggle.on { background: #00c878; }
+  .add-btn { border-color: rgba(0,255,163,0.24); color: var(--text-dim); background: rgba(0,255,163,0.035); border-radius: 9px; font-weight: 800; }
+  .add-btn:hover { color: #00FFA3; background: rgba(0,255,163,0.08); }
+  .schedule-add-btn { height: 30px; padding: 0 10px; border-style: solid; }
+  .savebar { background: rgba(16,17,20,0.96); border-color: var(--border); backdrop-filter: blur(10px); }
+  .savebar button { background: #00c878; color: #062b20; border-radius: 9px; font-weight: 800; }
+  .toast, .directive-popup, .feedback-drawer { background: var(--surface); border-color: var(--border-strong); }
+  @media (prefers-color-scheme: light) {
+    .topbar, .savebar { background: rgba(245,246,247,0.94); }
+    .schedule-editor-section { background: rgba(0,0,0,0.025); }
+    .part-notes-wrap { background: rgba(0,0,0,0.025); }
+    .part-item, .vod-item, .game-image-item { background: rgba(255,255,255,0.7); }
+    .style-btn { background: #ffffff; }
+    .style-btn:hover { background: #f5f6f7; }
+    .insert-btn { color: #008a43; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.24); }
+    .savebar button, .topbar .ico, .toggle.on { background: #03a950; color: #ffffff; }
+  }
+  @media (max-width: 560px) {
+    .topbar { padding: 12px 14px; }
+    .card { padding: 12px; }
+    .card-head { flex-wrap: wrap; }
+    .card-date { flex: 1 1 145px; height: 34px; background: var(--surface2); border-color: var(--border); }
+    .flag-toggle { min-height: 32px; }
+    .style-btn { width: 32px; height: 30px; }
+    .insert-btn { width: auto; min-width: 56px; }
+    .add-btn.small { min-height: 38px; }
+  }
+
+  /* 모바일 프론트형 월간 + 상세 편집 */
+  .admin-schedule-calendar { position: relative; margin: 0 0 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .admin-calendar-head { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 30px; margin-bottom: 8px; }
+  .admin-calendar-title { position: absolute; left: 50%; transform: translateX(-50%); color: var(--text); font-size: 18px; line-height: 1; font-weight: 900; }
+  .admin-calendar-arrow { width: 30px; height: 30px; border-radius: 7px; background: transparent; color: #00FFA3; font-size: 22px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+  .admin-calendar-arrow:hover { background: rgba(0,255,163,0.08); }
+  .admin-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+  .admin-calendar-weekday { color: var(--text-mute); font-size: 12px; font-weight: 800; text-align: center; padding: 2px 0 4px; }
+  .admin-calendar-blank { min-height: 64px; border-radius: 8px; background: rgba(255,255,255,0.02); }
+  .admin-calendar-day { min-width: 0; min-height: 64px; padding: 7px 5px; border: 1px solid transparent; border-radius: 8px; background: var(--surface2); color: var(--text-dim); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; }
+  .admin-calendar-day:hover { border-color: var(--border-strong); background: #2b2d31; }
+  .admin-calendar-day.is-today { border-color: rgba(0,255,163,0.42); background: rgba(0,255,163,0.08); }
+  .admin-calendar-day.is-selected { border-color: #00c878; box-shadow: 0 0 0 1px rgba(0,255,163,0.2); }
+  .admin-calendar-day.has-schedule .admin-calendar-date { color: var(--text); }
+  .admin-calendar-day.is-off { background: rgba(157,158,163,0.1); }
+  .admin-calendar-date { color: var(--text-dim); font-size: 12px; font-weight: 800; line-height: 1; }
+  .admin-calendar-chip { width: 100%; max-width: 100%; padding: 3px 4px; border-radius: 6px; background: rgba(0,255,163,0.1); color: #00FFA3; font-size: 11px; font-weight: 800; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .admin-calendar-day.is-off .admin-calendar-chip { background: rgba(157,158,163,0.14); color: var(--text-dim); }
+  .admin-schedule-detail { margin-top: 10px; }
+  .admin-detail-title { margin: 0 2px 8px; color: var(--text-dim); font-size: 13px; font-weight: 900; }
+  .admin-detail-empty { min-height: 190px; padding: 22px 14px; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; }
+  .admin-detail-empty strong { color: var(--text); font-size: 16px; font-weight: 900; }
+  .admin-detail-empty span { color: var(--text-mute); font-size: 13px; font-weight: 700; }
+  .admin-schedule-detail > .card { margin-bottom: 0; }
+  @media (prefers-color-scheme: light) {
+    .admin-calendar-day:hover { background: #eceef0; }
+    .admin-calendar-blank { background: #fafafa; }
+    .admin-calendar-chip { color: #008a43; background: rgba(3,169,80,0.1); }
+  }
+  @media (max-width: 560px) {
+    .admin-schedule-calendar { padding: 10px; }
+    .admin-calendar-grid { gap: 4px; }
+    .admin-calendar-day, .admin-calendar-blank { min-height: 58px; }
+    .admin-calendar-chip { font-size: 10px; padding: 3px 2px; }
+  }
+
+  body { max-width: none; margin: 0; min-height: 100vh; }
+  #app { min-height: 100vh; display: block; }
+  .admin-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
+  .admin-sidebar { position: sticky; top: 0; height: 100vh; padding: 18px 12px; border-right: 1px solid var(--border); background: var(--surface); }
+  .admin-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .admin-brand .ico { width: 32px; height: 32px; border-radius: 9px; background: var(--mint); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .admin-brand .ico svg { width: 17px; height: 17px; }
+  .admin-brand-title { color: var(--text); font-size: 15px; font-weight: 900; line-height: 1.2; }
+  .admin-brand-sub { color: var(--text-mute); font-size: 12px; font-weight: 700; line-height: 1.3; }
+  .admin-menu { display: flex; flex-direction: column; gap: 6px; }
+  .content-placeholder { padding: 28px 18px; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--text-dim); font-size: 13px; font-weight: 700; text-align: center; }
+  .admin-menu-item { width: 100%; min-height: 40px; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--text-dim); font-size: 14px; font-weight: 800; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .admin-menu-item:hover { background: var(--surface2); color: var(--text); }
+  .admin-menu-item.active { background: rgba(0,255,163,0.1); color: var(--mint); }
+  .admin-main { min-width: 0; padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
+  .admin-panel[hidden] { display: none; }
+  .admin-panel { min-width: 0; }
+  .topbar { position: sticky; top: 0; }
+  .editor-columns { min-width: 0; }
+  #infoList, #noticeList { display: flex; flex-direction: column; gap: 8px; }
+  #noticeList > .card { min-width: 0; margin-bottom: 0; }
+
+  .info-card { padding: 13px; }
+  .info-field { min-width: 0; width: 100%; }
+  .info-editor-shell { width: 100%; min-width: 0; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-strong); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), var(--surface2); transition: border-color 0.14s, box-shadow 0.14s, background 0.14s; }
+  .info-editor-shell:focus-within { border-color: #00c878; background: var(--surface2); box-shadow: 0 0 0 3px rgba(0,255,163,0.1); }
+  .info-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; padding: 5px 6px; border-bottom: 1px solid rgba(127,127,127,0.16); background: rgba(0,0,0,0.08); }
+  .info-card-toolbar { flex: 1 1 auto; min-width: 0; min-height: 28px; display: flex; align-items: center; gap: 5px; }
+  .info-card-toolbar .style-toolbar { margin: 0; }
+  .info-editor-shell .directive-editor { min-height: 148px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .info-editor-shell .directive-editor:focus { border-color: transparent; box-shadow: none; }
+
+  .info-card-actions { flex: 0 0 auto; min-height: 28px; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+  .info-card-actions .flag-toggle { margin-left: 3px; }
+  .info-textarea { display: block; width: 100%; min-width: 0; min-height: 148px; resize: vertical; padding: 12px 13px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1.65; outline: none; scrollbar-gutter: stable; }
+  .info-textarea::placeholder { color: var(--text-mute); }
+  .info-textarea:focus { box-shadow: none; }
+  @media (prefers-color-scheme: light) {
+    .info-editor-shell { background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72)), var(--surface2); }
+    .info-card-head { background: rgba(0,0,0,0.025); }
+  }
+  .notice-card { padding: 13px; }
+  .notice-field { min-width: 0; width: 100%; }
+  .notice-editor-shell { width: 100%; min-width: 0; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-strong); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), var(--surface2); transition: border-color 0.14s, box-shadow 0.14s, background 0.14s; }
+  .notice-editor-shell:focus-within { border-color: #00c878; background: var(--surface2); box-shadow: 0 0 0 3px rgba(0,255,163,0.1); }
+  .notice-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; padding: 5px 6px; border-bottom: 1px solid rgba(127,127,127,0.16); background: rgba(0,0,0,0.08); }
+  .notice-card-toolbar { flex: 1 1 auto; min-width: 0; min-height: 28px; display: flex; align-items: center; gap: 5px; }
+  .notice-card-toolbar .style-toolbar { margin: 0; }
+  .notice-card-actions { flex: 0 0 auto; min-height: 28px; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+  .notice-editor-shell .directive-editor { min-height: 148px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .notice-editor-shell .directive-editor:focus { border-color: transparent; box-shadow: none; }
+  .notice-textarea { display: block; width: 100%; min-width: 0; min-height: 148px; resize: vertical; padding: 12px 13px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1.65; outline: none; scrollbar-gutter: stable; }
+  .notice-textarea::placeholder { color: var(--text-mute); }
+  .notice-textarea:focus { box-shadow: none; }
+  @media (prefers-color-scheme: light) {
+    .notice-editor-shell { background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72)), var(--surface2); }
+    .notice-card-head { background: rgba(0,0,0,0.025); }
+  }
+
+  .feedback-drawer-shell, .feedback-backdrop { display: none !important; }
+  .feedback-drawer { position: static; width: auto; min-height: calc(100vh - 140px); border-left: 0; box-shadow: none; background: transparent; }
+  .feedback-drawer-head { padding: 12px 14px; }
+  .feedback-drawer-close { display: none; }
+  .feedback-drawer-body { overflow: visible; }
+  .feedback-drawer .feedback-type { background: #475569; color: #fff; font-size: 12px; }
+  .feedback-drawer .feedback-details a { color: #60a5fa; }
+  .savebar { max-width: none; left: 220px; }
+  @media (min-width: 900px) {
+    body { max-width: none; }
+    .editor-columns { display: block; padding: 0; }
+    .editor-columns > .list { padding: 12px 14px 0; }
+    #list { padding-bottom: 0; }
+    .savebar { max-width: none; }
+  }
+  @media (max-width: 760px) {
+    .admin-shell { grid-template-columns: 1fr; }
+    .admin-sidebar { position: sticky; top: 0; z-index: 8; height: auto; padding: 10px 10px 8px; border-right: 0; border-bottom: 1px solid var(--border); }
+    .admin-brand { display: none; }
+    .admin-menu { flex-direction: row; gap: 5px; overflow-x: auto; }
+    .admin-menu-item { flex: 0 0 auto; width: auto; min-width: 74px; justify-content: center; text-align: center; }
+    .savebar { left: 0; }
+  }
+
 </style>
 </head>
 <body>
@@ -391,67 +585,45 @@
 </div>
 
 <div id="app" class="hidden">
-  <div class="topbar">
-    <div class="ico">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#04342c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-    </div>
-    <div style="flex:1;min-width:0;">
-      <p style="font-size:14px;font-weight:600;">일정 편집</p>
-      <p id="channelLabel" style="font-size:12px;color:var(--text-dim);">채널</p>
-    </div>
-    <button id="feedbackToggle" class="feedback-toggle" type="button" aria-expanded="false">문의함<span id="feedbackToggleCount" class="feedback-toggle-count">0</span></button>
-    <button id="logoutBtn" class="icon-btn" aria-label="로그아웃">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-    </button>
-  </div>
-
-  <div class="editor-columns">
-  <section class="list info-section">
-    <div class="info-head">
-      <p class="group-label">&#49548;&#49885;</p>
-    </div>
-    <div id="infoList"></div>
-  </section>
-
-  <section id="list" class="list"></section>
-  </div>
-
-  <div id="feedbackDrawerShell" class="feedback-drawer-shell" hidden>
-    <div id="feedbackBackdrop" class="feedback-backdrop"></div>
-    <aside class="feedback-drawer" role="dialog" aria-modal="true" aria-label="문의 및 제보 관리">
-      <div class="feedback-drawer-head">
-        <span class="feedback-drawer-title">문의·제보함</span>
-        <span id="feedbackCount" class="feedback-count"></span>
-        <button id="feedbackRefresh" class="feedback-refresh" type="button">새로고침</button>
-        <button id="feedbackDrawerClose" class="feedback-drawer-close" type="button" aria-label="닫기">×</button>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#04342c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+        <div><div class="admin-brand-title">&#44288;&#47532;&#51088;</div><div class="admin-brand-sub" id="channelLabel">&#52292;&#45328;</div></div>
       </div>
-      <div class="feedback-filters" id="feedbackFilters">
-        <span class="feedback-filter-label">상태</span>
-        <button class="feedback-filter active" data-feedback-filter="all">전체</button>
-        <button class="feedback-filter" data-feedback-filter="new">접수</button>
-        <button class="feedback-filter" data-feedback-filter="checking">확인중</button>
-        <button class="feedback-filter" data-feedback-filter="hold">보류</button>
-        <button class="feedback-filter" data-feedback-filter="done">처리완료</button>
-      </div>
-      <div class="feedback-filters" id="feedbackTypeFilters">
-        <span class="feedback-filter-label">종류</span>
-        <button class="feedback-filter active" data-feedback-type-filter="all">전체</button>
-      </div>
-      <div class="feedback-drawer-body" id="feedbackList"><div class="empty" style="padding:18px 0;">불러오는 중…</div></div>
+      <nav class="admin-menu" aria-label="&#44288;&#47532;&#51088; &#47700;&#45684;">
+        <button type="button" class="admin-menu-item active" data-admin-menu="schedule">&#51068;&#51221;</button>
+        <button type="button" class="admin-menu-item" data-admin-menu="info">&#49548;&#49885;</button>
+        <button type="button" class="admin-menu-item" data-admin-menu="notice">&#44277;&#51648;</button>
+        <button type="button" class="admin-menu-item" data-admin-menu="feedback">&#47928;&#51032;&#54632;<span id="feedbackToggleCount" class="feedback-toggle-count">0</span></button>
+      </nav>
     </aside>
+    <main class="admin-main">
+      <div class="topbar">
+        <div style="flex:1;min-width:0;"><p style="font-size:14px;font-weight:700;">&#50724;&#45720;&#51032; &#48169;&#49569; &#50508;&#47548;</p><p style="font-size:12px;color:var(--text-dim);">&#47700;&#45684;&#47484; &#49440;&#53469;&#54644; &#44288;&#47532;&#54616;&#49464;&#50836;</p></div>
+        <button id="logoutBtn" class="icon-btn" aria-label="&#47196;&#44536;&#50500;&#50883;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+      </div>
+      <section id="schedulePanel" class="admin-panel" data-admin-panel="schedule"><section id="list" class="list"></section></section>
+      <section id="infoPanel" class="admin-panel" data-admin-panel="info" hidden><section class="list info-section"><div class="schedule-group-head"><p class="group-label">&#49548;&#49885;/&#50696;&#51221; &#53080;&#53584;&#52768;</p></div><div id="infoList"></div></section></section>
+      <section id="noticePanel" class="admin-panel" data-admin-panel="notice" hidden><section class="list info-section"><div id="noticeList"></div></section></section>
+      <section id="feedbackPanel" class="admin-panel" data-admin-panel="feedback" hidden>
+        <aside class="feedback-drawer" aria-label="&#47928;&#51032; &#48143; &#51228;&#48372; &#44288;&#47532;">
+          <div class="feedback-drawer-head"><span class="feedback-drawer-title">&#47928;&#51032;&#54632;</span><span id="feedbackCount" class="feedback-count"></span><button id="feedbackRefresh" class="feedback-refresh" type="button">&#49352;&#47196;&#44256;&#52840;</button><button id="feedbackDrawerClose" class="feedback-drawer-close" type="button" aria-label="&#45803;&#44592;">&times;</button></div>
+          <div class="feedback-filters" id="feedbackFilters"><span class="feedback-filter-label">&#49345;&#53468;</span><button class="feedback-filter active" data-feedback-filter="all">&#51204;&#52404;</button><button class="feedback-filter" data-feedback-filter="new">&#51217;&#49688;</button><button class="feedback-filter" data-feedback-filter="checking">&#54869;&#51064;&#51473;</button><button class="feedback-filter" data-feedback-filter="hold">&#48372;&#47448;</button><button class="feedback-filter" data-feedback-filter="done">&#52376;&#47532;&#50756;&#47308;</button></div>
+          <div class="feedback-filters" id="feedbackTypeFilters"><span class="feedback-filter-label">&#51333;&#47448;</span><button class="feedback-filter active" data-feedback-type-filter="all">&#51204;&#52404;</button></div>
+          <div class="feedback-drawer-body" id="feedbackList"><div class="empty" style="padding:18px 0;">&#48520;&#47084;&#50724;&#45716; &#51473;</div></div>
+        </aside>
+      </section>
+    </main>
   </div>
-
-  <div class="savebar">
-    <span id="saveStatus" class="status">변경 없음</span>
-    <button id="saveBtn" disabled>저장</button>
-  </div>
+  <div class="savebar"><span id="saveStatus" class="status">&#48320;&#44221; &#50630;&#51020;</span><button id="saveBtn" disabled>&#51200;&#51109;</button></div>
 </div>
 
 <div id="toast" class="toast"></div>
 
 <script src="config.js?v=20260712-feedback-drawer"></script>
 <script src="vendor/supabase-2.45.4.min.js"></script>
-<script src="app.js?v=20260730-info-scrolls"></script>
+<script src="app.js?v=20260819-admin"></script>
 </body>
 </html>
 

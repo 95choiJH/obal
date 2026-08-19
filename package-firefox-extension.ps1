@@ -12,7 +12,8 @@ $allowedFiles = @(
   "manifest.json",
   "background.js",
   "content.js",
-  "config.js"
+  "config.js",
+  "streamer-ids.js"
 )
 $allowedIconFiles = @(
   "icons\icon16.png",
@@ -20,18 +21,28 @@ $allowedIconFiles = @(
   "icons\icon48.png",
   "icons\icon128.png",
   "icons\on_break.png",
+  "icons\on_break-white.png",
   "icons\undetermined.png",
+  "icons\undetermined-white.png",
   "icons\naver_cafe.png",
   "icons\video_donation.png",
   "icons\gamepad-icon.svg",
-  "icons\calendar-icon.svg"
+  "icons\calendar-icon.svg",
+  "images\gnimti.png",
+  "images\gnimti2.png",
+  "images\gnimti-btn.png",
+  "images\gnimti-logo.png",
+  "images\gnimti-back.png"
 )
+$allowedGnimtiFiles = Get-ChildItem -LiteralPath (Join-Path $root "images\gnimti") -Recurse -File -Filter "*.png" | ForEach-Object {
+  $_.FullName.Substring($root.Length + 1)
+}
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stage "icons") | Out-Null
 
-foreach ($relative in ($allowedFiles + $allowedIconFiles)) {
+foreach ($relative in ($allowedFiles + $allowedIconFiles + $allowedGnimtiFiles)) {
   $source = Join-Path $root $relative
   if (-not (Test-Path -LiteralPath $source)) { throw "Missing package file: $relative" }
   $target = Join-Path $stage $relative
@@ -46,7 +57,7 @@ if ($manifest.PSObject.Properties.Name -contains "minimum_chrome_version") {
   $manifest.PSObject.Properties.Remove("minimum_chrome_version")
 }
 $manifest.background = [ordered]@{
-  scripts = @("config.js", "background.js")
+  scripts = @("streamer-ids.js", "config.js", "background.js")
   service_worker = "background.js"
 }
 $manifest.browser_specific_settings.gecko.strict_min_version = "140.0"

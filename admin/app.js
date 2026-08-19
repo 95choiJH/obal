@@ -13,6 +13,9 @@
   let feedback = [];     // 문의·제보함 (읽기 전용)
   let feedbackFilter = "all";
   let feedbackTypeFilter = "all";
+  let activeAdminMenu = "schedule";
+  let selectedScheduleDate = "";
+  let scheduleMonthOffset = 0;
   let original = "";     // 원본 스냅샷 (dirty 판정용)
   let deletedIds = [];    // 저장 시 삭제할 기존 일정 행 id
   let deletedInfoIds = []; // 저장 시 삭제할 기존 소식/예정 컨텐츠 행 id
@@ -52,6 +55,7 @@
         speculative: !!p.speculative,
         members: (p.members || []).map((m) => m.channelId),
         hostChannel: (p.hostChannel && p.hostChannel.channelId) || "",
+        notes: normalizeNotes(p.notes),
       })),
       gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "" })),
       vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "" })),
@@ -81,6 +85,56 @@
     t.textContent = msg;
     t.classList.add("show");
     setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  function backupTimestamp() {
+    return new Date().toISOString().replace(/[:.]/g, "-");
+  }
+
+  function backupDraftRows() {
+    return rows.map((r) => ({
+      ...r,
+      parts: (r.parts || []).map((p) => ({
+        ...p,
+        notes: normalizeNotes(p.notes || p.note),
+      })),
+      notes: normalizeNotes(r.notes || r.note),
+    }));
+  }
+
+  async function createScheduleBackup(reason) {
+    const infoTable = cfg.upcomingContentTableName || "upcoming_content";
+    const [{ data: scheduleData, error: scheduleError }, { data: infoData, error: infoError }] = await Promise.all([
+      sb.from(cfg.tableName).select("*").order("date", { ascending: true }),
+      sb.from(infoTable).select("*").order("sort_order", { ascending: true }).order("id", { ascending: true }),
+    ]);
+    if (scheduleError) throw scheduleError;
+    if (infoError) throw infoError;
+
+    const payload = {
+      version: 1,
+      reason: reason || "before-save",
+      createdAt: new Date().toISOString(),
+      channelId: cfg.channelId,
+      tables: {
+        [cfg.tableName]: scheduleData || [],
+        [infoTable]: infoData || [],
+      },
+      draft: {
+        rows: backupDraftRows(),
+        info: info.map((item) => ({ ...item })),
+        deletedIds: [...deletedIds],
+        deletedInfoIds: [...deletedInfoIds],
+      },
+    };
+
+    const filePath = cfg.channelId + "/" + backupTimestamp() + "-" + (reason || "before-save") + ".json";
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const { error: uploadError } = await sb.storage
+      .from("schedule-backups")
+      .upload(filePath, blob, { contentType: "application/json;charset=utf-8", upsert: false });
+    if (uploadError) throw uploadError;
+    return filePath;
   }
 
   // ---- 로그인 ----
@@ -280,7 +334,7 @@
         button.disabled = true;
         const { error } = await sb.from(cfg.feedbackTableName || "feedback").update({ status }).eq("id", id);
         if (error) {
-          toast("상태 변경 실패: " + error.message);
+          toast("\ubb38\uc758 \uc0c1\ud0dc \ubcc0\uacbd \uc2e4\ud328: " + error.message);
           button.disabled = false;
           return;
         }
@@ -298,60 +352,197 @@
     return String(b.date || "").localeCompare(String(a.date || ""));
   }
 
+  function monthKeyFromOffset(offset) {
+    const baseKey = selectedScheduleDate || todayKey();
+    const [y, m] = baseKey.split("-").map(Number);
+    const d = new Date(y, (m || 1) - 1 + offset, 1);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+
+  function scheduleCalendarHtml() {
+    const month = monthKeyFromOffset(scheduleMonthOffset);
+    const byDate = new Map(rows.map((row, index) => [row.date, { row, index }]));
+    const first = new Date(month.year, month.month - 1, 1);
+    const days = new Date(month.year, month.month, 0).getDate();
+    let html = '<section class="admin-schedule-calendar">' +
+      '<div class="admin-calendar-head">' +
+        '<button type="button" class="admin-calendar-arrow" data-admin-month="prev" aria-label="이전 달">‹</button>' +
+        '<div class="admin-calendar-title">' + month.year + "." + String(month.month).padStart(2, "0") + '</div>' +
+        '<button type="button" class="admin-calendar-arrow" data-admin-month="next" aria-label="다음 달">›</button>' +
+      '</div>' +
+      '<div class="admin-calendar-grid">' + WEEK.map((day) => '<div class="admin-calendar-weekday">' + day + '</div>').join("");
+    for (let i = 0; i < first.getDay(); i++) html += '<div class="admin-calendar-blank"></div>';
+    for (let day = 1; day <= days; day++) {
+      const key = month.year + "-" + String(month.month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+      const item = byDate.get(key);
+      const row = item && item.row;
+      const classes = ["admin-calendar-day"];
+      if (key === todayKey()) classes.push("is-today");
+      if (key === selectedScheduleDate) classes.push("is-selected");
+      if (row) classes.push("has-schedule");
+      if (row && row.status === "off") classes.push("is-off");
+      const label = row ? (row.status === "off" ? "휴방" : (row.start_time || "미정")) : "";
+      html += '<button type="button" class="' + classes.join(" ") + '" data-admin-date="' + key + '">' +
+        '<span class="admin-calendar-date">' + day + '</span>' +
+        (label ? '<span class="admin-calendar-chip">' + esc(label) + '</span>' : '') +
+      '</button>';
+    }
+    const used = first.getDay() + days;
+    const trailing = used % 7;
+    if (trailing) for (let i = trailing; i < 7; i++) html += '<div class="admin-calendar-blank"></div>';
+    return html + '</div></section>';
+  }
+
+  function selectedScheduleIndex() {
+    if (!selectedScheduleDate) return -1;
+    return rows.findIndex((row) => row.date === selectedScheduleDate);
+  }
+
+  function selectedScheduleDetailHtml() {
+    const index = selectedScheduleIndex();
+    const label = selectedScheduleDate ? fmtDate(selectedScheduleDate) : "날짜 선택";
+    if (index < 0) {
+      return '<section class="admin-schedule-detail"><div class="admin-detail-empty">' +
+        '<strong>' + esc(label) + '</strong>' +
+        '<span>등록된 일정이 없습니다.</span>' +
+        '<button type="button" class="add-btn" data-add-selected-date="1">이 날짜에 일정 추가</button>' +
+      '</div></section>';
+    }
+    return '<section class="admin-schedule-detail"><div class="admin-detail-title">' + esc(label) + '</div>' + cardHtml(rows[index], index) + '</section>';
+  }
   function render() {
     const list = $("list");
-    const tKey = todayKey();
     rows.sort(compareScheduleDate);
+    if (!selectedScheduleDate) selectedScheduleDate = rows.find((row) => row.date === todayKey()) ? todayKey() : ((rows[0] && rows[0].date) || todayKey());
 
-    const addHeader = '<div class="schedule-group-head"><p class="group-label">\uC77C\uC815</p><button type="button" class="add-btn schedule-add-btn" data-addrow="1">+ \uB0A0\uC9DC</button></div>';
-
-    if (rows.length === 0) {
-      list.innerHTML = addHeader + '<div class="empty">\uB4F1\uB85D\uB41C \uC77C\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
-    } else {
-      let html = addHeader;
-      rows.forEach((r, i) => {
-        html += cardHtml(r, i);
-      });
-      list.innerHTML = html;
+    if (list) {
+      const addHeader = '<div class="schedule-group-head"><p class="group-label">\uc77c\uc815</p><button type="button" class="add-btn schedule-add-btn" data-addrow="1">+ \ub0a0\uc9dc</button></div>';
+      list.innerHTML = addHeader + scheduleCalendarHtml() + selectedScheduleDetailHtml();
+      bindCards();
     }
 
-    bindCards();
     renderInfo();
+    renderNotice();
+    setActiveAdminMenu(activeAdminMenu);
     bindDirectiveAutocompletes();
   }
+
   function sortInfoForVisibility() {
     info.sort((a, b) => Number(!!a.hidden) - Number(!!b.hidden));
+  }
+
+  function isNoticeInfoItem(item) {
+    return /^@notice\s*:/i.test(String((item && item.content) || "").trim());
+  }
+
+  function isExtensionVersionInfoItem(item) {
+    return /^@extension-version\s*:/i.test(String((item && item.content) || "").trim());
+  }
+
+  function noticeText(item) {
+    return String((item && item.content) || "").trim().replace(/^@notice\s*:\s*/i, "");
+  }
+
+  function noticeContent(value) {
+    return "@notice:" + String(value || "").trim();
   }
 
   function renderInfo() {
     sortInfoForVisibility();
     const list = $("infoList");
-    list.innerHTML = info.length
-      ? info.map((u, i) => infoItemHtml(u, i)).join("")
-      : '<div class="empty" style="padding:16px 0;">등록된 소식이 없습니다.</div>';
+    if (!list) return;
+    const visibleItems = info.map((u, i) => ({ u, i })).filter((item) => !isNoticeInfoItem(item.u));
+    list.innerHTML = visibleItems.length
+      ? visibleItems.map((item) => infoItemHtml(item.u, item.i)).join("")
+      : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uc18c\uc2dd\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
 
     const add = document.createElement("button");
     add.className = "add-btn info-add-card";
-    add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>항목 추가';
+    add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>\ud56d\ubaa9 \ucd94\uac00';
     add.onclick = addInfoRow;
     list.appendChild(add);
 
     bindInfoCards();
     bindDirectiveAutocompletes();
-  }
+  }
+
+  function noticeListHtml() {
+    const notices = info.map((u, i) => ({ u, i })).filter((item) => isNoticeInfoItem(item.u));
+    return notices.length ? notices.map((item) => {
+      const text = noticeText(item.u);
+      const fieldId = "notice-content-" + item.i;
+      return '<div class="card notice-card" data-notice-card="' + item.i + '">' +
+        '<div class="notice-field">' +
+          '<div class="notice-editor-shell">' +
+            '<div class="notice-card-head">' +
+              '<div class="notice-card-toolbar"></div>' +
+              '<div class="notice-card-actions">' + deleteNoticeBtn(item.i) + '</div>' +
+            '</div>' +
+            '<textarea id="' + fieldId + '" class="notice-textarea" data-notice-content="' + item.i + '" placeholder="\uacf5\uc9c0 \ub0b4\uc6a9\uc744 \uc785\ub825\ud558\uc138\uc694">' + esc(text) + '</textarea>' +
+          '</div>' +
+        '</div>' +
+      "</div>";
+    }).join("") : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uacf5\uc9c0\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
+  }
+
+  function renderNotice() {
+    const list = $("noticeList");
+    if (!list) return;
+    list.innerHTML = '<div class="schedule-group-head"><p class="group-label">\uacf5\uc9c0</p><button type="button" class="add-btn schedule-add-btn" data-add-notice="1">+ \uacf5\uc9c0</button></div>' + noticeListHtml();
+    bindNoticeCards();
+    bindDirectiveAutocompletes();
+  }
+
+  function deleteNoticeBtn(i) {
+    return '<button class="icon-btn" data-notice-del="' + i + '" aria-label="\uc0ad\uc81c">' + trashSvg() + "</button>";
+  }
+
+  function bindNoticeCards() {
+    document.querySelectorAll("[data-add-notice]").forEach((el) => {
+      el.onclick = () => {
+        info.push({ id: null, content: noticeContent(""), hidden: true });
+        renderNotice();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-notice-content]").forEach((el) => {
+      const i = +el.getAttribute("data-notice-content");
+      el.oninput = () => {
+        info[i].content = noticeContent(el.value);
+        info[i].hidden = true;
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-notice-del]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-notice-del");
+        if (info[i].id) deletedInfoIds.push(info[i].id);
+        info.splice(i, 1);
+        renderNotice();
+        markDirty();
+      };
+    });
+  }
 function infoItemHtml(u, i) {
+    const text = u.content || "";
+    const fieldId = "info-content-" + i;
     return (
-      '<div class="card" data-ii="' + i + '">' +
-        '<div class="row info-card-row" style="margin-bottom:0;">' +
-          '<div class="move-col">' +
-            '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="위로 이동">▲</button>' +
-            '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="아래로 이동">▼</button>' +
-          "</div>" +
-          '<div style="flex:1;min-width:0"><textarea data-if="content" data-ii="' + i + '" placeholder="소식 내용을 입력하세요">' + esc(u.content) + '</textarea>' +
-          '<div class="directive-preview" data-info-preview="' + i + '" style="margin:4px 0 0">' + directivePreviewHtml(u.content, null) + '</div></div>' +
-          '<button type="button" class="flag-toggle' + (u.hidden ? " on" : "") + '" data-ihiddentoggle="' + i + '" title="확장 프로그램에서 이 소식을 숨깁니다">숨김</button>' +
-          deleteInfoBtn(i) +
-        "</div>" +
+      '<div class="card info-card" data-ii="' + i + '">' +
+        '<div class="info-field">' +
+          '<div class="info-editor-shell">' +
+            '<div class="info-card-head">' +
+              '<div class="info-card-toolbar"></div>' +
+              '<div class="info-card-actions">' +
+                '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="\uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
+                '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="\uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
+                '<button type="button" class="flag-toggle' + (u.hidden ? " on" : "") + '" data-ihiddentoggle="' + i + '" title="\ud655\uc7a5 \ud504\ub85c\uadf8\ub7a8\uc5d0\uc11c \uc774 \uc18c\uc2dd\uc744 \uc228\uae41\ub2c8\ub2e4">\uc228\uae40</button>' +
+                deleteInfoBtn(i) +
+              '</div>' +
+            '</div>' +
+            '<textarea id="' + fieldId + '" class="info-textarea" data-if="content" data-ii="' + i + '" placeholder="\uc18c\uc2dd \ub0b4\uc6a9\uc744 \uc785\ub825\ud558\uc138\uc694">' + esc(text) + '</textarea>' +
+          '</div>' +
+          '<div class="directive-preview" data-info-preview="' + i + '" style="margin:6px 0 0">' + directivePreviewHtml(text, null) + '</div>' +
+        '</div>' +
       "</div>"
     );
   }
@@ -463,14 +654,14 @@ function infoItemHtml(u, i) {
         '<button type="button" class="icon-btn" data-del-note="' + i + '-' + ni + '" aria-label="메모 삭제">' + trashSvg() + '</button>' +
       '</div>'
     ).join("");
-    return '<div class="notes-wrap">' + items +
+    return '<div class="notes-wrap schedule-editor-section"><div class="schedule-editor-section-head">' + (isOff ? "휴방 메모" : "메모") + '</div>' + items +
       '<button type="button" class="add-btn small" data-add-note="' + i + '">+ 메모 추가</button></div>';
   }
   function partsListHtml(r, i) {
     const parts = r.parts || [];
     const itemsHtml = parts.map((p, pi) => partItemHtml(i, p, pi, parts.length)).join("");
     return (
-      '<div class="parts-wrap">' + itemsHtml +
+      '<div class="parts-wrap schedule-editor-section"><div class="schedule-editor-section-head">컨텐츠</div>' + itemsHtml +
         '<button class="add-btn small" data-addpart="' + i + '">+ 부 추가</button>' +
       "</div>"
     );
@@ -482,7 +673,7 @@ function infoItemHtml(u, i) {
     const images = r.gameImages || [];
     const itemsHtml = images.map((g, gi) => gameImageItemHtml(i, g, gi)).join("");
     return (
-      '<div class="game-images-wrap">' + itemsHtml +
+      '<div class="game-images-wrap schedule-editor-section"><div class="schedule-editor-section-head">게임</div>' + itemsHtml +
         '<button class="add-btn small" data-addgameimg="' + i + '">+ \uAC8C\uC784 \uCD94\uAC00</button>' +
       "</div>"
     );
@@ -492,18 +683,69 @@ function infoItemHtml(u, i) {
     return (
       '<div class="game-image-item">' +
         '<div class="game-image-head">' +
-          '<input type="text" data-gif="label" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.label || "") + '" placeholder="\uAC8C\uC784\uBA85 (\uC608: \uBC1C\uB85C\uB780\uD2B8)" />' +
+          '<div class="game-autocomplete-wrap"><input type="text" data-gif="label" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.label || "") + '" placeholder="\uAC8C\uC784\uBA85 (\uC608: \uBC1C\uB85C\uB780\uD2B8)" autocomplete="off" /><div class="member-results game-results" data-game-results="' + i + '-' + gi + '"></div></div>' +
           '<button class="icon-btn" data-delgameimg="' + i + "-" + gi + '" aria-label="\uAC8C\uC784 \uC0AD\uC81C">' + trashSvg() + "</button>" +
         '</div>' +
         '<div class="game-meta-hint">\uD504\uB860\uD2B8 \uAC8C\uC784\uB9CC\uBCF4\uAE30\uB294 \uAC8C\uC784\uBA85\uC73C\uB85C \uC9D1\uACC4\uB429\uB2C8\uB2E4.</div>' +
       '</div>'
     );
   }
+  function knownGameLabels(excludeInput) {
+    const seen = new Set();
+    const labels = [];
+    rows.forEach((row) => {
+      (row.gameImages || []).forEach((game) => {
+        const label = String(game && game.label || "").trim();
+        if (!label) return;
+        const key = label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        labels.push(label);
+      });
+    });
+    if (excludeInput && excludeInput.value) {
+      const exact = excludeInput.value.trim().toLowerCase();
+      return labels.filter((label) => label.toLowerCase() !== exact);
+    }
+    return labels;
+  }
+
+  function bindGameAutocomplete(input) {
+    if (input.dataset.gameAutocompleteBound) return;
+    input.dataset.gameAutocompleteBound = "1";
+    const results = document.querySelector('[data-game-results="' + input.getAttribute("data-i") + '-' + input.getAttribute("data-gi") + '"]');
+    if (!results) return;
+    const close = () => { results.innerHTML = ""; };
+    const apply = (label) => {
+      input.value = label;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      close();
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+    const render = () => {
+      const query = input.value.trim().toLowerCase();
+      const matches = knownGameLabels(input)
+        .filter((label) => !query || label.toLowerCase().includes(query))
+        .slice(0, 8);
+      if (!matches.length) { close(); return; }
+      results.innerHTML = matches.map((label, index) =>
+        '<button type="button" class="member-result game-result" data-game-pick="' + index + '"><span>' + esc(label) + '</span></button>'
+      ).join("");
+      results.querySelectorAll("[data-game-pick]").forEach((button) => {
+        bindInstantMemberResult(button, () => apply(matches[+button.getAttribute("data-game-pick")]));
+      });
+    };
+    input.addEventListener("input", render);
+    input.addEventListener("focus", render);
+    input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+    input.addEventListener("blur", () => setTimeout(close, 120));
+  }
   function vodsListHtml(r, i) {
     const vods = r.vods || [];
     const itemsHtml = vods.map((v, vi) => vodItemHtml(i, v, vi)).join("");
     return (
-      '<div class="vods-wrap">' +        itemsHtml +
+      '<div class="vods-wrap schedule-editor-section"><div class="schedule-editor-section-head">다시보기</div>' +        itemsHtml +
         '<button class="add-btn small" data-addvod="' + i + '">+ 다시보기 추가</button>' +
       "</div>"
     );
@@ -526,6 +768,21 @@ function infoItemHtml(u, i) {
     return '<button class="icon-btn" data-delvod="' + i + "-" + vi + '" aria-label="다시보기 삭제">' + trashSvg() + "</button>";
   }
 
+  function partNotesListHtml(i, pi, p) {
+    const notes = p.notes || [];
+    const items = notes.map((note, ni) =>
+      '<div class="note-item part-note-item">' +
+        '<div class="note-editor-wrap">' +
+          '<textarea data-part-note="' + i + '-' + pi + '-' + ni + '" placeholder="이 부에 대한 메모">' + esc(note.content || "") + '</textarea>' +
+          '<div class="directive-preview" data-part-note-preview="' + i + '-' + pi + '-' + ni + '" style="margin:4px 0 0">' + directivePreviewHtml(note.content || "", null) + '</div>' +
+        '</div>' +
+        '<button type="button" class="flag-toggle' + (note.hidden ? " on" : "") + '" data-part-note-hidden="' + i + '-' + pi + '-' + ni + '" title="확장 프로그램에서 이 부 메모를 숨깁니다">숨김</button>' +
+        '<button type="button" class="icon-btn" data-del-part-note="' + i + '-' + pi + '-' + ni + '" aria-label="부 메모 삭제">' + trashSvg() + '</button>' +
+      '</div>'
+    ).join("");
+    return '<div class="part-notes-wrap"><div class="schedule-editor-section-head">부 메모</div>' + items +
+      '<button type="button" class="add-btn small" data-add-part-note="' + i + '-' + pi + '">+ 부 메모 추가</button></div>';
+  }
   function partItemHtml(i, p, pi, partCount) {
     const collabOn = !!p.collab;
     const officialOn = !!p.official;
@@ -557,15 +814,19 @@ function infoItemHtml(u, i) {
     if (collabOn) {
       html +=
         '<div class="collab-box">' +
+          '<div class="host-label">멤버</div>' +
           '<div class="member-chips" id="chips-' + i + '-' + pi + '">' + memberChipsHtml(i, pi, p.members) + '</div>' +
           '<div class="member-search-wrap">' +
-            '<input type="text" class="member-search" data-msearch="' + i + '-' + pi + '" placeholder="합방 멤버 검색" autocomplete="off" />' +
+            '<input type="text" class="member-search" data-msearch="' + i + '-' + pi + '" placeholder="멤버 검색 (치지직 스트리머 이름)" autocomplete="off" />' +
             '<div class="member-results" id="results-' + i + '-' + pi + '"></div>' +
           '</div>' +
         '</div>';
     }
+    html += partNotesListHtml(i, pi, p);
     if (officialOn || otherOn) {
-      html += '<div class="collab-box">' + hostChannelBoxHtml(i, pi, p.hostChannel) + '</div>';
+      const hostLabel = otherOn ? "송출" : "진행";
+      const hostPlaceholder = otherOn ? "송출 채널 검색 (치지직 스트리머 이름)" : "진행 채널 검색 (치지직 스트리머 이름)";
+      html += '<div class="collab-box">' + hostChannelBoxHtml(i, pi, p.hostChannel, hostLabel, hostPlaceholder) + '</div>';
     }
     html += '</div>';
     return html;
@@ -587,8 +848,10 @@ function infoItemHtml(u, i) {
     return previews.join('<span style="width:6px"></span>') + '<span class="directive-ok">적용 미리보기</span>';
   }
 
-  function hostChannelBoxHtml(i, pi, hostChannel) {
-    let inner = '<div class="host-label">어느 채널 방송인가요?</div>';
+  function hostChannelBoxHtml(i, pi, hostChannel, label, placeholder) {
+    const hostLabel = label || "진행";
+    const hostPlaceholder = placeholder || "채널 검색 (치지직 스트리머 이름)";
+    let inner = '<div class="host-label">' + esc(hostLabel) + '</div>';
     if (hostChannel) {
       inner +=
         '<span class="member-chip">' +
@@ -599,7 +862,7 @@ function infoItemHtml(u, i) {
     } else {
       inner +=
         '<div class="member-search-wrap">' +
-          '<input type="text" class="member-search" data-hsearch="' + i + "-" + pi + '" placeholder="채널 검색 (치지직 스트리머 이름)" autocomplete="off" />' +
+          '<input type="text" class="member-search" data-hsearch="' + i + "-" + pi + '" placeholder="' + esc(hostPlaceholder) + '" autocomplete="off" />' +
           '<div class="member-results" id="hresults-' + i + "-" + pi + '"></div>' +
         "</div>";
     }
@@ -806,7 +1069,7 @@ function infoItemHtml(u, i) {
     }
     const label = cleanInlineDirectiveInput(rawLabel, []);
     return ":" + kind + "[" + label + "]";
-  }
+  }
 
   function makeInlineDirectiveInput(kind, value, placeholder, widthClass) {
     const input = document.createElement("input");
@@ -1213,25 +1476,29 @@ function infoItemHtml(u, i) {
 
 
   function activeDirectiveLabelEditor(editor) {
-    const active = document.activeElement;
-    if (active && active.classList && active.classList.contains("directive-token-label-editor") && editor.contains(active)) return active;
     const selection = window.getSelection();
-    if (selection && selection.rangeCount) {
-      const node = selection.getRangeAt(0).startContainer;
-      const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-      const labelEditor = element && element.closest && element.closest(".directive-token-label-editor");
-      if (labelEditor && editor.contains(labelEditor)) return labelEditor;
-    }
-    return editor._activeLabelEditor && editor.contains(editor._activeLabelEditor) ? editor._activeLabelEditor : null;
+    if (!selection || !selection.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return null;
+    const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+    const endElement = range.endContainer.nodeType === Node.ELEMENT_NODE ? range.endContainer : range.endContainer.parentElement;
+    const startLabel = startElement && startElement.closest && startElement.closest(".directive-token-label-editor");
+    const endLabel = endElement && endElement.closest && endElement.closest(".directive-token-label-editor");
+    return startLabel && startLabel === endLabel && editor.contains(startLabel) ? startLabel : null;
   }
   function insertInlineDirective(source, editor, kind) {
-    const labelEditor = activeDirectiveLabelEditor(editor);
+    const toolbarOffsets = editor._toolbarSelectionOffsets;
+    const toolbarLabelEditor = editor._toolbarLabelEditor;
+    const labelEditor = toolbarLabelEditor && editor.contains(toolbarLabelEditor) ? toolbarLabelEditor : (toolbarOffsets ? null : activeDirectiveLabelEditor(editor));
+    editor._toolbarLabelEditor = null;
     if (labelEditor) {
+      editor._toolbarSelectionOffsets = null;
       insertNestedInlineDirective(source, editor, labelEditor, kind);
       return;
     }
     syncEditorToSource(source, editor, false);
-    const offsets = editorSelectionOffsets(editor);
+    const offsets = toolbarOffsets || editorSelectionOffsets(editor);
+    editor._toolbarSelectionOffsets = null;
     const value = source.value || "";
     const selected = value.slice(offsets.start, offsets.end);
     const baseLabel = selected || (kind === "m" ? "media" : "");
@@ -1291,6 +1558,22 @@ function infoItemHtml(u, i) {
     if (cancel) cancel.onclick = closeDirectiveInsertPopup;
   }
 
+  function bindInstantMemberResult(button, handler) {
+    let handled = false;
+    const run = (event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (handled) return;
+      handled = true;
+      handler();
+      setTimeout(() => { handled = false; }, 0);
+    };
+    button.onpointerdown = run;
+    button.onmousedown = run;
+    button.onclick = run;
+  }
   function openTagInsertPopup(source, editor) {
     const selected = selectedEditorText(source, editor);
     openDirectiveInsertPopup("태그 삽입",
@@ -1364,11 +1647,11 @@ function infoItemHtml(u, i) {
               '<span>' + esc(channel.channelName) + '</span></button>'
             ).join("") + '<button type="button" class="member-result member-result-manual" data-media-streamer-pick-manual="1">입력한 이름 추가: ' + esc(keyword) + '</button>';
             streamerResults.querySelectorAll('[data-media-streamer-pick]').forEach((button) => {
-              button.onclick = () => appendStreamer(result.list[+button.getAttribute("data-media-streamer-pick")].channelName);
+              bindInstantMemberResult(button, () => appendStreamer(result.list[+button.getAttribute("data-media-streamer-pick")].channelName));
             });
           }
           const manual = streamerResults.querySelector('[data-media-streamer-pick-manual="1"]');
-          if (manual) manual.onclick = () => appendStreamer(streamerQuery.value);
+          if (manual) bindInstantMemberResult(manual, () => appendStreamer(streamerQuery.value));
         };
         let timer = null;
         streamerQuery.oninput = () => { clearTimeout(timer); timer = setTimeout(renderStreamerResults, 250); };
@@ -1423,11 +1706,11 @@ function infoItemHtml(u, i) {
               '<span>' + esc(channel.channelName) + '</span></button>'
             ).join("") + '<button type="button" class="member-result member-result-manual" data-streamer-manual="1">입력한 이름으로 삽입: ' + esc(keyword) + '</button>';
             results.querySelectorAll('[data-streamer-pick]').forEach((button) => {
-              button.onclick = () => insertName(result.list[+button.getAttribute("data-streamer-pick")].channelName);
+              bindInstantMemberResult(button, () => insertName(result.list[+button.getAttribute("data-streamer-pick")].channelName));
             });
           }
           const manual = results.querySelector('[data-streamer-manual="1"]');
-          if (manual) manual.onclick = () => insertName(input.value);
+          if (manual) bindInstantMemberResult(manual, () => insertName(input.value));
         };
         let timer = null;
         input.oninput = () => { clearTimeout(timer); timer = setTimeout(renderResults, 250); };
@@ -1486,14 +1769,18 @@ function infoItemHtml(u, i) {
       button.className = "style-btn insert-btn";
       button.textContent = item.label;
       button.title = item.title;
-      button.onmousedown = (event) => { event.preventDefault(); rememberEditorSelection(editor); };
+      button.onmousedown = (event) => {
+        editor._toolbarLabelEditor = activeDirectiveLabelEditor(editor);
+        editor._toolbarSelectionOffsets = currentEditorSelectionOffsets(editor) || editor._lastSelectionOffsets;
+        event.preventDefault();
+      };
       button.onclick = () => insertInlineDirective(source, editor, item.kind);
       toolbar.appendChild(button);
     });
     return toolbar;
   }
   function bindDirectiveEditors() {
-    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((source) => {
       if (source.dataset.directiveEditorBound) return;
       source.dataset.directiveEditorBound = "1";
@@ -1505,7 +1792,10 @@ function infoItemHtml(u, i) {
       editor.setAttribute("role", "textbox");
       editor.dataset.placeholder = source.getAttribute("placeholder") || "";
       source.insertAdjacentElement("afterend", editor);
-      source.insertAdjacentElement("afterend", makeStyleToolbar(source, editor));
+      const toolbar = makeStyleToolbar(source, editor);
+      const toolbarSlot = (source.classList.contains("info-textarea") ? source.closest(".info-editor-shell").querySelector(".info-card-toolbar") : (source.classList.contains("notice-textarea") ? source.closest(".notice-editor-shell").querySelector(".notice-card-toolbar") : null));
+      if (toolbarSlot) toolbarSlot.appendChild(toolbar);
+      else source.insertAdjacentElement("afterend", toolbar);
       source._directiveEditor = editor;
       editor._directiveSource = source;
       renderDirectiveEditor(source, editor);
@@ -1609,8 +1899,7 @@ function infoItemHtml(u, i) {
     ).join("");
     box.dataset.activeIndex = "-1";
     box.querySelectorAll("[data-directive-pick]").forEach((button) => {
-      button.onmousedown = (event) => event.preventDefault();
-      button.onclick = () => {
+      bindInstantMemberResult(button, () => {
         const channel = result.list[+button.getAttribute("data-directive-pick")];
         const current = target;
         el.value = el.value.slice(0, current.start) + ":s[" + channel.channelName + "]" + el.value.slice(current.end);
@@ -1645,7 +1934,7 @@ function infoItemHtml(u, i) {
           el.focus();
         }
         closeDirectiveSuggestions();
-      };
+      });
     });
   }
 
@@ -1694,8 +1983,7 @@ function infoItemHtml(u, i) {
         '<span>' + esc(channel.channelName) + '</span></button>'
       ).join('') + '<button type="button" class="member-result member-result-manual" data-inline-streamer-manual="1">입력한 이름 사용: ' + esc(keyword) + '</button>';
       box.querySelectorAll('[data-inline-streamer-pick]').forEach((button) => {
-        button.onmousedown = (event) => event.preventDefault();
-        button.onclick = () => {
+        bindInstantMemberResult(button, () => {
           const channel = result.list[+button.getAttribute('data-inline-streamer-pick')];
           setInlineStreamerValue(input, channel.channelName, source, editor);
           syncEditorToSource(source, editor, false);
@@ -1703,20 +1991,19 @@ function infoItemHtml(u, i) {
           if (input.select) input.select();
           else setEditorSelectionByOffsets(input, 0, serializeDirectiveEditor(input).length);
           closeDirectiveSuggestions();
-        };
+        });
       });
     }
     const manual = box.querySelector('[data-inline-streamer-manual="1"]');
     if (manual) {
-      manual.onmousedown = (event) => event.preventDefault();
-      manual.onclick = () => {
+      bindInstantMemberResult(manual, () => {
         setInlineStreamerValue(input, keyword, source, editor);
         syncEditorToSource(source, editor, false);
         input.focus();
         if (input.select) input.select();
         else setEditorSelectionByOffsets(input, 0, serializeDirectiveEditor(input).length);
         closeDirectiveSuggestions();
-      };
+      });
     }
   }
 
@@ -1741,7 +2028,7 @@ function infoItemHtml(u, i) {
   }
   function bindDirectiveAutocompletes() {
     bindDirectiveEditors();
-    const selector = '[data-pf="content"], [data-if="content"], [data-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((el) => {
       if (el.dataset.directiveAutocompleteBound) return;
       el.dataset.directiveAutocompleteBound = "1";
@@ -1797,7 +2084,7 @@ function infoItemHtml(u, i) {
 
     const list = result.list;
     container.querySelectorAll("[data-mpick]").forEach((btn) => {
-      btn.onclick = () => {
+      bindInstantMemberResult(btn, () => {
         const [ri, rpi, channelId] = btn.getAttribute("data-mpick").split("-");
         const chosen = list.find((c) => c.channelId === channelId);
         if (!chosen) return;
@@ -1808,11 +2095,11 @@ function infoItemHtml(u, i) {
         }
         render();
         markDirty();
-      };
+      });
     });
     const addBtn = container.querySelector("[data-madd]");
     if (addBtn) {
-      addBtn.onclick = () => {
+      bindInstantMemberResult(addBtn, () => {
         const name = keyword.trim();
         if (!name) return;
         const [ri, rpi] = addBtn.getAttribute("data-madd").split("-").map(Number);
@@ -1826,7 +2113,7 @@ function infoItemHtml(u, i) {
         });
         render();
         markDirty();
-      };
+      });
     }
   }
 
@@ -1855,18 +2142,18 @@ function infoItemHtml(u, i) {
 
     const list = result.list;
     container.querySelectorAll("[data-hpick]").forEach((btn) => {
-      btn.onclick = () => {
+      bindInstantMemberResult(btn, () => {
         const [ri, rpi, channelId] = btn.getAttribute("data-hpick").split("-");
         const chosen = list.find((c) => c.channelId === channelId);
         if (!chosen) return;
         rows[+ri].parts[+rpi].hostChannel = chosen;
         render();
         markDirty();
-      };
+      });
     });
     const addBtn = container.querySelector("[data-hadd]");
     if (addBtn) {
-      addBtn.onclick = () => {
+      bindInstantMemberResult(addBtn, () => {
         const name = keyword.trim();
         if (!name) return;
         const [ri, rpi] = addBtn.getAttribute("data-hadd").split("-").map(Number);
@@ -1877,7 +2164,7 @@ function infoItemHtml(u, i) {
         };
         render();
         markDirty();
-      };
+      });
     }
   }
 
@@ -1933,7 +2220,7 @@ function infoItemHtml(u, i) {
 
   function normalizePart(p) {
     if (typeof p === "string") {
-      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
     }
     if (p && typeof p === "object") {
       return {
@@ -1950,9 +2237,10 @@ function infoItemHtml(u, i) {
         speculative: !!p.speculative,
         members: Array.isArray(p.members) ? p.members.map(normalizeChannelRef).filter(Boolean) : [],
         hostChannel: normalizeChannelRef(p.hostChannel),
+        notes: normalizeNotes(p.notes || p.note),
       };
     }
-    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
   }
 
   function findDirectiveBracketEnd(raw, openIndex) {
@@ -2048,6 +2336,15 @@ function infoItemHtml(u, i) {
   }
 
   function bindCards() {
+    document.querySelectorAll("[data-admin-month]").forEach((el) => {
+      el.onclick = () => { scheduleMonthOffset += el.getAttribute("data-admin-month") === "prev" ? -1 : 1; render(); };
+    });
+    document.querySelectorAll("[data-admin-date]").forEach((el) => {
+      el.onclick = () => { selectedScheduleDate = el.getAttribute("data-admin-date") || todayKey(); scheduleMonthOffset = 0; render(); };
+    });
+    document.querySelectorAll("[data-add-selected-date]").forEach((el) => {
+      el.onclick = () => addRow(selectedScheduleDate || todayKey());
+    });
     document.querySelectorAll("[data-addrow]").forEach((el) => {
       el.onclick = addRow;
     });
@@ -2064,6 +2361,7 @@ function infoItemHtml(u, i) {
             return;
           }
           rows[i].date = el.value;
+          selectedScheduleDate = el.value;
           render();
           markDirty();
         };
@@ -2120,6 +2418,41 @@ function infoItemHtml(u, i) {
         markDirty();
       };
     });
+    document.querySelectorAll("[data-part-note]").forEach((el) => {
+      const [i, pi, ni] = el.getAttribute("data-part-note").split("-").map(Number);
+      el.oninput = () => {
+        rows[i].parts[pi].notes = rows[i].parts[pi].notes || [];
+        rows[i].parts[pi].notes[ni] = { ...(rows[i].parts[pi].notes[ni] || {}), content: el.value };
+        const preview = document.querySelector('[data-part-note-preview="' + i + '-' + pi + '-' + ni + '"]');
+        if (preview) preview.innerHTML = directivePreviewHtml(el.value, null);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-add-part-note]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi] = el.getAttribute("data-add-part-note").split("-").map(Number);
+        rows[i].parts[pi].notes = rows[i].parts[pi].notes || [];
+        rows[i].parts[pi].notes.push({ content: "", hidden: false });
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-part-note-hidden]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi, ni] = el.getAttribute("data-part-note-hidden").split("-").map(Number);
+        rows[i].parts[pi].notes[ni] = { ...(rows[i].parts[pi].notes[ni] || {}), hidden: !rows[i].parts[pi].notes[ni].hidden };
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-del-part-note]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi, ni] = el.getAttribute("data-del-part-note").split("-").map(Number);
+        rows[i].parts[pi].notes.splice(ni, 1);
+        render();
+        markDirty();
+      };
+    });
     document.querySelectorAll("[data-cafetoggle]").forEach((el) => {
       el.onclick = () => {
         const i = +el.getAttribute("data-cafetoggle");
@@ -2165,7 +2498,7 @@ function infoItemHtml(u, i) {
       el.onclick = () => {
         const i = +el.getAttribute("data-addpart");
         rows[i].parts = rows[i].parts || [];
-        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null });
+        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] });
         render();
         markDirty();
       };
@@ -2204,6 +2537,8 @@ function infoItemHtml(u, i) {
         rows[i].gameImages[gi][f] = el.value;
         markDirty();
       };
+      if (f === "label") bindGameAutocomplete(el);
+
     });
     document.querySelectorAll("[data-addgameimg]").forEach((el) => {
       el.onclick = () => {
@@ -2335,16 +2670,18 @@ function infoItemHtml(u, i) {
     });
   }
 
-  function addRow() {
+  function addRow(preferredDate) {
     // 기존에 없는 다음 날짜를 기본값으로
     const existing = new Set(rows.map((r) => r.date));
-    let d = new Date();
+    let d = preferredDate ? new Date(preferredDate + "T00:00:00") : new Date();
     for (let k = 0; k < 60; k++) {
       const p = (n) => String(n).padStart(2, "0");
       const key = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
       if (!existing.has(key)) {
         rows.forEach((row) => { delete row._newlyAdded; });
         rows.push({ channel_id: cfg.channelId, date: key, start_time: "", title: "", parts: [], gameImages: [], vods: [], status: "", cafe_time: false, video_time: false, notes: [], _newlyAdded: true });
+        selectedScheduleDate = key;
+        scheduleMonthOffset = 0;
         render();
         markDirty();
         requestAnimationFrame(() => {
@@ -2379,6 +2716,14 @@ function infoItemHtml(u, i) {
     btn.innerHTML = '<span class="spin"></span>';
 
     try {
+      let backupWarning = "";
+      try {
+        await createScheduleBackup("before-save");
+      } catch (backupError) {
+        backupWarning = (backupError && backupError.message) || String(backupError || "");
+        console.warn("Schedule backup failed", backupError);
+      }
+
       // 1) 삭제 처리
       if (deletedIds.length) {
         const { error } = await sb.from(cfg.tableName).delete().in("id", deletedIds);
@@ -2404,6 +2749,7 @@ function infoItemHtml(u, i) {
             speculative: !!p.speculative,
             members: p.members || [],
             hostChannel: p.hostChannel || null,
+            notes: serializeNotes(p.notes),
           }))
           .filter((p) => p.content);
         const cleanGameImages = (r.gameImages || [])
@@ -2450,11 +2796,13 @@ function infoItemHtml(u, i) {
       let order = 0;
       for (const u of info) {
         const content = (u.content || "").trim();
+        const noticeMatch = content.match(/^@notice\s*:\s*(.*)$/i);
+        const keepContent = content && (!noticeMatch || noticeMatch[1].trim());
         if (u.id) {
-          if (content) infoToUpdate.push({ id: u.id, content, hidden: !!u.hidden, sort_order: order++ });
+          if (keepContent) infoToUpdate.push({ id: u.id, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
           else infoDeleteIds.push(u.id);
-        } else if (content) {
-          infoToInsert.push({ channel_id: cfg.channelId, content, hidden: !!u.hidden, sort_order: order++ });
+        } else if (keepContent) {
+          infoToInsert.push({ channel_id: cfg.channelId, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
         }
       }
       if (infoDeleteIds.length) {
@@ -2472,7 +2820,7 @@ function infoItemHtml(u, i) {
         if (error) throw error;
       }
 
-      toast("저장되었습니다");
+      toast(backupWarning ? "\uc800\uc7a5\ub418\uc5c8\uc9c0\ub9cc \ubc31\uc5c5\uc740 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4" : "\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4");
       rows.forEach((row) => { delete row._newlyAdded; });
       rows.sort(compareScheduleDate);
       await loadAll();
@@ -2485,11 +2833,20 @@ function infoItemHtml(u, i) {
   }
 
   // ---- 진입 ----
+  function setActiveAdminMenu(menu) {
+    activeAdminMenu = menu || "schedule";
+    document.querySelectorAll("[data-admin-menu]").forEach((button) => {
+      const active = button.getAttribute("data-admin-menu") === activeAdminMenu;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+    });
+    document.querySelectorAll("[data-admin-panel]").forEach((panel) => {
+      panel.hidden = panel.getAttribute("data-admin-panel") !== activeAdminMenu;
+    });
+  }
+
   function setFeedbackDrawer(open) {
-    const shell = $("feedbackDrawerShell");
-    shell.hidden = !open;
-    document.body.style.overflow = open ? "hidden" : "";
-    $("feedbackToggle").setAttribute("aria-expanded", String(open));
+    if (open) setActiveAdminMenu("feedback");
   }
 
   async function enterApp() {
@@ -2499,7 +2856,6 @@ function infoItemHtml(u, i) {
     await checkAdminAccess();
     loadAll();
   }
-
   async function init() {
     // 설정 확인
     if (cfg.supabaseUrl.includes("YOUR_PROJECT") || cfg.channelId.includes("YOUR_CHANNEL")) {
@@ -2510,9 +2866,13 @@ function infoItemHtml(u, i) {
     $("logoutBtn").onclick = doLogout;
     $("saveBtn").onclick = doSave;
     $("feedbackRefresh").onclick = loadFeedback;
-    $("feedbackToggle").onclick = () => setFeedbackDrawer(true);
-    $("feedbackDrawerClose").onclick = () => setFeedbackDrawer(false);
-    $("feedbackBackdrop").onclick = () => setFeedbackDrawer(false);
+    document.querySelectorAll("[data-admin-menu]").forEach((button) => {
+      button.onclick = () => {
+        const menu = button.getAttribute("data-admin-menu");
+        setActiveAdminMenu(menu);
+        if (menu === "feedback") loadFeedback();
+      };
+    });
     document.querySelectorAll("[data-feedback-filter]").forEach((button) => {
       button.onclick = () => {
         feedbackFilter = button.getAttribute("data-feedback-filter");
@@ -2520,9 +2880,6 @@ function infoItemHtml(u, i) {
           item.classList.toggle("active", item === button));
         renderFeedbackList();
       };
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !$("feedbackDrawerShell").hidden) setFeedbackDrawer(false);
     });
     window.addEventListener("beforeunload", (e) => {
       if (snapshot() !== original) { e.preventDefault(); e.returnValue = ""; }

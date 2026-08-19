@@ -1,9 +1,10 @@
 // background.js — Supabase에서 일정을 읽어 캐싱 + content script에 제공
 // Chrome: service worker / Firefox: event page 양쪽에서 동작
 
-if (typeof CHZZK_SCHEDULE_CONFIG === "undefined" && typeof importScripts === "function") {
+if (typeof importScripts === "function") {
   try {
-    importScripts("config.js");
+    importScripts("streamer-ids.js");
+    if (typeof CHZZK_SCHEDULE_CONFIG === "undefined") importScripts("config.js");
   } catch (e) {
   }
 }
@@ -33,6 +34,18 @@ async function setCache(data, fetchedAt) {
   });
 }
 
+async function getProfileCache() {
+  return new Promise((resolve) => {
+    api.storage.local.get(["chzzkProfileCache"], (result) => resolve((result && result.chzzkProfileCache) || {}));
+  });
+}
+
+async function setProfileCache(cache) {
+  return new Promise((resolve) => {
+    api.storage.local.set({ chzzkProfileCache: cache || {} }, () => resolve());
+  });
+}
+
 function normalizeChannelRef(c) {
   if (!c || typeof c !== "object") return null;
   if (!c.channelId && !c.channelName) return null;
@@ -46,7 +59,7 @@ function normalizeChannelRef(c) {
 // parts 항목을 {content, collab, official, otherChannel, members, hostChannel} 형태로 정규화 (구버전은 문자열 하나였음)
 function normalizePart(p) {
   if (typeof p === "string") {
-    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
   }
   if (p && typeof p === "object") {
     return {
@@ -63,9 +76,10 @@ function normalizePart(p) {
       speculative: !!p.speculative,
       members: Array.isArray(p.members) ? p.members.map(normalizeChannelRef).filter(Boolean) : [],
       hostChannel: normalizeChannelRef(p.hostChannel),
+      notes: normalizeNotes(p.notes || p.note),
     };
   }
-  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null };
+  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
 }
 
 function normalizeGameImage(item) {
@@ -140,10 +154,28 @@ function rowsToChannels(rows) {
 }
 
 // 소식 행 배열을 channels[cid].info 목록으로 병합 (sort_order로 이미 정렬된 상태로 들어옴)
+function extensionVersionFromInfoItems(rows) {
+  for (const r of rows || []) {
+    const content = String((r && r.content) || "").trim();
+    const match = content.match(/^@extension-version\s*:\s*([0-9]+(?:\.[0-9]+){0,3})\s*$/i);
+    if (match) return match[1];
+  }
+  return "";
+}
+
+function noticesFromInfoItems(rows) {
+  return (rows || [])
+    .map((r) => String((r && r.content) || "").trim().match(/^@notice\s*:\s*([\s\S]+)$/i))
+    .filter(Boolean)
+    .map((match) => match[1].trim())
+    .filter(Boolean);
+}
+
 function mergeInfoItems(channels, rows) {
   for (const r of rows) {
     const cid = r.channel_id;
-    if (!cid || !r.content || r.hidden) continue;
+    const content = String(r.content || "").trim();
+    if (!cid || !content || r.hidden || /^@notice\s*:/i.test(content) || /^@extension-version\s*:/i.test(content)) continue;
     if (!channels[cid]) {
       channels[cid] = { name: r.channel_name || "", timezone: "Asia/Seoul", schedule: [], info: [] };
     }
@@ -174,6 +206,7 @@ function directiveNames(value) {
   return Array.from(raw.matchAll(/:s(?:\[([^\]]+)\]|\s+([^\s:]+))/gi), (match) => (match[1] || match[2]).trim());
 }
 
+const GNIMTI_PROFILE_OVERRIDES = globalThis.CHZZK_STREAMER_IDS || {};
 async function resolveDirectiveProfiles(channels) {
   const names = new Set();
   const collect = (value) => { directiveNames(value).forEach((name) => names.add(name)); };
@@ -182,28 +215,72 @@ async function resolveDirectiveProfiles(channels) {
     (channel.schedule || []).forEach((entry) => {
       collect(entry.title); collect(entry.titleShort); collect(entry.note);
       (entry.notes || []).forEach(collect);
-      (entry.parts || []).forEach((part) => collect(part.content));
+      (entry.parts || []).forEach((part) => { collect(part.content); (part.notes || []).forEach(collect); });
       (entry.vods || []).forEach((vod) => collect(vod.label));
       (entry.gameImages || []).forEach((game) => collect(game.label));
     });
   });
   const profiles = {};
+  const profileCache = await getProfileCache();
+  let cacheChanged = false;
   const base = CHZZK_SCHEDULE_CONFIG.supabaseUrl.replace(/\/+$/, "");
   await Promise.all(Array.from(names).map(async (name) => {
+    const key = String(name || "").trim();
+    if (!key) return;
+    const cached = normalizeChannelRef(profileCache[key]);
+    if (cached) {
+      profiles[key] = cached;
+      return;
+    }
     try {
-      const res = await fetch(base + "/functions/v1/chzzk-search?keyword=" + encodeURIComponent(name), {
+      const res = await fetch(base + "/functions/v1/chzzk-search?keyword=" + encodeURIComponent(key), {
         headers: { apikey: CHZZK_SCHEDULE_CONFIG.supabaseKey, Authorization: "Bearer " + CHZZK_SCHEDULE_CONFIG.supabaseKey },
       });
       if (!res.ok) return;
       const json = await res.json();
       const items = (json && json.content && json.content.data) || [];
       const list = items.map((item) => item && item.channel).filter(Boolean);
-      const exact = list.find((c) => String(c.channelName || "").trim().toLowerCase() === name.toLowerCase());
-      const found = exact || (list.length === 1 ? list[0] : null);
-      if (found) profiles[name] = normalizeChannelRef(found);
+      const exact = list.find((c) => String(c.channelName || "").trim().toLowerCase() === key.toLowerCase());
+      const found = exact || list[0] || null;
+      const normalized = normalizeChannelRef(found);
+      if (normalized) {
+        if (!normalized.channelName) normalized.channelName = key;
+        profiles[key] = normalized;
+        profileCache[key] = normalized;
+        cacheChanged = true;
+      }
     } catch (e) {
     }
   }));
+  if (cacheChanged) await setProfileCache(profileCache);
+  return profiles;
+}
+
+async function resolveGnimtiProfiles() {
+  const profiles = {};
+  const entries = Object.entries(GNIMTI_PROFILE_OVERRIDES).filter(([, channelId]) =>
+    /^[0-9a-f]{32}$/i.test(String(channelId || "").trim())
+  );
+
+  await Promise.all(entries.map(async ([name, channelId]) => {
+    const id = String(channelId).trim();
+    let profile = { channelId: id, channelName: name, channelImageUrl: "" };
+    try {
+      const res = await fetch("https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(id), {
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const matched = json && json.content;
+        if (matched) profile = normalizeChannelRef(matched) || profile;
+      }
+    } catch (e) {
+    }
+    profile.channelId = id;
+    if (!profile.channelName) profile.channelName = name;
+    profiles[name] = profile;
+  }));
+
   return profiles;
 }
 
@@ -213,16 +290,27 @@ async function fetchFromSupabase() {
   const { channels, latestUpdate } = rowsToChannels(scheduleRows);
 
   // 소식 테이블은 아직 없을 수 있으므로(선택 기능), 실패해도 일정 기능에는 영향 없게 함
+  let latestExtensionVersion = "";
+  let notices = [];
   try {
     const infoRows = await fetchTable(c.upcomingContentTableName || "upcoming_content", "sort_order.asc,id.asc");
+    latestExtensionVersion = extensionVersionFromInfoItems(infoRows);
+    notices = noticesFromInfoItems(infoRows);
     mergeInfoItems(channels, infoRows);
   } catch (e) {
   }
 
   const directiveProfiles = await resolveDirectiveProfiles(channels);
-  return { version: 1, updatedAt: latestUpdate, channels, directiveProfiles };
+  const gnimtiProfiles = await resolveGnimtiProfiles();
+  return { version: 1, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
 }
 
+async function attachCachedProfiles(data) {
+  if (!data || typeof data !== "object") return data;
+  const profileCache = await getProfileCache();
+  data.directiveProfiles = { ...(data.directiveProfiles || {}), ...profileCache };
+  return data;
+}
 async function fetchSchedule(force) {
   const now = Date.now();
   const cached = await getCache();
@@ -233,8 +321,8 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.fetchedAt && now - cached.fetchedAt < ttl) {
-    return { ok: true, data: cached.scheduleData, fetchedAt: cached.fetchedAt, fromCache: true };
+  if (!force && cached.scheduleData && cached.scheduleData.gnimtiProfileVersion === 3 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+    return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 
   try {
@@ -246,7 +334,7 @@ async function fetchSchedule(force) {
     if (cached.scheduleData) {
       return {
         ok: true,
-        data: cached.scheduleData,
+        data: await attachCachedProfiles(cached.scheduleData),
         fetchedAt: cached.fetchedAt,
         fromCache: true,
         stale: true,

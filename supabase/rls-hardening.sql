@@ -63,6 +63,52 @@ create policy "admin users can delete game images"
     bucket_id = 'game-images'
     and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
   );
+
+-- JSON backups created before every admin save.
+insert into storage.buckets (id, name, public)
+values ('schedule-backups', 'schedule-backups', false)
+on conflict (id) do update set public = false;
+
+drop policy if exists "admin users can read schedule backups" on storage.objects;
+drop policy if exists "admin users can upload schedule backups" on storage.objects;
+drop policy if exists "admin users can update schedule backups" on storage.objects;
+drop policy if exists "admin users can delete schedule backups" on storage.objects;
+
+create policy "admin users can read schedule backups"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'schedule-backups'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
+
+create policy "admin users can upload schedule backups"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'schedule-backups'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
+
+create policy "admin users can update schedule backups"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'schedule-backups'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  )
+  with check (
+    bucket_id = 'schedule-backups'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
+
+create policy "admin users can delete schedule backups"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'schedule-backups'
+    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
+  );
 -- Replace broad policies from older setup docs, if they exist.
 drop policy if exists "anon can read schedule" on public.schedule;
 drop policy if exists "authenticated can read schedule" on public.schedule;
