@@ -77,6 +77,7 @@
       speculative: !!part.speculative,
       members: Array.isArray(part.members) ? part.members.map(normalizeChannelRef).filter(Boolean) : [],
       hostChannel: normalizeChannelRef(part.hostChannel),
+      notes: normalizeNotes(part.notes),
     };
   }
 
@@ -143,7 +144,7 @@
 
   function partLabel(part, index) {
     const flags = partFlagLabels(part);
-    if (part.speculative) return ["추정"].concat(flags).join("/");
+    if (part.speculative) return ["언급"].concat(flags).join("/");
     if (part.hidePartLabel) return flags.join("/");
     const base = part.label || `${index + 1}부`;
     return flags.length ? `${base}/${flags.join("/")}` : base;
@@ -206,67 +207,8 @@
   }
 
   function mediaTriggerHtml(label, url) {
-    const safe = safeUrl(url);
-    if (!safe) return directiveInlineHtml(label || url || "미디어");
-    return `<button type="button" class="mobile-media-trigger" data-media-label="${esc(label || "미디어")}" data-media-url="${esc(safe)}"><span class="mobile-media-label">${directiveInlineHtml(label || "미디어")}</span></button>`;
+    return directiveInlineHtml(label || url || "미디어");
   }
-
-  function youtubeEmbedUrl(value) {
-    try {
-      const url = new URL(String(value || "").trim());
-      let id = "";
-      if (url.hostname === "youtu.be") id = url.pathname.split("/").filter(Boolean)[0] || "";
-      else if (/youtube\.com$/i.test(url.hostname) || /(^|\.)youtube-nocookie\.com$/i.test(url.hostname)) {
-        if (url.pathname === "/watch") id = url.searchParams.get("v") || "";
-        else {
-          const parts = url.pathname.split("/").filter(Boolean);
-          if (["embed", "shorts", "live"].includes(parts[0])) id = parts[1] || "";
-        }
-      }
-      return id && /^[A-Za-z0-9_-]{6,}$/.test(id) ? `https://www.youtube.com/embed/${encodeURIComponent(id)}` : "";
-    } catch (_e) {
-      return "";
-    }
-  }
-
-  function mediaEmbedHtml(url, label) {
-    const safe = safeUrl(url);
-    if (!safe) return `<span class="mobile-media-link">${esc(url)}</span>`;
-    const path = new URL(safe).pathname.toLowerCase();
-    const yt = youtubeEmbedUrl(safe);
-    if (yt) return `<iframe src="${esc(yt)}" title="${esc(label || "동영상")}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
-    if (/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/.test(path)) return `<img class="mobile-media-image" src="${esc(safe)}" alt="${esc(label || "이미지")}" />`;
-    if (/\.(mp4|webm|ogg|mov|m4v)$/.test(path)) return `<video src="${esc(safe)}" controls playsinline></video>`;
-    return `<a class="mobile-media-link" href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${esc(safe)}</a>`;
-  }
-
-  function closeMediaPopup() {
-    const popup = $("mediaPopup");
-    if (!popup) return;
-    popup.hidden = true;
-    popup.classList.remove("open");
-    const body = $("mediaPopupBody");
-    if (body) body.innerHTML = "";
-    document.querySelectorAll(".mobile-media-trigger.open").forEach((el) => el.classList.remove("open"));
-    document.body.classList.remove("media-popup-open");
-  }
-
-  function openMediaPopup(trigger) {
-    const popup = $("mediaPopup");
-    const title = $("mediaPopupTitle");
-    const body = $("mediaPopupBody");
-    if (!popup || !title || !body) return;
-    const label = trigger.getAttribute("data-media-label") || "미디어";
-    const url = trigger.getAttribute("data-media-url") || "";
-    title.textContent = label;
-    body.innerHTML = mediaEmbedHtml(url, label);
-    document.querySelectorAll(".mobile-media-trigger.open").forEach((el) => el.classList.remove("open"));
-    trigger.classList.add("open");
-    popup.hidden = false;
-    popup.classList.add("open");
-    document.body.classList.add("media-popup-open");
-  }
-
   function closeInfoPopup() {
     const popup = $("infoPopup");
     if (!popup) return;
@@ -280,7 +222,6 @@
   function openInfoPopup() {
     const popup = $("infoPopup");
     if (!popup) return;
-    closeMediaPopup();
     renderInfoSection();
     popup.hidden = false;
     popup.classList.add("open");
@@ -301,6 +242,15 @@
       .replace(/:s(?:\[([^\]]+)\]|\s+([^\s:]+))/gi, (_m, bracket, plain) => bracket || plain || "")
       .replace(/\s{2,}/g, " ")
       .trim();
+  }
+
+  function streamerBadgeHtml(name) {
+    const text = String(name || "").trim();
+    return text ? `<span class="schedule-inline-streamer">${esc(text)}</span>` : "";
+  }
+
+  function hasStreamerDirective(value) {
+    return /:s(?:\[|\s+[^\s:]+)/i.test(String(value || ""));
   }
 
   function directiveInlineHtml(value) {
@@ -339,9 +289,11 @@
         if (end > i) {
           flushPlain(i);
           const text = raw.slice(i + 3, end).trim();
-          html += bracket[1].toLowerCase() === "t"
-            ? `<span class="schedule-inline-tag">${directiveInlineHtml(text)}</span>`
-            : esc(text);
+          if (bracket[1].toLowerCase() === "t") {
+            html += hasStreamerDirective(text) ? directiveInlineHtml(text) : `<span class="schedule-inline-tag">${directiveInlineHtml(text)}</span>`;
+          } else {
+            html += streamerBadgeHtml(text);
+          }
           i = end + 1;
           plainStart = i;
           continue;
@@ -352,7 +304,7 @@
         flushPlain(i);
         html += inline[1].toLowerCase() === "t"
           ? `<span class="schedule-inline-tag">${esc(inline[2].trim())}</span>`
-          : esc(inline[2].trim());
+          : streamerBadgeHtml(inline[2].trim());
         i += inline[0].length;
         plainStart = i;
         continue;
@@ -388,14 +340,6 @@
     return entry.end ? `${entry.start} ~ ${entry.end}` : `${entry.start} ~`;
   }
 
-  function safeUrl(value) {
-    try {
-      const parsed = new URL(String(value || "").trim());
-      return parsed.protocol === "https:" ? parsed.href : "";
-    } catch (_e) {
-      return "";
-    }
-  }
 
   function entriesByDate() {
     return new Map(state.rows.map((entry) => [entry.date, entry]));
@@ -472,8 +416,14 @@
 
   function collabMembersHtml(part) {
     if (!part || !part.collab || !part.members || !part.members.length) return "";
-    return `<div class="schedule-card-members" aria-label="합방 멤버">${part.members.map((member) =>
-      `<span class="schedule-card-member">${esc(member.channelName || "이름 없음")}</span>`
+    return `<div class="schedule-card-members" aria-label="\uD569\uBC29 \uBA64\uBC84"><span class="schedule-card-member-label">\uBA64\uBC84</span>${part.members.map((member) =>
+      `<span class="schedule-card-member">${esc(member.channelName || "\uC774\uB984 \uC5C6\uC74C")}</span>`
+    ).join("")}</div>`;
+  }
+  function partNotesHtml(part) {
+    if (!part || !part.notes || !part.notes.length) return "";
+    return `<div class="schedule-card-part-notes" aria-label="부 메모">${part.notes.map((note) =>
+      `<span class="schedule-card-note">${directiveInlineHtml(note)}</span>`
     ).join("")}</div>`;
   }
 
@@ -499,6 +449,7 @@
             </div>
           </div>
           ${collabMembersHtml(part)}
+          ${partNotesHtml(part)}
           ${!part && !hasEntry ? `<p class="muted">등록된 일정이 없습니다.</p>` : ""}
           ${!part && hasEntry && !entry.parts.length ? renderEntryBody(entry) : ""}
         </div>
@@ -506,17 +457,71 @@
     `;
   }
 
+  function detailChannelBadgeHtml(channel) {
+    if (!channel) return "";
+    const name = String(channel.channelName || "이름 없음").trim();
+    return name ? `<span class="schedule-detail-member">${esc(name)}</span>` : "";
+  }
+
+  function detailHostHtml(part) {
+    if (!part || !part.otherChannel || !part.hostChannel) return "";
+    const name = String(part.hostChannel.channelName || "이름 없음").trim();
+    return name ? `<div class="schedule-detail-members-row"><span class="schedule-detail-members-chip">송출</span><div class="schedule-detail-members schedule-detail-members-plain"><span class="schedule-detail-member-text">${esc(name)}</span></div></div>` : "";
+  }
+
+  function detailMembersHtml(part) {
+    if (!part || !part.collab || !part.members || !part.members.length) return "";
+    return `<div class="schedule-detail-members-row"><span class="schedule-detail-members-chip">멤버</span><div class="schedule-detail-members schedule-detail-members-plain">${part.members.map((member) => `<span class="schedule-detail-member-text">${esc(member.channelName || "이름 없음")}</span>`).join("")}</div></div>`;
+  }
+
+  function detailPartNotesHtml(part) {
+    if (!part || !part.notes || !part.notes.length) return "";
+    return `<div class="schedule-detail-part-notes">${part.notes.map((note) => `<div class="schedule-detail-note-text">${directiveInlineHtml(note)}</div>`).join("")}</div>`;
+  }
+
+  function detailPartHtml(part, index) {
+    const label = partLabel(part, index);
+    const tagClass = part && part.speculative ? " speculative" :
+      part && (part.collab || part.official || part.otherChannel || part.ad || part.outdoor) ? " special" : "";
+    const textHtml = part.displayType === "profile" && part.profile ? esc(part.profile.channelName) : directiveInlineHtml(part.content);
+    return `<div class="schedule-detail-part">
+      <div class="schedule-detail-row schedule-detail-part-main">
+        ${label ? `<span class="schedule-detail-part-label${tagClass}">${esc(label)}</span>` : ""}
+        <span class="schedule-detail-part-text">${textHtml || "내용 미정"}</span>
+      </div>
+      ${detailHostHtml(part)}
+      ${detailMembersHtml(part)}
+      ${detailPartNotesHtml(part)}
+    </div>`;
+  }
+
+  function scheduleDetailHtml(key, entry) {
+    const isToday = key === todayKey();
+    if (!entry) {
+      return `<article class="schedule-detail empty">
+        <p class="schedule-detail-empty-text">등록된 일정이 없습니다.</p>
+      </article>`;
+    }
+    if (entry.status === "off") {
+      return `<article class="schedule-detail off">
+        <p class="schedule-detail-empty-text">휴방으로 표시된 날입니다.</p>
+        ${scheduleNotesHtml(entry)}
+      </article>`;
+    }
+    const title = directiveInlineHtml(entry.titleShort || entry.title || entryTitle(entry) || "방송 예정");
+    const partsHtml = entry.parts && entry.parts.length
+      ? `<div class="schedule-detail-parts">${entry.parts.map(detailPartHtml).join("")}</div>`
+      : `<div class="schedule-detail-parts"><div class="schedule-detail-part"><div class="schedule-detail-row schedule-detail-part-main"><span class="schedule-detail-part-label">일정</span><span class="schedule-detail-part-text">${title}</span></div></div></div>`;
+    return `<article class="schedule-detail${isToday ? " today" : ""}">
+      ${partsHtml}
+      ${scheduleNotesHtml(entry)}
+    </article>`;
+  }
   function renderSelectedSchedule() {
     const key = state.selectedDate || todayKey();
     const entry = entriesByDate().get(key) || null;
     $("selectedScheduleHeading").textContent = key === todayKey() ? "오늘 일정" : fullDateLabel(key);
-    if (entry && entry.parts && entry.parts.length && entry.status !== "off") {
-      $("scheduleList").innerHTML = entry.parts.map((part, index) =>
-        scheduleCardHtml(key, entry, part, index)
-      ).join("") + scheduleNotesHtml(entry);
-      return;
-    }
-    $("scheduleList").innerHTML = scheduleCardHtml(key, entry, null, 0) + scheduleNotesHtml(entry);
+    $("scheduleList").innerHTML = scheduleDetailHtml(key, entry);
   }
 
   function renderInfoSection() {
@@ -619,17 +624,6 @@
     $("prevMonthBtn").addEventListener("click", () => { if ($("prevMonthBtn").disabled) return; state.monthOffset -= 1; renderAll(); });
     $("nextMonthBtn").addEventListener("click", () => { if ($("nextMonthBtn").disabled) return; state.monthOffset += 1; renderAll(); });
     document.addEventListener("click", (event) => {
-      const mediaTrigger = event.target.closest && event.target.closest(".mobile-media-trigger");
-      if (mediaTrigger) {
-        event.preventDefault();
-        if (mediaTrigger.classList.contains("open")) closeMediaPopup();
-        else openMediaPopup(mediaTrigger);
-        return;
-      }
-      if (event.target.closest && event.target.closest("[data-media-close]")) {
-        closeMediaPopup();
-        return;
-      }
       if (event.target.closest && event.target.closest("[data-info-close]")) {
         closeInfoPopup();
         return;
@@ -639,11 +633,6 @@
         closeInfoPopup();
         return;
       }
-      const popup = $("mediaPopup");
-      if (popup && !popup.hidden && event.target === popup) {
-        closeMediaPopup();
-        return;
-      }
       const calendarDay = event.target.closest && event.target.closest("[data-calendar-date]");
       if (calendarDay) {
         setSelectedDate(calendarDay.getAttribute("data-calendar-date"));
@@ -651,8 +640,7 @@
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        closeMediaPopup();
-        closeInfoPopup();
+            closeInfoPopup();
       }
     });
   }
@@ -672,8 +660,4 @@
 
   init();
 })();
-
-
-
-
 

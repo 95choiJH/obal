@@ -2495,3 +2495,1001 @@ body.info-popup-open {
 .info-popup-panel {
   max-height: min(82dvh, 620px);
 }
+
+/* Attached calendar and selected schedule */
+.schedule-only {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+#monthView {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.schedule-view.active + .schedule-view.active {
+  margin-top: 0;
+}
+
+.selected-schedule-view {
+  position: static;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  width: 100%;
+  max-height: none;
+  transform: none;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: var(--shadow);
+  backdrop-filter: none;
+}
+
+.calendar-list {
+  max-height: none;
+  overflow-y: visible;
+}
+
+@media (max-width: 380px) {
+  .schedule-only {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .selected-schedule-view {
+    width: 100%;
+    max-height: none;
+  }
+
+  .calendar-list {
+    max-height: none;
+  }
+}
+
+/* Center attached mobile schedule stack */
+.schedule-only {
+  min-height: calc(100dvh - 58px);
+  justify-content: center;
+}
+
+@media (max-height: 720px) {
+  .schedule-only {
+    min-height: 0;
+    justify-content: flex-start;
+  }
+}
+
+/* Part memo chips */
+.schedule-card-part-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.schedule-card-part-notes .schedule-card-note {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid rgba(180, 91, 0, 0.18);
+  border-radius: 999px;
+  background: rgba(180, 91, 0, 0.08);
+}
+
+/* Scrollable swipe surfaces */
+html,
+body,
+.app-shell,
+.main,
+.schedule-only,
+.schedule-view,
+.month-grid,
+.month-cell,
+.selected-schedule-view,
+.calendar-list,
+.schedule-card,
+.schedule-card-main,
+.content-lines,
+.part-line,
+.part-text,
+.schedule-card-members,
+.schedule-card-part-notes,
+.schedule-card-notes,
+.mobile-info-card,
+.mobile-info-text {
+  touch-action: pan-y;
+}
+
+.calendar-list,
+.info-popup-list,
+.media-popup-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+.mobile-media-trigger,
+.schedule-card a,
+.month-nav,
+.icon-button {
+  touch-action: manipulation;
+}
+
+/* Force page scroll inside schedule views */
+.schedule-view,
+#monthView,
+.selected-schedule-view,
+.schedule-list,
+.calendar-list,
+.schedule-card,
+.schedule-card-main {
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+  touch-action: pan-y !important;
+}
+
+.month-grid,
+.month-cell,
+.schedule-card-tag,
+.schedule-card .timeline-card-head,
+.content-lines,
+.part-line,
+.part-text,
+.schedule-card-member,
+.schedule-card-note {
+  touch-action: pan-y !important;
+}
+
+.month-cell {
+  -webkit-user-drag: none;
+}
+
+/* Streamer directive badges */
+.schedule-inline-streamer {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  margin: 1px 3px 1px 0;
+  padding: 3px 8px;
+  border: 1px solid rgba(82, 118, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(82, 118, 255, 0.1);
+  color: #8ea2ff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  vertical-align: baseline;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  touch-action: pan-y !important;
+}
+
+/* Collab member label badge */
+.schedule-card-member-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid rgba(0, 255, 163, 0.22);
+  border-radius: 999px;
+  background: rgba(0, 255, 163, 0.1);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+  touch-action: pan-y !important;
+}
+
+/* PC front parity polish */
+body {
+  background: #0f1012;
+}
+
+.app-shell {
+  background: #0f1012;
+}
+
+.topbar {
+  background: #1b1c1f;
+  border-bottom-color: #2e3033;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.icon-button,
+.month-nav {
+  border-color: #3a3c40;
+  background: #232427;
+  color: #00ffa3;
+  box-shadow: none;
+}
+
+.icon-button:active,
+.month-nav:active {
+  background: #2b2d31;
+}
+
+.main {
+  padding: 10px 8px max(18px, env(safe-area-inset-bottom));
+}
+
+.schedule-only {
+  gap: 0;
+}
+
+.schedule-title {
+  margin: 0 0 -1px;
+  padding: 10px 14px 9px;
+  border: 1px solid #2e3033;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: #1b1c1f;
+}
+
+.schedule-title h1 {
+  color: #efeff1;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.eyebrow {
+  color: #00ffa3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.subcopy,
+.topbar-updated {
+  color: #9d9ea3;
+}
+
+#monthView {
+  border-color: #2e3033;
+  border-radius: 0;
+  background: #1b1c1f;
+  box-shadow: none;
+}
+
+.month-head h2 {
+  color: #c9cacd;
+}
+
+.month-weekday {
+  color: #6b6d73;
+}
+
+.month-cell {
+  color: #c9cacd;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.month-cell[data-calendar-date]:focus-visible {
+  outline-color: #00ffa3;
+}
+
+.month-cell.today:not(.selected) .month-day {
+  color: #00ffa3;
+}
+
+.month-cell.selected .month-day {
+  color: #062b20;
+}
+
+.month-cell.selected .month-day::before {
+  background: #00c878;
+  box-shadow: 0 0 0 1px rgba(0, 255, 163, 0.36);
+}
+
+.month-dot {
+  background: #00ffa3;
+}
+
+.month-cell.off {
+  color: #e8c268;
+}
+
+.selected-schedule-view {
+  border-color: #2e3033;
+  background: #1b1c1f;
+}
+
+.selected-schedule-head h2 {
+  color: #efeff1;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.schedule-card {
+  border-color: transparent;
+  border-radius: 8px;
+  background: #232427;
+  color: #c9cacd;
+}
+
+.schedule-card.today {
+  border-color: rgba(0, 255, 163, 0.28);
+  background: rgba(0, 255, 163, 0.1);
+}
+
+.schedule-card.off {
+  border-color: rgba(232, 194, 104, 0.24);
+  background: rgba(232, 194, 104, 0.08);
+}
+
+.schedule-card.empty {
+  background: #232427;
+}
+
+.schedule-card-tag,
+.part-tag {
+  color: #00ffa3;
+  background: rgba(0, 255, 163, 0.12);
+  border-color: rgba(0, 255, 163, 0.2);
+}
+
+.schedule-card-tag {
+  border-right-color: #3a3c40;
+  background: transparent;
+}
+
+.schedule-card-tag.special,
+.part-tag.special,
+.schedule-inline-tag {
+  color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
+.schedule-card-tag.speculative,
+.part-tag.speculative {
+  color: #e8c268;
+  background: rgba(232, 194, 104, 0.14);
+  border-color: rgba(232, 194, 104, 0.28);
+}
+
+.schedule-card .date-label,
+.part-text {
+  color: #c9cacd;
+}
+
+.schedule-card.today .date-label {
+  color: #efeff1;
+}
+
+.schedule-inline-streamer,
+.schedule-card-member,
+.schedule-card-member-label {
+  min-height: 22px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.schedule-card-member-label {
+  border-color: rgba(157, 158, 163, 0.24);
+  background: rgba(157, 158, 163, 0.14);
+  color: #c9cacd;
+}
+
+.schedule-card-member,
+.schedule-inline-streamer {
+  border-color: rgba(167, 139, 250, 0.35);
+  background: rgba(167, 139, 250, 0.2);
+  color: #c4b5fd;
+}
+
+.schedule-card-notes,
+.schedule-card-part-notes .schedule-card-note {
+  border-color: #3a3c40;
+  background: #1f2023;
+}
+
+.schedule-card-note {
+  color: #c9cacd;
+}
+
+.mobile-info-section,
+.info-popup-panel,
+.media-popup-panel {
+  border: 1px solid #3a3c40;
+  border-radius: 10px;
+  background: #1b1c1f;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+
+.mobile-info-head h2,
+.info-popup-head h2,
+.media-popup-head h2 {
+  color: #efeff1;
+}
+
+.mobile-info-card {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+  background: transparent;
+}
+
+.mobile-info-marker {
+  background: rgba(0, 255, 163, 0.55);
+}
+
+.mobile-info-text {
+  color: #c9cacd;
+}
+
+.info-popup-close,
+.media-popup-close {
+  border-color: #3a3c40;
+  background: #232427;
+  color: #9d9ea3;
+}
+
+.info-popup-close:active,
+.media-popup-close:active {
+  background: #2b2d31;
+  color: #efeff1;
+}
+
+.media-popup-body img,
+.media-popup-body video,
+.media-popup-body iframe {
+  background: #0f1012;
+}
+/* Schedule detail readability pass */
+.selected-schedule-view {
+  padding: 14px;
+  background: #18191c;
+}
+
+.selected-schedule-head {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.selected-schedule-head h2 {
+  color: #f4fff9;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.selected-schedule-view .calendar-list {
+  display: grid;
+  gap: 10px;
+  padding-top: 0;
+}
+
+.selected-schedule-view .schedule-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid rgba(157, 158, 163, 0.18);
+  border-radius: 8px;
+  background: #202124;
+  color: #f2f3f5;
+}
+
+.selected-schedule-view .schedule-card.today {
+  border-color: rgba(0, 255, 163, 0.42);
+  background: #202823;
+}
+
+.selected-schedule-view .schedule-card.off {
+  border-color: rgba(232, 194, 104, 0.36);
+  background: #242119;
+}
+
+.selected-schedule-view .schedule-card.empty {
+  border-color: rgba(157, 158, 163, 0.16);
+  background: #202124;
+}
+
+.selected-schedule-view .schedule-card-tag {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 255, 163, 0.28);
+  border-radius: 999px;
+  background: rgba(0, 255, 163, 0.12);
+  color: #8fffd5;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+.selected-schedule-view .schedule-card-tag.special {
+  border-color: rgba(196, 181, 253, 0.42);
+  background: rgba(167, 139, 250, 0.2);
+  color: #d7c5ff;
+}
+
+.selected-schedule-view .schedule-card-tag.speculative {
+  border-color: rgba(232, 194, 104, 0.34);
+  background: rgba(232, 194, 104, 0.14);
+  color: #f5d98e;
+}
+
+.selected-schedule-view .schedule-card-main {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+
+.selected-schedule-view .schedule-card .timeline-card-head,
+.selected-schedule-view .schedule-card .timeline-card-head > div {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.selected-schedule-view .schedule-card .date-label {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  color: #f2f3f5;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.5;
+  letter-spacing: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.selected-schedule-view .schedule-card.today .date-label,
+.selected-schedule-view .schedule-card.off .date-label {
+  color: #ffffff;
+}
+
+.selected-schedule-view .part-text {
+  display: block;
+  min-width: 0;
+  color: #f2f3f5;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.55;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.selected-schedule-view .part-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.selected-schedule-view .part-tag,
+.selected-schedule-view .schedule-inline-tag,
+.selected-schedule-view .schedule-inline-streamer,
+.selected-schedule-view .schedule-card-member,
+.selected-schedule-view .schedule-card-member-label {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 23px;
+  padding: 4px 8px;
+  border-width: 1px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+}
+
+.selected-schedule-view .part-tag {
+  flex: 0 0 auto;
+  color: #8fffd5;
+}
+
+.selected-schedule-view .schedule-inline-tag {
+  color: #decfff;
+  background: rgba(167, 139, 250, 0.24);
+  border-color: rgba(196, 181, 253, 0.48);
+}
+
+.selected-schedule-view .schedule-inline-streamer,
+.selected-schedule-view .schedule-card-member {
+  color: #decfff;
+  background: rgba(167, 139, 250, 0.22);
+  border-color: rgba(196, 181, 253, 0.42);
+}
+
+.selected-schedule-view .schedule-card-member-label {
+  color: #e7e8eb;
+  background: rgba(157, 158, 163, 0.2);
+  border-color: rgba(201, 202, 205, 0.3);
+  white-space: nowrap;
+}
+
+.selected-schedule-view .schedule-card-members,
+.selected-schedule-view .schedule-card-part-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.selected-schedule-view .schedule-card-notes {
+  display: grid;
+  gap: 8px;
+  margin-top: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(232, 194, 104, 0.28);
+  border-radius: 8px;
+  background: rgba(232, 194, 104, 0.08);
+}
+
+.selected-schedule-view .schedule-card-notes-title {
+  color: #f5d98e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.selected-schedule-view .schedule-card-note,
+.selected-schedule-view .schedule-card-part-notes .schedule-card-note {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid rgba(232, 194, 104, 0.32);
+  border-radius: 999px;
+  background: rgba(232, 194, 104, 0.1);
+  color: #f1d997;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.selected-schedule-view .schedule-card .muted {
+  color: #b6b8bd;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+@media (max-width: 380px) {
+  .selected-schedule-view {
+    padding: 12px;
+  }
+
+  .selected-schedule-view .schedule-card {
+    gap: 8px;
+    padding: 11px;
+  }
+
+  .selected-schedule-view .schedule-card .date-label,
+  .selected-schedule-view .part-text {
+    font-size: 14px;
+  }
+}
+
+/* PC hover detail layout on mobile */
+.selected-schedule-view .schedule-list {
+  display: block;
+}
+
+.schedule-detail {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #3a3c40;
+  border-radius: 10px;
+  background: #26272b;
+  color: #c9cacd;
+  box-shadow: none;
+}
+
+.schedule-detail.today {
+  border-color: rgba(0, 255, 163, 0.36);
+}
+
+.schedule-detail.off {
+  border-color: rgba(232, 194, 104, 0.34);
+}
+
+.schedule-detail.empty {
+  border-color: rgba(157, 158, 163, 0.2);
+}
+
+.schedule-detail-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.schedule-detail-date {
+  color: #efeff1;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.schedule-detail-title {
+  min-width: 0;
+  margin: 0;
+  padding: 7px 9px;
+  border-left: 3px solid #00ffa3;
+  border-radius: 7px;
+  background: rgba(0, 255, 163, 0.1);
+  color: #f4fff9;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.schedule-detail-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  min-height: 24px;
+}
+
+.schedule-detail-icon {
+  flex: 0 0 auto;
+  color: #9d9ea3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.schedule-detail-text {
+  min-width: 0;
+  color: #c9cacd;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.schedule-detail-parts {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 1px;
+}
+
+.schedule-detail-part {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(157, 158, 163, 0.18);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.schedule-detail-part-main {
+  align-items: flex-start;
+}
+
+.schedule-detail-part-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  max-width: 96px;
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid rgba(0, 255, 163, 0.22);
+  border-radius: 999px;
+  background: rgba(0, 255, 163, 0.12);
+  color: #7dffcf;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.schedule-detail-part-label.special {
+  border-color: rgba(196, 181, 253, 0.38);
+  background: rgba(167, 139, 250, 0.22);
+  color: #c4b5fd;
+}
+
+.schedule-detail-part-label.speculative {
+  border-color: rgba(232, 194, 104, 0.3);
+  background: rgba(232, 194, 104, 0.14);
+  color: #e8c268;
+}
+
+.schedule-detail-part-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #f2f3f5;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.55;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.schedule-detail-part-text .schedule-inline-tag,
+.schedule-detail-part-text .schedule-inline-streamer {
+  color: inherit;
+}
+
+.schedule-detail-members-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.schedule-detail-members-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(157, 158, 163, 0.14);
+  color: #c9cacd;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.schedule-detail-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.schedule-detail-member {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 20px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(157, 158, 163, 0.14);
+  color: #c9cacd;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.schedule-detail-part-notes {
+  display: grid;
+  gap: 6px;
+  margin-top: 1px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(0, 255, 163, 0.16);
+}
+
+.schedule-detail-note-text {
+  color: #c9cacd;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.schedule-detail .schedule-card-notes {
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid #3a3c40;
+  border-radius: 8px;
+  background: #1f2023;
+}
+
+.schedule-detail .schedule-card-notes-title {
+  color: #9d9ea3;
+}
+
+.schedule-detail .schedule-card-note {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #c9cacd;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.schedule-detail-empty-text {
+  color: #c9cacd;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+@media (max-width: 380px) {
+  .schedule-detail {
+    padding: 11px 12px;
+  }
+
+  .schedule-detail-row {
+    flex-wrap: wrap;
+  }
+
+  .schedule-detail-part-label {
+    max-width: 100%;
+  }
+
+  .schedule-detail-title,
+  .schedule-detail-part-text {
+    font-size: 14px;
+  }
+}
+
+/* Plain collab member text in mobile detail */
+.schedule-detail-members-plain {
+  gap: 0;
+  color: #c9cacd;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.schedule-detail-member-text {
+  display: inline;
+  color: #c9cacd;
+  font: inherit;
+  line-height: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.schedule-detail-member-text + .schedule-detail-member-text::before {
+  content: ", ";
+  color: #8b8d92;
+}
