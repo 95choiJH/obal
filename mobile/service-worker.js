@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "obaengal-mobile-v19";
+﻿const CACHE_NAME = "obaengal-mobile-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "../icons/icon48.png",
   "../icons/icon128.png",
+  "../icons/오뱅알.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -44,21 +45,4 @@ self.addEventListener("fetch", (event) => {
       .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
   );
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

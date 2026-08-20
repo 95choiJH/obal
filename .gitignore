@@ -1,6 +1,7 @@
 # Build and packaging output
 dist/
 netlify-admin/
+netlify-mobile/
 *.zip
 
 # Dependencies and package-manager caches

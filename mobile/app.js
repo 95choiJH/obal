@@ -101,13 +101,6 @@
     }
   }
 
-  function normalizeVod(item) {
-    if (!item || typeof item !== "object") return null;
-    const url = String(item.url || "").trim();
-    if (!url) return null;
-    return { url, label: String(item.label || "방송 다시보기").trim() || "방송 다시보기" };
-  }
-
   function rowToInfo(row) {
     return {
       id: row.id || 0,
@@ -126,7 +119,6 @@
       titleShort: row.title_short || "",
       status: row.status || "",
       parts: Array.isArray(row.parts) ? row.parts.map(normalizePart).filter((p) => p.content || p.profile) : [],
-      vods: Array.isArray(row.vods) ? row.vods.map(normalizeVod).filter(Boolean) : [],
       notes: normalizeNotes(row.note),
       updatedAt: row.updated_at || row.created_at || null,
     };
@@ -206,7 +198,7 @@
     };
   }
 
-  function mediaTriggerHtml(label, url) {
+  function mediaTriggerHtml(label) {
     return directiveInlineHtml(label || url || "미디어");
   }
   function closeInfoPopup() {
@@ -265,7 +257,7 @@
       const media = parseMediaDirectiveAt(raw, i);
       if (media) {
         flushPlain(i);
-        html += mediaTriggerHtml(media.label, media.url);
+        html += mediaTriggerHtml(media.label);
         i = media.end;
         plainStart = i;
         continue;
@@ -322,24 +314,6 @@
     return directiveText(entry.titleShort || entry.title || "방송 예정");
   }
 
-  function monthEntryLines(entry) {
-    if (!entry) return ["미정"];
-    if (entry.status === "off") return ["휴방"];
-    if (entry.parts && entry.parts.length) {
-      const lines = entry.parts.map((part) => {
-        if (part.displayType === "profile" && part.profile) return part.profile.channelName;
-        return directiveText(part.content);
-      }).filter(Boolean);
-      return lines.length ? lines : ["방송 예정"];
-    }
-    return [entryTitle(entry) || "방송 예정"];
-  }
-  function timeText(entry) {
-    if (!entry || entry.status === "off") return "";
-    if (!entry.start) return "시간 미정";
-    return entry.end ? `${entry.start} ~ ${entry.end}` : `${entry.start} ~`;
-  }
-
 
   function entriesByDate() {
     return new Map(state.rows.map((entry) => [entry.date, entry]));
@@ -393,74 +367,12 @@
       : "업데이트 확인 중";
   }
 
-  function renderEntryBody(entry) {
-    if (!entry) return `<p class="muted">등록된 일정이 없습니다.</p>`;
-    if (entry.status === "off") return `<p class="muted">휴방으로 표시된 날입니다.</p>`;
-    if (entry.parts.length) {
-      return `<div class="content-lines">${entry.parts.map((part, index) => {
-        const label = partLabel(part, index);
-        const textHtml = part.displayType === "profile" && part.profile ? esc(part.profile.channelName) : directiveInlineHtml(part.content);
-        return `<div class="part-line">${label ? `<span class="part-tag">${esc(label)}</span>` : ""}<span class="part-text">${textHtml || "내용 미정"}</span></div>`;
-      }).join("")}</div>`;
-    }
-    return `<p class="part-text">${directiveInlineHtml(entry.titleShort || entry.title || entryTitle(entry))}</p>`;
-  }
-
   function scheduleNotesHtml(entry) {
     if (!entry || !entry.notes || !entry.notes.length) return "";
     return `<section class="schedule-card-notes" aria-label="메모">
       <div class="schedule-card-notes-title">메모</div>
       ${entry.notes.map((note) => `<span class="schedule-card-note">${directiveInlineHtml(note)}</span>`).join("")}
     </section>`;
-  }
-
-  function collabMembersHtml(part) {
-    if (!part || !part.collab || !part.members || !part.members.length) return "";
-    return `<div class="schedule-card-members" aria-label="\uD569\uBC29 \uBA64\uBC84"><span class="schedule-card-member-label">\uBA64\uBC84</span>${part.members.map((member) =>
-      `<span class="schedule-card-member">${esc(member.channelName || "\uC774\uB984 \uC5C6\uC74C")}</span>`
-    ).join("")}</div>`;
-  }
-  function partNotesHtml(part) {
-    if (!part || !part.notes || !part.notes.length) return "";
-    return `<div class="schedule-card-part-notes" aria-label="부 메모">${part.notes.map((note) =>
-      `<span class="schedule-card-note">${directiveInlineHtml(note)}</span>`
-    ).join("")}</div>`;
-  }
-
-  function scheduleCardHtml(key, entry, part, index) {
-    const isToday = key === todayKey();
-    const isOff = entry && entry.status === "off";
-    const hasEntry = !!entry;
-    const label = part ? partLabel(part, index) : "";
-    const titleHtml = part
-      ? (part.displayType === "profile" && part.profile ? esc(part.profile.channelName) : directiveInlineHtml(part.content))
-      : (entry ? directiveInlineHtml(entry.titleShort || entry.title || entryTitle(entry)) : "");
-    const badge = isOff ? "휴방" : label || (hasEntry ? "일정" : "미정");
-    const tagText = badge;
-    const tagClass = part && part.speculative ? " speculative" :
-      part && (part.collab || part.official || part.otherChannel || part.ad || part.outdoor) ? " special" : "";
-    return `
-      <article class="schedule-card${isToday ? " today" : ""}${isOff ? " off" : ""}${!hasEntry ? " empty" : ""}">
-        <div class="schedule-card-tag${tagClass}">${esc(tagText)}</div>
-        <div class="schedule-card-main">
-          <div class="timeline-card-head">
-            <div>
-              <div class="date-label">${titleHtml || "등록된 일정 없음"}</div>
-            </div>
-          </div>
-          ${collabMembersHtml(part)}
-          ${partNotesHtml(part)}
-          ${!part && !hasEntry ? `<p class="muted">등록된 일정이 없습니다.</p>` : ""}
-          ${!part && hasEntry && !entry.parts.length ? renderEntryBody(entry) : ""}
-        </div>
-      </article>
-    `;
-  }
-
-  function detailChannelBadgeHtml(channel) {
-    if (!channel) return "";
-    const name = String(channel.channelName || "이름 없음").trim();
-    return name ? `<span class="schedule-detail-member">${esc(name)}</span>` : "";
   }
 
   function detailHostHtml(part) {
