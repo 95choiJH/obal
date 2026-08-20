@@ -3493,3 +3493,62 @@ body {
   content: ", ";
   color: #8b8d92;
 }
+
+/* Move mobile detail frame color from outer article to detail parts */
+.schedule-detail {
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.schedule-detail.today,
+.schedule-detail.off,
+.schedule-detail.empty {
+  border-color: transparent;
+}
+
+.schedule-detail-part {
+  padding: 12px 14px;
+  border: 1px solid #3a3c40;
+  border-radius: 10px;
+  background: #26272b;
+}
+
+.schedule-detail.today .schedule-detail-part {
+  border-color: rgba(0, 255, 163, 0.36);
+}
+
+.schedule-detail.off .schedule-detail-part {
+  border-color: rgba(232, 194, 104, 0.34);
+}
+
+.schedule-detail.empty .schedule-detail-part {
+  border-color: rgba(157, 158, 163, 0.2);
+}
+
+.schedule-detail > .schedule-card-notes {
+  border-color: #3a3c40;
+  background: #26272b;
+}
+
+.schedule-detail-empty-text {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #3a3c40;
+  border-radius: 10px;
+  background: #26272b;
+}
+
+@media (max-width: 380px) {
+  .schedule-detail {
+    padding: 0;
+  }
+
+  .schedule-detail-part,
+  .schedule-detail-empty-text {
+    padding: 11px 12px;
+  }
+}
