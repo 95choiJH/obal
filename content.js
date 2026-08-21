@@ -405,6 +405,20 @@
       margin: 0 auto; border-radius: 8px; background: #0f1012; box-shadow: 0 18px 48px rgba(0,0,0,0.5); cursor: default; }
     .cs-media-body iframe { aspect-ratio: 16 / 9; height: auto; }
     .cs-media-link { color: #93c5fd; font-size: 12px; overflow-wrap: anywhere; }
+    .cs-install-guide-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
+      min-height: 20px; padding: 1px 7px 1px 6px; border: 1px solid rgba(0,255,163,0.34); border-radius: 999px;
+      background: rgba(0,255,163,0.1); color: #8fffd5; font: inherit; font-size: 12px; font-weight: 800;
+      line-height: 18px; vertical-align: middle; text-decoration: none; cursor: pointer; overflow: hidden; }
+    .cs-install-guide-trigger::before { content: "↗"; flex: 0 0 auto; color: #00ffa3; font-size: 0.92em; line-height: 1; }
+    .cs-install-guide-trigger:hover, .cs-install-guide-trigger.cs-open { border-color: rgba(0,255,163,0.58); background: rgba(0,255,163,0.18); color: #d7f7ea; }
+    .cs-install-guide-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-install-guide { display: grid; gap: 10px; color: #d7d9de; font-size: 12px; line-height: 1.5; }
+    .cs-install-guide-lead { color: #f2f3f5; font-weight: 800; }
+    .cs-install-guide-section { display: grid; gap: 6px; padding: 9px; border: 1px solid rgba(157,158,163,0.2); border-radius: 8px; background: rgba(255,255,255,0.035); }
+    .cs-install-guide-section h4 { margin: 0; color: #8fffd5; font-size: 12px; line-height: 1.2; }
+    .cs-install-guide-section ol { margin: 0; padding-left: 18px; }
+    .cs-install-guide-section li + li { margin-top: 3px; }
+    .cs-install-guide-note { color: #9d9ea3; font-size: 11px; line-height: 1.45; }
 
     .cs-cell-today { background: rgba(0,255,163,0.08); border-color: rgba(0,255,163,0.45); }
     .cs-cell-today .cs-cell-date,
@@ -1029,6 +1043,7 @@
       '<div class="cs-notice">' +
             '<p class="cs-schedule-notice" title="◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.">◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.</p>' +
       '<p class="cs-schedule-notice" title="◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.">◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.</p>' +
+      '<p class="cs-schedule-notice" title="◈ 모바일 설치 방법은 링크를 눌러 확인할 수 있습니다.">' + directiveHtml('◈ 모바일에서는 홈 화면에 추가해 앱처럼 사용할 수 있습니다. :install[모바일 설치 방법]') + '</p>' +
       '</div>' +
       '<div class="cs-footer-meta-frame">' +
       '<button type="button" class="cs-feedback-open' + (state.feedbackOpen ? " cs-open" : "") + '" id="cs-feedback-open" aria-expanded="' + String(state.feedbackOpen) + '">문의·제보</button>' +
@@ -1227,6 +1242,20 @@
     const cls = "cs-inline-media-trigger" + (infoMode ? " cs-info-media-trigger" : "");
     return '<button type="button" class="' + cls + '" data-media-label="' + escapeHtml(safeLabel) + '" data-media-url="' + escapeHtml(safeUrl) + '"><span class="cs-inline-media-label">' + directiveHtml(safeLabel, { disableProfileLinks: true, infoMode }) + "</span></button>";
   }
+  function installGuideTriggerHtml(label) {
+    const safeLabel = String(label || "모바일 설치 방법").trim() || "모바일 설치 방법";
+    return '<button type="button" class="cs-install-guide-trigger" data-install-guide="1" data-install-label="' + escapeHtml(safeLabel) + '"><span class="cs-install-guide-label">' + directiveHtml(safeLabel, { disableProfileLinks: true }) + '</span></button>';
+  }
+
+  function parseInstallDirectiveAt(raw, start) {
+    if (raw.slice(start, start + 9).toLowerCase() !== ":install[") return null;
+    const close = findDirectiveBracketEnd(raw, start + 8);
+    if (close < 0) return null;
+    return {
+      label: raw.slice(start + 9, close).trim() || "모바일 설치 방법",
+      end: close + 1,
+    };
+  }
   function safeMediaUrl(value) {
     try {
       const parsed = new URL(String(value || "").trim());
@@ -1337,6 +1366,8 @@
     const trimmed = raw.trim();
     const wholeMedia = parseMediaDirectiveAt(trimmed, 0);
     if (wholeMedia && wholeMedia.end === trimmed.length) return mediaTriggerHtml(wholeMedia.label, wholeMedia.url, options);
+    const wholeInstall = parseInstallDirectiveAt(trimmed, 0);
+    if (wholeInstall && wholeInstall.end === trimmed.length) return installGuideTriggerHtml(wholeInstall.label);
     const wholeBracket = trimmed.match(/^:(s|t)\[/i);
     if (wholeBracket) {
       const end = findDirectiveBracketEnd(trimmed, 2);
@@ -1354,6 +1385,14 @@
       if (end > plainStart) html += plainDirectiveHtml(raw.slice(plainStart, end));
     };
     while (i < raw.length) {
+      const install = parseInstallDirectiveAt(raw, i);
+      if (install) {
+        flushPlain(i);
+        html += installGuideTriggerHtml(install.label);
+        i = install.end;
+        plainStart = i;
+        continue;
+      }
       const media = parseMediaDirectiveAt(raw, i);
       if (media) {
         flushPlain(i);
@@ -1583,6 +1622,14 @@
         event.preventDefault();
         event.stopPropagation();
         showOriginalImage(mediaImage);
+        return;
+      }
+      const installTrigger = event.target.closest && event.target.closest(".cs-install-guide-trigger");
+      if (installTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (installTrigger.classList.contains("cs-open")) closeMediaPopover();
+        else showInstallGuidePopover(installTrigger);
         return;
       }
       const mediaTrigger = event.target.closest && event.target.closest(".cs-inline-media-trigger");
@@ -2131,7 +2178,7 @@
     const pop = state.shadow && state.shadow.getElementById("cs-media-popover");
     if (pop) pop.classList.remove("cs-open", "cs-media-expanded");
     closeOriginalImage();
-    if (state.shadow) state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    if (state.shadow) state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
   }
 
   function showMediaPopover(trigger) {
@@ -2142,7 +2189,7 @@
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = mediaEmbedHtml(url, label);
-    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
 
@@ -2160,6 +2207,49 @@
     pop.style.left = left + "px";
     pop.style.top = top + "px";
   }
+  function installGuideHtml() {
+    return '<div class="cs-install-guide">' +
+      '<p class="cs-install-guide-lead">오뱅알 모바일 페이지를 홈 화면에 추가하면 앱처럼 바로 열 수 있습니다.</p>' +
+      '<section class="cs-install-guide-section"><h4>Android Chrome</h4><ol>' +
+        '<li>모바일 페이지를 Chrome으로 엽니다.</li>' +
+        '<li>주소창 또는 메뉴의 설치/홈 화면에 추가를 누릅니다.</li>' +
+        '<li>확인을 누르면 홈 화면에 오뱅알 아이콘이 추가됩니다.</li>' +
+      '</ol></section>' +
+      '<section class="cs-install-guide-section"><h4>iPhone Safari</h4><ol>' +
+        '<li>모바일 페이지를 Safari로 엽니다.</li>' +
+        '<li>하단 공유 버튼을 누릅니다.</li>' +
+        '<li>홈 화면에 추가를 선택한 뒤 추가를 누릅니다.</li>' +
+      '</ol></section>' +
+      '<p class="cs-install-guide-note">iOS는 브라우저 정책상 설치 팝업을 코드로 직접 띄울 수 없어 수동 추가가 필요합니다.</p>' +
+      '</div>';
+  }
+
+  function showInstallGuidePopover(trigger) {
+    const label = trigger.getAttribute("data-install-label") || "모바일 설치 방법";
+    const pop = ensureMediaPopover();
+    const title = pop.querySelector("#cs-media-title");
+    const body = pop.querySelector("#cs-media-body");
+    if (title) title.textContent = label;
+    if (body) body.innerHTML = installGuideHtml();
+    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    trigger.classList.add("cs-open");
+    pop.classList.add("cs-open");
+
+    const root = state.shadow && state.shadow.getElementById("cs-root");
+    if (root && pop.parentElement !== root) root.appendChild(pop);
+    const rect = trigger.getBoundingClientRect();
+    const rootRect = root ? root.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const popRect = pop.getBoundingClientRect();
+    const maxLeft = Math.max(8, rootRect.width - popRect.width - 8);
+    const rightLeft = rect.right - rootRect.left + 8;
+    const leftFallback = rect.left - rootRect.left - popRect.width - 8;
+    const left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
+    const maxTop = Math.max(8, rootRect.height - popRect.height - 8);
+    const top = Math.max(8, Math.min(rect.top - rootRect.top, maxTop));
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+  }
+
   function closePopover() {
     const popover = state.shadow && state.shadow.getElementById("cs-popover");
     if (popover) popover.classList.remove("cs-open");

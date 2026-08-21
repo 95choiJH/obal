@@ -130,10 +130,38 @@
     if (part.official) labels.push("공방");
     if (part.otherChannel) labels.push("타방송");
     if (part.ad) labels.push("광고");
-    if (part.outdoor) labels.push("야외");
+    if (part.outdoor) labels.push("야방");
     return labels;
   }
 
+  function tagToneStyleAttr(tag) {
+    const text = String(tag || "").trim();
+    if (!text) return "";
+    const fixed = {
+      "언급": [44, 232, 184, 104, 154, 107, 0],
+      "합방": [205, 125, 211, 252, 3, 105, 161],
+      "공방": [222, 191, 96, 165, 37, 99, 235],
+      "타방송": [252, 216, 180, 254, 109, 40, 217],
+      "광고": [340, 251, 113, 133, 180, 35, 82],
+      "야방": [27, 251, 146, 60, 194, 93, 22],
+    };
+    const tone = fixed[text];
+    if (tone) {
+      const [hue, dr, dg, db, lr, lg, lb] = tone;
+      return ' style="--cs-tag-color: rgb(' + dr + ' ' + dg + ' ' + db + '); --cs-tag-bg: hsl(' + hue + ' 88% 60% / 0.16); --cs-tag-border: hsl(' + hue + ' 88% 68% / 0.32); --cs-tag-light-color: rgb(' + lr + ' ' + lg + ' ' + lb + '); --cs-tag-light-bg: hsl(' + hue + ' 85% 50% / 0.13); --cs-tag-light-border: hsl(' + hue + ' 72% 42% / 0.24);"';
+    }
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    const hue = Math.abs(hash) % 360;
+    return ' style="--cs-tag-color: hsl(' + hue + ' 88% 76%); --cs-tag-bg: hsl(' + hue + ' 88% 60% / 0.16); --cs-tag-border: hsl(' + hue + ' 88% 68% / 0.32); --cs-tag-light-color: hsl(' + hue + ' 72% 32%); --cs-tag-light-bg: hsl(' + hue + ' 85% 50% / 0.13); --cs-tag-light-border: hsl(' + hue + ' 72% 42% / 0.24);"';
+  }
+
+  function firstPartTag(part) {
+    if (!part) return "";
+    if (part.speculative) return "언급";
+    const flags = partFlagLabels(part);
+    return flags.length ? flags[0] : "";
+  }
   function partLabel(part, index) {
     const flags = partFlagLabels(part);
     if (part.speculative) return ["언급"].concat(flags).join("/");
@@ -282,7 +310,7 @@
           flushPlain(i);
           const text = raw.slice(i + 3, end).trim();
           if (bracket[1].toLowerCase() === "t") {
-            html += hasStreamerDirective(text) ? directiveInlineHtml(text) : `<span class="schedule-inline-tag">${directiveInlineHtml(text)}</span>`;
+            html += hasStreamerDirective(text) ? directiveInlineHtml(text) : `<span class="schedule-inline-tag schedule-tag-tone"${tagToneStyleAttr(text)}>${directiveInlineHtml(text)}</span>`;
           } else {
             html += streamerBadgeHtml(text);
           }
@@ -295,7 +323,7 @@
       if (inline) {
         flushPlain(i);
         html += inline[1].toLowerCase() === "t"
-          ? `<span class="schedule-inline-tag">${esc(inline[2].trim())}</span>`
+          ? `<span class="schedule-inline-tag schedule-tag-tone"${tagToneStyleAttr(inline[2].trim())}>${esc(inline[2].trim())}</span>`
           : streamerBadgeHtml(inline[2].trim());
         i += inline[0].length;
         plainStart = i;
@@ -393,17 +421,22 @@
 
   function detailPartHtml(part, index) {
     const label = partLabel(part, index);
+    const firstTag = firstPartTag(part);
+    const tagToneAttr = tagToneStyleAttr(firstTag);
+    const tagToneClass = firstTag ? " schedule-tag-tone" : "";
     const tagClass = part && part.speculative ? " speculative" :
       part && (part.collab || part.official || part.otherChannel || part.ad || part.outdoor) ? " special" : "";
     const textHtml = part.displayType === "profile" && part.profile ? esc(part.profile.channelName) : directiveInlineHtml(part.content);
     return `<div class="schedule-detail-part">
-      <div class="schedule-detail-row schedule-detail-part-main">
-        ${label ? `<span class="schedule-detail-part-label${tagClass}">${esc(label)}</span>` : ""}
-        <span class="schedule-detail-part-text">${textHtml || "내용 미정"}</span>
+      <div class="schedule-detail-part-scroll">
+        <div class="schedule-detail-row schedule-detail-part-main">
+          ${label ? `<span class="schedule-detail-part-label${tagClass}${tagToneClass}"${tagToneAttr}>${esc(label)}</span>` : ""}
+          <span class="schedule-detail-part-text">${textHtml || "내용 미정"}</span>
+        </div>
+        ${detailHostHtml(part)}
+        ${detailMembersHtml(part)}
+        ${detailPartNotesHtml(part)}
       </div>
-      ${detailHostHtml(part)}
-      ${detailMembersHtml(part)}
-      ${detailPartNotesHtml(part)}
     </div>`;
   }
 
@@ -423,7 +456,7 @@
     const title = directiveInlineHtml(entry.titleShort || entry.title || entryTitle(entry) || "방송 예정");
     const partsHtml = entry.parts && entry.parts.length
       ? `<div class="schedule-detail-parts">${entry.parts.map(detailPartHtml).join("")}</div>`
-      : `<div class="schedule-detail-parts"><div class="schedule-detail-part"><div class="schedule-detail-row schedule-detail-part-main"><span class="schedule-detail-part-label">일정</span><span class="schedule-detail-part-text">${title}</span></div></div></div>`;
+      : `<div class="schedule-detail-parts"><div class="schedule-detail-part"><div class="schedule-detail-part-scroll"><div class="schedule-detail-row schedule-detail-part-main"><span class="schedule-detail-part-label">일정</span><span class="schedule-detail-part-text">${title}</span></div></div></div></div>`;
     return `<article class="schedule-detail${isToday ? " today" : ""}">
       ${partsHtml}
       ${scheduleNotesHtml(entry)}

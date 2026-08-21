@@ -128,7 +128,7 @@
   .insert-btn { width: auto; min-width: 36px; padding: 0 8px; font-size: 12px; font-weight: 700; }
   .directive-popup-shell[hidden] { display: none; }
   .directive-popup-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.48); }
-  .directive-popup { position: fixed; left: 50%; top: 50%; z-index: 61; width: min(420px, calc(100vw - 28px));
+  .directive-popup { position: fixed; left: 50%; top: 50%; z-index: 61; width: min(540px, calc(100vw - 28px));
     transform: translate(-50%, -50%); border: 1px solid var(--border-strong); border-radius: 10px;
     background: var(--surface); box-shadow: 0 18px 46px rgba(0,0,0,0.5); overflow: hidden; }
   .directive-popup-head { display: flex; align-items: center; gap: 8px; padding: 12px 13px;
@@ -142,9 +142,14 @@
   .directive-popup-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
   .directive-popup-actions button { border-radius: 7px; padding: 8px 11px; font-size: 12px; font-weight: 800; }
   .directive-popup-cancel { border: 1px solid var(--border); background: var(--surface2); color: var(--text-dim); }
+  .directive-popup-delete { margin-right: auto; border: 1px solid rgba(239,95,95,0.45); background: rgba(239,95,95,0.08); color: #fca5a5; }
+  .directive-popup-delete:hover { border-color: rgba(239,95,95,0.72); background: rgba(239,95,95,0.14); }
   .directive-popup-apply { background: var(--mint); color: var(--mint-ink); }
   .directive-popup-results { max-height: 190px; overflow-y: auto; margin-top: 7px;
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); }
+  .directive-popup-results .member-result.selected { background: rgba(0,255,163,0.12); color: var(--mint); outline: 1px solid rgba(0,255,163,0.36); outline-offset: -1px; }
+  .directive-popup-toolbar { margin: 0 0 6px; }
+  .directive-editor.directive-popup-editor { min-height: 92px; max-height: 180px; overflow-x: auto; overflow-y: auto; white-space: pre; overflow-wrap: normal; scrollbar-gutter: stable both-edges; }
   .directive-editor { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 46px; padding: 10px 11px;
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text);
     font-size: 14px; line-height: 1.55; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -155,7 +160,7 @@
   .directive-editor.multiline { min-height: 72px; }
   .directive-editor:focus { border-color: var(--mint); }
   .directive-editor:empty::before { content: attr(data-placeholder); color: var(--text-mute); pointer-events: none; }
-  .directive-token { --token-color: var(--border-strong); --token-bg: var(--surface); display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; position: relative;
+  .directive-token { --token-color: var(--border-strong); --token-bg: var(--surface); display: inline-flex; cursor: pointer; align-items: center; flex-wrap: wrap; max-width: 100%; position: relative;
     padding: 3px 7px; border-radius: 6px; color: var(--text); background: var(--token-bg);
     border: 1px solid var(--token-color); font-size: 12px; font-weight: 700; line-height: 1.45; vertical-align: middle; }
   .directive-token-t { --token-color: rgba(0,255,163,0.42); --token-bg: rgba(0,255,163,0.07); }
@@ -163,12 +168,8 @@
   .directive-token-m { --token-color: rgba(251,113,133,0.46); --token-bg: rgba(251,113,133,0.07); }
   .directive-input-token { gap: 6px; margin: 2px; min-width: 0; }
   .directive-token-name { display: none; }
-  .directive-token-remove { position: absolute; right: -5px; top: -6px; width: 15px; height: 15px; padding: 0;
-    border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--text-mute);
-    font-size: 11px; font-weight: 800; line-height: 13px; opacity: 0; transition: opacity 0.12s, color 0.12s, border-color 0.12s; }
-  .directive-token:hover > .directive-token-remove, .directive-token-remove:focus { opacity: 1; }
-  .directive-token-remove:hover { color: #fca5a5; border-color: rgba(239,95,95,0.6); }
-  .directive-input-token input { flex: 1 1 88px; width: auto; max-width: 100%; height: 24px; min-width: 54px; padding: 0 6px;
+  .directive-popup-editor .directive-token, .directive-popup-editor .directive-token-label-editor, .directive-popup-editor .directive-input-token input { cursor: pointer; }
+  .directive-input-token input { flex: 1 1 88px; cursor: pointer; width: auto; max-width: 100%; height: 24px; min-width: 54px; padding: 0 6px;
     border: 1px solid var(--border); border-radius: 5px; background: var(--surface2);
     color: var(--text); font-size: 12px; font-weight: 700; outline: none; }
   .directive-input-token input::placeholder { color: var(--text-mute); }
@@ -177,7 +178,7 @@
   .directive-input-token .directive-token-url { flex: 1 1 150px; width: auto; max-width: 100%; }
   .directive-token-label-editor { display: inline-flex; align-items: center; flex-wrap: nowrap; gap: 3px; flex: 1 1 96px; min-width: 54px; max-width: 100%;
     min-height: 24px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px;
-    background: var(--surface2); color: var(--text); outline: none; overflow-x: auto; overflow-y: hidden; white-space: nowrap; overflow-wrap: normal; }
+    background: var(--surface2); color: var(--text); outline: none; overflow-x: auto; overflow-y: hidden; white-space: pre; overflow-wrap: normal; }
   .directive-token-label-editor:empty::before { content: attr(data-placeholder); color: var(--text-mute); pointer-events: none; }
   .directive-token-label-editor:focus { border-color: var(--token-color); background: var(--surface); box-shadow: 0 0 0 2px rgba(255,255,255,0.04); }
   .directive-token-label-editor::-webkit-scrollbar { height: 4px; }

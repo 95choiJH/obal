@@ -3237,7 +3237,6 @@ body {
 
 .schedule-detail-members {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
 }
@@ -3310,10 +3309,6 @@ body {
 @media (max-width: 380px) {
   .schedule-detail {
     padding: 11px 12px;
-  }
-
-  .schedule-detail-row {
-    flex-wrap: wrap;
   }
 
   .schedule-detail-part-label {
@@ -3416,19 +3411,19 @@ body {
 }
 
 .app-shell {
-  min-width: 560px;
+  min-width: 375px;
 }
 
 .main.schedule-only {
   width: 100%;
-  min-width: 560px;
+  min-width: 375px;
   max-width: none;
   margin-inline: 0;
 }
 
 @media (max-width: 559px) {
   .topbar {
-    min-width: 560px;
+    min-width: 375px;
   }
 
   .main.schedule-only {
@@ -3463,4 +3458,100 @@ body {
   .app-shell {
     overflow-x: visible;
   }
+}
+/* Horizontal scroll for mobile schedule details */
+.selected-schedule-view .calendar-list {
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.selected-schedule-view .schedule-detail,
+.selected-schedule-view .schedule-detail-parts {
+  width: 100%;
+  min-width: 0;
+}
+
+.selected-schedule-view .schedule-detail-part {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  white-space: nowrap;
+}
+
+.selected-schedule-view .schedule-detail-part-scroll {
+  display: inline-grid;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  gap: 7px;
+  padding-right: 12px;
+  box-sizing: content-box;
+  vertical-align: top;
+}
+
+.selected-schedule-view .schedule-detail-empty-text,
+.selected-schedule-view .schedule-detail > .schedule-card-notes {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
+.selected-schedule-view .schedule-detail-empty-text > *,
+.selected-schedule-view .schedule-detail > .schedule-card-notes > * {
+  min-width: 100%;
+}
+
+.selected-schedule-view .schedule-detail-row,
+.selected-schedule-view .schedule-detail-members-row {
+  display: flex;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+}
+
+.selected-schedule-view .schedule-detail-members {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+}
+
+.selected-schedule-view .schedule-detail-part-label,
+.selected-schedule-view .schedule-detail-part-text,
+.selected-schedule-view .schedule-detail-members-chip,
+.selected-schedule-view .schedule-detail-member-text,
+.selected-schedule-view .schedule-detail-note-text,
+.selected-schedule-view .schedule-detail .schedule-card-note {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.selected-schedule-view .schedule-detail-part-text,
+.selected-schedule-view .schedule-detail-note-text,
+.selected-schedule-view .schedule-detail-part-notes {
+  width: max-content;
+  max-width: none;
+}
+
+.selected-schedule-view .schedule-detail-note-text {
+  display: inline-block;
+}
+/* PC-matched tag badge tones */
+.schedule-tag-tone,
+.selected-schedule-view .schedule-inline-tag.schedule-tag-tone,
+.selected-schedule-view .schedule-detail-part-label.schedule-tag-tone {
+  color: var(--cs-tag-color);
+  background: var(--cs-tag-bg);
+  border-color: var(--cs-tag-border);
+}
+
+.schedule-detail-part-text .schedule-inline-tag.schedule-tag-tone,
+.selected-schedule-view .schedule-detail-part-text .schedule-inline-tag.schedule-tag-tone {
+  color: var(--cs-tag-color);
 }

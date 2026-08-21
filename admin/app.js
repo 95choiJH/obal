@@ -837,13 +837,15 @@ function infoItemHtml(u, i) {
     const whole = value.match(/^:(s|t)(?:\[([^\]]+)\]|\s+(.+))$/i);
     const hasFeedback = !whole && value.includes("[문의]");
     const mediaMatches = Array.from(value.matchAll(/:m\[([^{}\]]+)\{([^}\]]+)\}\]/gi));
-    if (!/:(s|t)\b/i.test(value) && !mediaMatches.length && !hasFeedback) return "";
+    const installMatches = Array.from(value.matchAll(/:install\[([^\]]+)\]/gi));
+    if (!/:(s|t)\b/i.test(value) && !mediaMatches.length && !installMatches.length && !hasFeedback) return "";
     const matches = whole
       ? [{ 1: whole[1], 2: whole[2] || whole[3] }]
       : Array.from(value.matchAll(/:(s|t)(?:\[([^\]]+)\]|\s+([^\s:]+))/gi), (m) => ({ 1: m[1], 2: m[2] || m[3] }));
-    if (!matches.length && !mediaMatches.length && !hasFeedback) return '<span class="directive-help">명령어를 완성하세요. 예: :s 닉네임 · :m[텍스트{URL}]</span>';
+    if (!matches.length && !mediaMatches.length && !installMatches.length && !hasFeedback) return '<span class="directive-help">명령어를 완성하세요. 예: :s 닉네임 · :m[텍스트{URL}]</span>';
     const previews = matches.map((match) => '<span class="directive-applied">' + esc(match[2].trim()) + '</span>');
     mediaMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
+    installMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
     if (hasFeedback) previews.push('<span class="directive-feedback">문의·제보</span>');
     return previews.join('<span style="width:6px"></span>') + '<span class="directive-ok">적용 미리보기</span>';
   }
@@ -1145,14 +1147,6 @@ function infoItemHtml(u, i) {
     token.contentEditable = "false";
     token.dataset.kind = item.kind;
     token.dataset.start = String(item.index);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "directive-token-remove";
-    remove.setAttribute("aria-label", "토큰 삭제");
-    remove.textContent = "\u00d7";
-    remove.onmousedown = (event) => event.preventDefault();
-    remove.onclick = (event) => { event.preventDefault(); event.stopPropagation(); removeDirectiveToken(token, source, editor); };
-    token.appendChild(remove);
     const name = document.createElement("span");
     name.className = "directive-token-name";
     name.textContent = directiveInputLabel(item.kind);
@@ -1160,21 +1154,24 @@ function infoItemHtml(u, i) {
 
     const label = document.createElement("span");
     label.className = "directive-token-label-editor" + (item.kind === "m" ? " directive-token-label" : "");
-    label.contentEditable = "true";
+    label.contentEditable = "false";
     label.spellcheck = false;
     label.dataset.tokenLabel = "1";
     label.dataset.placeholder = item.kind === "m" ? "\uD45C\uC2DC \uD14D\uC2A4\uD2B8" : "\uD14D\uC2A4\uD2B8";
     renderDirectiveLabelEditor(label, item.label || "", source, editor);
-    bindDirectiveLabelEditor(label, source, editor);
-    if (item.kind === "s") bindInlineStreamerSearch(label, source, editor);
+    label.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openDirectiveTokenEditPopup(source, editor, token); });
     token.appendChild(label);
 
     if (item.kind === "m") {
       const url = makeInlineDirectiveInput("url", item.url || "", "URL", "directive-token-url");
       url.dataset.tokenUrl = "1";
+      url.readOnly = true;
+      url.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openDirectiveTokenEditPopup(source, editor, token); });
       token.appendChild(url);
     }
     token.dataset.raw = inlineDirectiveRaw(token);
+    token.title = "\uD074\uB9AD\uD574\uC11C \uD3B8\uC9D1";
+    token.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openDirectiveTokenEditPopup(source, editor, token); });
     return token;
   }
   function renderDirectiveEditor(source, editor) {
@@ -1447,23 +1444,26 @@ function infoItemHtml(u, i) {
   }
 
   let directiveInsertPopup = null;
+  let directiveInsertPopupStack = [];
   let directiveInsertSearchSeq = 0;
 
   function selectedEditorText(source, editor) {
     syncEditorToSource(source, editor, false);
-    const offsets = editorSelectionOffsets(editor);
+    const offsets = editor._toolbarSelectionOffsets || editorSelectionOffsets(editor);
     return (source.value || "").slice(offsets.start, offsets.end);
   }
 
-  function cleanDirectiveValue(value, chars) {
-    let text = String(value || "").trim();
+  function cleanDirectiveValue(value, chars, options) {
+    let text = String(value || "");
+    if (!(options && options.preserveWhitespace)) text = text.trim();
     chars.forEach((ch) => { text = text.split(ch).join(""); });
     return text;
   }
 
   function replaceEditorSelection(source, editor, insertText, caretOffset) {
     syncEditorToSource(source, editor, false);
-    const offsets = editorSelectionOffsets(editor);
+    const offsets = editor._toolbarSelectionOffsets || editorSelectionOffsets(editor);
+    editor._toolbarSelectionOffsets = null;
     const value = source.value || "";
     pushEditorUndo(source);
     source.value = value.slice(0, offsets.start) + insertText + value.slice(offsets.end);
@@ -1534,8 +1534,36 @@ function infoItemHtml(u, i) {
     return directiveInsertPopup;
   }
 
+  function saveDirectiveInsertPopupState() {
+    const popup = getDirectiveInsertPopup();
+    const body = popup.querySelector(".directive-popup-body");
+    const fragment = document.createDocumentFragment();
+    while (body.firstChild) fragment.appendChild(body.firstChild);
+    directiveInsertPopupStack.push({
+      title: popup.querySelector(".directive-popup-title").textContent,
+      body: fragment,
+    });
+  }
+
+  function restoreDirectiveInsertPopupState() {
+    const state = directiveInsertPopupStack.pop();
+    if (!state || !directiveInsertPopup) return false;
+    const body = directiveInsertPopup.querySelector(".directive-popup-body");
+    body.innerHTML = "";
+    body.appendChild(state.body);
+    directiveInsertPopup.querySelector(".directive-popup-title").textContent = state.title;
+    directiveInsertPopup.hidden = false;
+    return true;
+  }
+
   function closeDirectiveInsertPopup() {
+    if (restoreDirectiveInsertPopupState()) {
+      directiveInsertSearchSeq += 1;
+      return;
+    }
     if (directiveInsertPopup) directiveInsertPopup.hidden = true;
+    directiveInsertPopupStack = [];
+    directiveInsertSearchSeq += 1;
   }
 
   function openDirectiveInsertPopup(title, bodyHtml, onReady) {
@@ -1546,16 +1574,26 @@ function infoItemHtml(u, i) {
     if (onReady) onReady(popup);
   }
 
-  function popupActionsHtml(applyLabel) {
-    return '<div class="directive-popup-actions">' +
-      '<button type="button" class="directive-popup-cancel" data-popup-cancel="1">취소</button>' +
-      '<button type="button" class="directive-popup-apply" data-popup-apply="1">' + (applyLabel || "삽입") + '</button>' +
+  function popupActionsHtml(applyLabel, options) {
+    const deleteButton = options && options.allowDelete ? '<button type="button" class="directive-popup-delete" data-popup-delete="1">\uC0AD\uC81C</button>' : "";
+    return '<div class="directive-popup-actions">' + deleteButton +
+      '<button type="button" class="directive-popup-cancel" data-popup-cancel="1">\uCDE8\uC18C</button>' +
+      '<button type="button" class="directive-popup-apply" data-popup-apply="1">' + (applyLabel || "\uD655\uC778") + '</button>' +
       '</div>';
   }
 
   function bindPopupCancel(popup) {
     const cancel = popup.querySelector('[data-popup-cancel="1"]');
     if (cancel) cancel.onclick = closeDirectiveInsertPopup;
+  }
+
+  function bindPopupDelete(popup, context) {
+    const remove = popup.querySelector('[data-popup-delete="1"]');
+    if (!remove || !context) return;
+    remove.onclick = () => {
+      applyDirectiveTokenEdit(context, null);
+      closeDirectiveInsertPopup();
+    };
   }
 
   function bindInstantMemberResult(button, handler) {
@@ -1574,118 +1612,224 @@ function infoItemHtml(u, i) {
     button.onmousedown = run;
     button.onclick = run;
   }
-  function openTagInsertPopup(source, editor) {
-    const selected = selectedEditorText(source, editor);
+
+  function insertPopupInlineDirective(source, editor, kind) {
+    editor._toolbarSelectionOffsets = editor._toolbarSelectionOffsets || currentEditorSelectionOffsets(editor) || editor._lastSelectionOffsets;
+    saveDirectiveInsertPopupState();
+    const context = { nestedInsert: true };
+    if (kind === "t") return openTagInsertPopup(source, editor, context);
+    if (kind === "s") return openStreamerInsertPopup(source, editor, context);
+    if (kind === "m") return openMediaInsertPopup(source, editor, context);
+  }
+  function popupStyleToolbar(source, editor, options) {
+    const toolbar = document.createElement("div");
+    toolbar.className = "style-toolbar directive-popup-toolbar";
+    [
+      { label: "B", title: "Bold", prefix: "**", suffix: "**", cls: "bold" },
+      { label: "U", title: "Underline", prefix: "__", suffix: "__", cls: "underline" },
+      { label: "S", title: "Strike", prefix: "~~", suffix: "~~", cls: "strike" },
+      { label: "I", title: "Italic", prefix: "*", suffix: "*", cls: "italic" },
+      { label: "\u2192", title: "\uC6B0\uCE21\uD654\uC0B4\uD45C", insert: "\u2192", cls: "arrow" },
+    ].forEach((style) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "style-btn " + style.cls;
+      button.textContent = style.label;
+      button.title = style.title;
+      button.onmousedown = (event) => { event.preventDefault(); rememberEditorSelection(editor); };
+      button.onclick = () => {
+        syncEditorToSource(source, editor, false);
+        const offsets = editorSelectionOffsets(editor);
+        const value = source.value || "";
+        if (style.insert) {
+          source.value = value.slice(0, offsets.start) + style.insert + value.slice(offsets.end);
+          renderDirectiveEditor(source, editor);
+          editor.focus();
+          const next = offsets.start + style.insert.length;
+          setEditorSelectionByOffsets(editor, next, next);
+          return;
+        }
+        const selected = value.slice(offsets.start, offsets.end) || "text";
+        source.value = value.slice(0, offsets.start) + style.prefix + selected + style.suffix + value.slice(offsets.end);
+        renderDirectiveEditor(source, editor);
+        editor.focus();
+        setEditorSelectionByOffsets(editor, offsets.start + style.prefix.length, offsets.start + style.prefix.length + selected.length);
+      };
+      toolbar.appendChild(button);
+    });
+    if (options && options.allowInserts) {
+      const divider = document.createElement("span");
+      divider.className = "style-divider";
+      toolbar.appendChild(divider);
+      [
+        { label: "\uD0DC\uADF8", title: "\uD0DC\uADF8 \uC785\uB825", kind: "t" },
+        { label: "\uC2A4\uD2B8\uB9AC\uBA38", title: "\uC2A4\uD2B8\uB9AC\uBA38 \uC785\uB825", kind: "s" },
+        { label: "\uBBF8\uB514\uC5B4", title: "\uBBF8\uB514\uC5B4 \uC785\uB825", kind: "m" },
+      ].forEach((item) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "style-btn insert-btn";
+        button.textContent = item.label;
+        button.title = item.title;
+        button.onmousedown = (event) => {
+          editor._toolbarSelectionOffsets = currentEditorSelectionOffsets(editor) || editor._lastSelectionOffsets;
+          event.preventDefault();
+        };
+        button.onclick = () => insertPopupInlineDirective(source, editor, item.kind);
+        toolbar.appendChild(button);
+      });
+    }
+    return toolbar;
+  }
+
+  function setupPopupDirectiveEditor(popup, slotSelector, initialValue, placeholder, options) {
+    const slot = popup.querySelector(slotSelector);
+    const source = document.createElement("textarea");
+    source.className = "directive-source";
+    source.value = initialValue || "";
+    const editor = document.createElement("div");
+    editor.className = "directive-editor multiline directive-popup-editor";
+    editor.contentEditable = "true";
+    editor.setAttribute("role", "textbox");
+    editor.dataset.placeholder = placeholder || "";
+    slot.appendChild(popupStyleToolbar(source, editor, options));
+    slot.appendChild(source);
+    slot.appendChild(editor);
+    renderDirectiveEditor(source, editor);
+    editor.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        insertEditorPlainText(editor, "\n");
+        syncEditorToSource(source, editor, false);
+      }
+    });
+    editor.addEventListener("input", () => {
+      rememberEditorSelection(editor);
+      syncEditorToSource(source, editor, true);
+    });
+    editor.addEventListener("keyup", () => rememberEditorSelection(editor));
+    editor.addEventListener("mouseup", () => rememberEditorSelection(editor));
+    editor.addEventListener("focus", () => rememberEditorSelection(editor));
+    return { source, editor };
+  }
+
+  function popupEditorValue(instance) {
+    syncEditorToSource(instance.source, instance.editor, false);
+    return instance.source.value || "";
+  }
+
+  function directiveTokenEditContext(source, editor, token) {
+    const kind = token.dataset.kind || "t";
+    const labelEditor = directChildByClass(token, "directive-token-label-editor");
+    const urlInput = directChildByClass(token, "directive-token-url") || token.querySelector('[data-token-url="1"]');
+    return {
+      source,
+      editor,
+      token,
+      kind,
+      label: labelEditor ? serializeDirectiveEditor(labelEditor) : "",
+      url: urlInput ? (urlInput.value != null ? urlInput.value : urlInput.textContent || "") : "",
+    };
+  }
+
+  function applyDirectiveTokenEdit(context, rawText) {
+    if (!context || !context.token || !context.token.parentElement) return;
+    pushEditorUndo(context.source);
+    if (rawText == null) context.token.remove();
+    else context.token.replaceWith(document.createTextNode(rawText));
+    syncEditorToSource(context.source, context.editor, true);
+    context.editor.focus();
+    moveCaretToEditorEnd(context.editor);
+  }
+
+  function openDirectiveTokenEditPopup(source, editor, token) {
+    const context = directiveTokenEditContext(source, editor, token);
+    if (editor.classList && editor.classList.contains("directive-popup-editor")) saveDirectiveInsertPopupState();
+    if (context.kind === "t") return openTagInsertPopup(source, editor, context);
+    if (context.kind === "s") return openStreamerInsertPopup(source, editor, context);
+    if (context.kind === "m") return openMediaInsertPopup(source, editor, context);
+  }
+
+  function openDirectiveInsertModal(source, editor, kind) {
+    if (kind === "t") return openTagInsertPopup(source, editor, null);
+    if (kind === "s") return openStreamerInsertPopup(source, editor, null);
+    if (kind === "m") return openMediaInsertPopup(source, editor, null);
+  }
+
+  function openTagInsertPopup(source, editor, context) {
+    const selected = context && context.token ? context.label : selectedEditorText(source, editor);
     openDirectiveInsertPopup("태그 삽입",
-      '<div class="directive-popup-field"><label>태그 텍스트</label>' +
-      '<input type="text" data-tag-text="1" placeholder="예: 게임 / 공지 / 합방" value="' + esc(selected) + '" /></div>' +
-      popupActionsHtml("태그 삽입"),
+      '<div class="directive-popup-field"><label>태그 텍스트</label><div data-tag-editor="1"></div></div>' +
+      popupActionsHtml("확인", { allowDelete: !!(context && context.token) }),
       (popup) => {
         bindPopupCancel(popup);
-        const input = popup.querySelector('[data-tag-text="1"]');
+        bindPopupDelete(popup, context);
+        const draft = setupPopupDirectiveEditor(popup, '[data-tag-editor="1"]', selected, "태그 텍스트", { allowInserts: true });
         const apply = popup.querySelector('[data-popup-apply="1"]');
         apply.onclick = () => {
-          const text = cleanDirectiveValue(input.value, ["]"]);
-          if (!text) { input.focus(); return; }
-          replaceEditorSelection(source, editor, ":t[" + text + "]");
+          const text = cleanDirectiveValue(popupEditorValue(draft), [], { preserveWhitespace: true });
+          if (!text.trim()) { draft.editor.focus(); return; }
+          if (context && context.token) applyDirectiveTokenEdit(context, ":t[" + text + "]");
+          else replaceEditorSelection(source, editor, ":t[" + text + "]");
           closeDirectiveInsertPopup();
         };
-        input.onkeydown = (event) => { if (event.key === "Enter") apply.click(); };
-        input.focus();
-        input.select();
+        draft.editor.focus();
+        setEditorSelectionByOffsets(draft.editor, 0, serializeDirectiveEditor(draft.editor).length);
       });
   }
 
-  function openMediaInsertPopup(source, editor) {
-    const selected = selectedEditorText(source, editor);
+  function openMediaInsertPopup(source, editor, context) {
+    const selected = context && context.token ? context.label : selectedEditorText(source, editor);
     openDirectiveInsertPopup("미디어 삽입",
-      '<div class="directive-popup-field"><label>표시 텍스트</label>' +
-      '<input type="text" data-media-label="1" placeholder="예: 참고 이미지" value="' + esc(selected) + '" /></div>' +
-      '<div class="directive-popup-field"><label>표시 텍스트 안 스트리머</label>' +
-      '<div class="row" style="margin-bottom:0"><input type="text" data-media-streamer-query="1" placeholder="스트리머 검색" />' +
-      '<button type="button" class="flag-toggle" data-media-streamer-manual="1">추가</button></div>' +
-      '<div class="directive-popup-results" data-media-streamer-results="1"><div class="member-result-empty">검색해서 표시 텍스트에 추가할 수 있습니다.</div></div></div>' +
-      '<div class="directive-popup-field"><label>미디어 URL</label>' +
-      '<input type="url" inputmode="url" data-media-url="1" placeholder="https://" /></div>' +
-      popupActionsHtml("미디어 삽입"),
+      '<div class="directive-popup-field"><label>표시 텍스트</label><div data-media-editor="1"></div></div>' +
+      '<div class="directive-popup-field"><label>링크</label><input type="url" inputmode="url" data-media-url="1" placeholder="https://" /></div>' +
+      popupActionsHtml("확인", { allowDelete: !!(context && context.token) }),
       (popup) => {
         bindPopupCancel(popup);
-        const label = popup.querySelector('[data-media-label="1"]');
-        const streamerQuery = popup.querySelector('[data-media-streamer-query="1"]');
-        const streamerResults = popup.querySelector('[data-media-streamer-results="1"]');
-        const streamerManual = popup.querySelector('[data-media-streamer-manual="1"]');
+        bindPopupDelete(popup, context);
+        const draft = setupPopupDirectiveEditor(popup, '[data-media-editor="1"]', selected, "표시 텍스트", { allowInserts: true });
         const url = popup.querySelector('[data-media-url="1"]');
+        if (context && context.token) url.value = context.url || "";
         const apply = popup.querySelector('[data-popup-apply="1"]');
-        const appendStreamer = (name) => {
-          const text = cleanDirectiveValue(name, ["]"]);
-          if (!text) { streamerQuery.focus(); return; }
-          const token = ":s[" + text + "]";
-          const start = label.selectionStart == null ? label.value.length : label.selectionStart;
-          const end = label.selectionEnd == null ? start : label.selectionEnd;
-          const prefix = start > 0 && !/\s$/.test(label.value.slice(0, start)) ? " " : "";
-          label.value = label.value.slice(0, start) + prefix + token + label.value.slice(end);
-          const next = start + prefix.length + token.length;
-          label.focus();
-          label.setSelectionRange(next, next);
-        };
-        const renderStreamerResults = async () => {
-          const keyword = streamerQuery.value.trim();
-          const seq = ++directiveInsertSearchSeq;
-          if (!keyword) {
-            streamerResults.innerHTML = '<div class="member-result-empty">검색어를 입력하세요.</div>';
-            return;
-          }
-          streamerResults.innerHTML = '<div class="member-result-empty">검색 중...</div>';
-          const result = await searchChzzkChannels(keyword);
-          if (seq !== directiveInsertSearchSeq || popup.hidden) return;
-          if (!result.ok || !result.list.length) {
-            streamerResults.innerHTML = '<button type="button" class="member-result member-result-manual" data-media-streamer-pick-manual="1">입력한 이름 추가: ' + esc(keyword) + '</button>';
-          } else {
-            streamerResults.innerHTML = result.list.slice(0, 8).map((channel, index) =>
-              '<button type="button" class="member-result" data-media-streamer-pick="' + index + '">' +
-              (channel.channelImageUrl ? '<img src="' + esc(channel.channelImageUrl) + '" alt="" />' : '') +
-              '<span>' + esc(channel.channelName) + '</span></button>'
-            ).join("") + '<button type="button" class="member-result member-result-manual" data-media-streamer-pick-manual="1">입력한 이름 추가: ' + esc(keyword) + '</button>';
-            streamerResults.querySelectorAll('[data-media-streamer-pick]').forEach((button) => {
-              bindInstantMemberResult(button, () => appendStreamer(result.list[+button.getAttribute("data-media-streamer-pick")].channelName));
-            });
-          }
-          const manual = streamerResults.querySelector('[data-media-streamer-pick-manual="1"]');
-          if (manual) bindInstantMemberResult(manual, () => appendStreamer(streamerQuery.value));
-        };
-        let timer = null;
-        streamerQuery.oninput = () => { clearTimeout(timer); timer = setTimeout(renderStreamerResults, 250); };
-        streamerQuery.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); appendStreamer(streamerQuery.value); } };
-        streamerManual.onclick = () => appendStreamer(streamerQuery.value);
         apply.onclick = () => {
-          const safeLabel = cleanDirectiveValue(label.value || "미디어", ["{", "}"]);
+          const label = cleanDirectiveValue(popupEditorValue(draft), [], { preserveWhitespace: true }) || "미디어";
           const safeUrl = cleanDirectiveValue(url.value, ["]", "}"]);
           if (!safeUrl) { url.focus(); return; }
-          replaceEditorSelection(source, editor, ":m[" + safeLabel + "{" + safeUrl + "}]");
+          if (context && context.token) applyDirectiveTokenEdit(context, ":m[" + label + "{" + safeUrl + "}]");
+          else replaceEditorSelection(source, editor, ":m[" + label + "{" + safeUrl + "}]");
           closeDirectiveInsertPopup();
         };
         url.onkeydown = (event) => { if (event.key === "Enter") apply.click(); };
-        label.focus();
-        label.select();
+        draft.editor.focus();
+        setEditorSelectionByOffsets(draft.editor, 0, serializeDirectiveEditor(draft.editor).length);
       });
   }
-  function openStreamerInsertPopup(source, editor) {
-    const selected = selectedEditorText(source, editor);
+
+  function openStreamerInsertPopup(source, editor, context) {
+    const selected = context && context.token ? context.label : selectedEditorText(source, editor);
     openDirectiveInsertPopup("스트리머 삽입",
       '<div class="directive-popup-field"><label>스트리머 검색</label>' +
       '<input type="text" data-streamer-query="1" placeholder="채널명 검색" value="' + esc(selected) + '" />' +
       '<div class="directive-popup-results" data-streamer-results="1"><div class="member-result-empty">검색어를 입력하세요.</div></div></div>' +
-      popupActionsHtml("입력한 이름 삽입"),
+      popupActionsHtml("확인", { allowDelete: !!(context && context.token) }),
       (popup) => {
         bindPopupCancel(popup);
+        bindPopupDelete(popup, context);
         const input = popup.querySelector('[data-streamer-query="1"]');
         const results = popup.querySelector('[data-streamer-results="1"]');
         const apply = popup.querySelector('[data-popup-apply="1"]');
-        const insertName = (name) => {
-          const text = cleanDirectiveValue(name, ["]"]);
-          if (!text) { input.focus(); return; }
-          replaceEditorSelection(source, editor, ":s[" + text + "]");
-          closeDirectiveInsertPopup();
+        const updateSelectedState = (name) => {
+          const value = cleanDirectiveValue(name, ["]"]);
+          results.querySelectorAll(".member-result").forEach((item) => {
+            const label = (item.querySelector("span") && item.querySelector("span").textContent || item.textContent || "").replace(/^입력한 이름 사용:\s*/, "").trim();
+            item.classList.toggle("selected", label === value);
+          });
+        };
+        const selectName = (name) => {
+          input.value = cleanDirectiveValue(name, ["]"]);
+          updateSelectedState(input.value);
+          input.focus();
+          input.select();
         };
         const renderResults = async () => {
           const keyword = inlineStreamerValue(input).trim();
@@ -1698,26 +1842,33 @@ function infoItemHtml(u, i) {
           const result = await searchChzzkChannels(keyword);
           if (seq !== directiveInsertSearchSeq || popup.hidden) return;
           if (!result.ok || !result.list.length) {
-            results.innerHTML = '<button type="button" class="member-result member-result-manual" data-streamer-manual="1">입력한 이름으로 삽입: ' + esc(keyword) + '</button>';
+            results.innerHTML = '<button type="button" class="member-result member-result-manual" data-streamer-manual="1">입력한 이름 사용: ' + esc(keyword) + '</button>';
           } else {
             results.innerHTML = result.list.slice(0, 8).map((channel, index) =>
               '<button type="button" class="member-result" data-streamer-pick="' + index + '">' +
               (channel.channelImageUrl ? '<img src="' + esc(channel.channelImageUrl) + '" alt="" />' : '') +
               '<span>' + esc(channel.channelName) + '</span></button>'
-            ).join("") + '<button type="button" class="member-result member-result-manual" data-streamer-manual="1">입력한 이름으로 삽입: ' + esc(keyword) + '</button>';
+            ).join("") + '<button type="button" class="member-result member-result-manual" data-streamer-manual="1">입력한 이름 사용: ' + esc(keyword) + '</button>';
             results.querySelectorAll('[data-streamer-pick]').forEach((button) => {
-              bindInstantMemberResult(button, () => insertName(result.list[+button.getAttribute("data-streamer-pick")].channelName));
+              bindInstantMemberResult(button, () => selectName(result.list[+button.getAttribute("data-streamer-pick")].channelName));
             });
           }
           const manual = results.querySelector('[data-streamer-manual="1"]');
-          if (manual) bindInstantMemberResult(manual, () => insertName(input.value));
+          if (manual) bindInstantMemberResult(manual, () => selectName(input.value));
         };
         let timer = null;
-        input.oninput = () => { clearTimeout(timer); timer = setTimeout(renderResults, 250); };
-        input.onkeydown = (event) => { if (event.key === "Enter") apply.click(); };
-        apply.onclick = () => insertName(input.value);
+        input.oninput = () => { updateSelectedState(""); clearTimeout(timer); timer = setTimeout(renderResults, 250); };
+        input.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); apply.click(); } };
+        apply.onclick = () => {
+          const text = cleanDirectiveValue(input.value, ["]"]);
+          if (!text) { input.focus(); return; }
+          if (context && context.token) applyDirectiveTokenEdit(context, ":s[" + text + "]");
+          else replaceEditorSelection(source, editor, ":s[" + text + "]");
+          closeDirectiveInsertPopup();
+        };
         input.focus();
         input.select();
+        updateSelectedState(input.value);
         if (input.value.trim()) renderResults();
       });
   }
@@ -1729,6 +1880,7 @@ function infoItemHtml(u, i) {
       { label: "U", title: "Underline", prefix: "__", suffix: "__", cls: "underline" },
       { label: "S", title: "Strike", prefix: "~~", suffix: "~~", cls: "strike" },
       { label: "I", title: "Italic", prefix: "*", suffix: "*", cls: "italic" },
+      { label: "\u2192", title: "\uC6B0\uCE21\uD654\uC0B4\uD45C", insert: "\u2192", cls: "arrow" },
     ];
     styles.forEach((style) => {
       const button = document.createElement("button");
@@ -1741,8 +1893,17 @@ function infoItemHtml(u, i) {
         syncEditorToSource(source, editor, false);
         const offsets = editorSelectionOffsets(editor);
         const value = source.value || "";
-        const selected = value.slice(offsets.start, offsets.end) || "text";
         pushEditorUndo(source);
+        if (style.insert) {
+          source.value = value.slice(0, offsets.start) + style.insert + value.slice(offsets.end);
+          source.dispatchEvent(new Event("input", { bubbles: true }));
+          renderDirectiveEditor(source, editor);
+          editor.focus();
+          const next = offsets.start + style.insert.length;
+          setEditorSelectionByOffsets(editor, next, next);
+          return;
+        }
+        const selected = value.slice(offsets.start, offsets.end) || "text";
         const nextStart = offsets.start + style.prefix.length;
         const nextEnd = nextStart + selected.length;
         source.value = value.slice(0, offsets.start) + style.prefix + selected + style.suffix + value.slice(offsets.end);
@@ -1774,7 +1935,7 @@ function infoItemHtml(u, i) {
         editor._toolbarSelectionOffsets = currentEditorSelectionOffsets(editor) || editor._lastSelectionOffsets;
         event.preventDefault();
       };
-      button.onclick = () => insertInlineDirective(source, editor, item.kind);
+      button.onclick = () => openDirectiveInsertModal(source, editor, item.kind);
       toolbar.appendChild(button);
     });
     return toolbar;
