@@ -41,6 +41,18 @@
   // ----------------------------------------------------------
   // 상태
   // ----------------------------------------------------------
+  const EXTENSION_COLLAPSED_KEY = "obaengal:extension-collapsed";
+
+  function readExtensionCollapsed() {
+    try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
+    catch (_) { return false; }
+  }
+
+  function saveExtensionCollapsed(collapsed) {
+    try { localStorage.setItem(EXTENSION_COLLAPSED_KEY, collapsed ? "1" : "0"); }
+    catch (_) { /* 저장소 접근이 제한된 페이지에서는 현재 세션 상태만 사용 */ }
+  }
+
   const state = {
     data: null,          // schedule.json 전체
     fetchedAt: null,
@@ -49,6 +61,7 @@
     byDate: new Map(),   // "YYYY-MM-DD" -> entry
     pageOffset: 0,       // 0 = 오늘 페이지, -1 = 5일 전 페이지 ...
     monthExpanded: false,
+    extensionCollapsed: readExtensionCollapsed(),
     monthOffset: 0,
     gameOnly: false,
     selectedGame: "",
@@ -222,7 +235,8 @@
   // ----------------------------------------------------------
   const STYLE = `
     :host { all: initial; }
-    :host(.cs-fullscreen-hidden) { display: none !important; }
+    :host(.cs-fullscreen-hidden),
+    :host(.cs-large-chat-hidden) { display: none !important; }
     * { box-sizing: border-box; margin: 0; padding: 0;
         font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
     #cs-root { position: relative; }
@@ -237,6 +251,19 @@
     .cs-info-content-area { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; }
 
     .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .cs-schedule-section.cs-collapsed .cs-header { margin-bottom: 0; }
+    .cs-extension-collapse { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border: 1px solid #3a3c41; border-radius: 7px; background: #242529;
+      color: #c9cbd1; font-size: 10px; font-weight: 800; line-height: 1; cursor: pointer; }
+    .cs-extension-collapse:hover { border-color: #51545b; background: #2d2f34; color: #fff; }
+    .cs-extension-collapse-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10;
+      width: max-content; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px;
+      background: #232427; color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(3px);
+      transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
+    .cs-extension-collapse:hover .cs-extension-collapse-tip,
+    .cs-extension-collapse:focus-visible .cs-extension-collapse-tip { opacity: 1; visibility: visible; transform: translateY(0); }
+    .cs-schedule-body[hidden] { display: none !important; }
     .cs-title { color: #efeff1; font-size: 16px; font-weight: 600; }
     .cs-spacer { flex: 1; }
     .cs-update-notice-wrap { margin: 0 30px -1px; }
@@ -676,6 +703,9 @@
     :host(.cs-light-theme) .cs-pill-on .cs-dot { background: #03a950; }
     :host(.cs-light-theme) .cs-arrow { color: #008a43; }
     :host(.cs-light-theme) .cs-arrow:disabled { color: #b8bcc1; }
+    :host(.cs-light-theme) .cs-extension-collapse { background: #ffffff; border-color: #d8dadd; color: #555a61; }
+    :host(.cs-light-theme) .cs-extension-collapse:hover { background: #eceef0; border-color: #c5c8cc; color: #1e2024; }
+    :host(.cs-light-theme) .cs-extension-collapse-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
     :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
     :host(.cs-light-theme) .cs-view-toggle:not(.cs-open) .cs-view-icon img { filter: brightness(0) saturate(100%) invert(34%) sepia(7%) saturate(472%) hue-rotate(174deg) brightness(92%) contrast(87%); }
     :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
@@ -1036,19 +1066,21 @@
     const updatedLabel = formatUpdated();
 
     root.innerHTML =
-      updateNoticeHtml() +
+      (state.extensionCollapsed ? "" : updateNoticeHtml()) +
       '<div class="cs-wrapper">' +
-      '<div class="cs-section cs-schedule-section">' +
+      '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
       '<div class="cs-header">' +
       '<span class="cs-title">방송 일정</span>' +
       '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
       '<span class="cs-spacer"></span>' +
-      monthLabel +
-      (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
-      '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "주간 보기" : "월간 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.monthExpanded ? "주간 보기" : "월간 보기") + "</span></button>" +
-      '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
-      '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>" +
+      (state.extensionCollapsed ? "" : monthLabel +
+        (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
+        '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "주간 보기" : "월간 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.monthExpanded ? "주간 보기" : "월간 보기") + "</span></button>" +
+        '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
+        '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>") +
+      '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="오뱅알 ' + (state.extensionCollapsed ? "펼치기" : "접기") + '">' + (state.extensionCollapsed ? "▼" : "▲") + '<span class="cs-extension-collapse-tip">오뱅알 ' + (state.extensionCollapsed ? "펼치기" : "접기") + "</span></button>" +
       "</div>" +
+      '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
       '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       gameSummary +
       '<div class="cs-popover" id="cs-popover">' +
@@ -1056,7 +1088,8 @@
       '<div id="cs-pop-body"></div>' +
       "</div>" +
       "</div>" +
-      infoSectionHtml() +
+      "</div>" +
+      (state.extensionCollapsed ? "" : infoSectionHtml() +
       '<div class="cs-footer">' +
       '<div class="cs-notice">' +
             '<p class="cs-schedule-notice" title="◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.">◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.</p>' +
@@ -1069,7 +1102,7 @@
       '<button class="cs-refresh" id="cs-refresh" title="새로고침">⟳</button>' +
       "</div>" +
       "</div>" +
-      feedbackPanelHtml() +
+      feedbackPanelHtml()) +
       "</div>";
 
     bindEvents();
@@ -1552,6 +1585,7 @@
     const noticePrev = s.getElementById("cs-notice-prev");
     const noticeNext = s.getElementById("cs-notice-next");
     const monthToggle = s.getElementById("cs-month-toggle");
+    const extensionCollapse = s.getElementById("cs-extension-collapse");
     const gameToggle = s.getElementById("cs-game-toggle");
     const grid = s.getElementById("cs-grid");
     const popover = s.getElementById("cs-popover");
@@ -1570,6 +1604,12 @@
     if (prev) prev.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset -= 1; else state.pageOffset -= 1; render(); });
     if (next) next.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset += 1; else state.pageOffset += 1; render(); });
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; } render(); });
+    if (extensionCollapse) extensionCollapse.addEventListener("click", () => {
+      closePopover();
+      state.extensionCollapsed = !state.extensionCollapsed;
+      saveExtensionCollapsed(state.extensionCollapsed);
+      render();
+    });
     if (gameToggle) gameToggle.addEventListener("click", () => { closePopover(); state.gameOnly = !state.gameOnly; render(); });
     s.querySelectorAll("[data-game-filter]").forEach((el) => {
       el.addEventListener("click", () => {
@@ -2411,7 +2451,25 @@
     return !!(document.fullscreenElement || document.webkitFullscreenElement);
   }
 
+  function isLargeChatLayoutActive() {
+    const showChatElements = document.querySelectorAll('[class*="_show_chat"]');
+    for (const showChatElement of showChatElements) {
+      if (!hasClassPrefix(showChatElement, "_show_chat")) continue;
+      if (hasClassPrefix(showChatElement, "_is_large")) return true;
+
+      const largeElements = showChatElement.querySelectorAll('[class*="_is_large"]');
+      for (const largeElement of largeElements) {
+        if (hasClassPrefix(largeElement, "_is_large")) return true;
+      }
+    }
+    return false;
+  }
+
   function syncFullscreenVisibility() {
+    if (state.host) {
+      state.host.classList.toggle("cs-large-chat-hidden", isLargeChatLayoutActive());
+    }
+
     const active = isFullscreenActive();
     if (active) {
       fullscreenWasActive = true;
@@ -2610,8 +2668,13 @@
     if (res && res.ok && res.data) {
       state.data = res.data;
       state.fetchedAt = res.fetchedAt;
+      const testChannelId = String(CHZZK_SCHEDULE_CONFIG.testChannelId || "").trim();
+      const testSourceChannelId = String(CHZZK_SCHEDULE_CONFIG.testSourceChannelId || "").trim();
+      const dataChannelId = testChannelId && testSourceChannelId && state.channelId === testChannelId
+        ? testSourceChannelId
+        : state.channelId;
       state.channel =
-        (res.data.channels && state.channelId && res.data.channels[state.channelId]) || null;
+        (res.data.channels && dataChannelId && res.data.channels[dataChannelId]) || null;
       indexSchedule();
       return true;
     }

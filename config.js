@@ -26,6 +26,11 @@ const CHZZK_SCHEDULE_CONFIG = {
   // 치지직 페이지가 열려 있을 때 일정과 소식을 자동으로 다시 불러오는 주기(분)
   autoRefreshMinutes: 1,
 
+  // 임시 UI 테스트: 아래 채널에서는 testSourceChannelId의 일정 데이터를 표시합니다.
+  // 테스트 종료 후 testChannelId를 빈 문자열로 바꾸면 비활성화됩니다.
+  testChannelId: "45e71a76e949e16a34764deb962f9d9f",
+  testSourceChannelId: "0dad8baf12a436f722faa8e5001c5011",
+
   // (선택) 인라인 삽입 위치를 직접 지정하고 싶을 때 CSS 선택자를 입력.
   // 비워두면 자동 탐색합니다. 예: '[class*="_information_1lz65"]'
   anchorSelector: "",
