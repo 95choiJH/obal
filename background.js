@@ -10,6 +10,100 @@ if (typeof importScripts === "function") {
 }
 
 const api = typeof browser !== "undefined" ? browser : chrome;
+const PENDING_UPDATE_TAB_KEY = "pendingUpdateTabId";
+const AVAILABLE_UPDATE_VERSION_KEY = "availableUpdateVersion";
+const READY_UPDATE_VERSION_KEY = "readyUpdateVersion";
+const APPLY_UPDATE_TAB_KEY = "applyUpdateTabId";
+let updateReloadScheduled = false;
+
+function storageGet(keys) {
+  if (typeof browser !== "undefined") return api.storage.local.get(keys);
+  return new Promise((resolve) => api.storage.local.get(keys, (result) => resolve(result || {})));
+}
+
+function storageSet(values) {
+  if (typeof browser !== "undefined") return api.storage.local.set(values);
+  return new Promise((resolve) => api.storage.local.set(values, resolve));
+}
+
+function storageRemove(keys) {
+  if (typeof browser !== "undefined") return api.storage.local.remove(keys);
+  return new Promise((resolve) => api.storage.local.remove(keys, resolve));
+}
+
+async function reloadPendingUpdateTab() {
+  const saved = await storageGet([PENDING_UPDATE_TAB_KEY]);
+  const tabId = Number(saved[PENDING_UPDATE_TAB_KEY]);
+  if (!Number.isInteger(tabId)) return;
+  await storageRemove([PENDING_UPDATE_TAB_KEY, APPLY_UPDATE_TAB_KEY, READY_UPDATE_VERSION_KEY, AVAILABLE_UPDATE_VERSION_KEY]);
+  try { await api.tabs.reload(tabId); } catch (_) { /* 탭이 닫힌 경우 무시 */ }
+}
+
+reloadPendingUpdateTab().catch(() => {});
+
+async function applyReadyUpdate(tabId) {
+  if (updateReloadScheduled) return;
+  updateReloadScheduled = true;
+  if (Number.isInteger(tabId)) await storageSet({ [PENDING_UPDATE_TAB_KEY]: tabId });
+  await storageRemove(APPLY_UPDATE_TAB_KEY);
+  setTimeout(() => api.runtime.reload(), 150);
+}
+
+async function handleUpdateAvailable(details) {
+  const version = String((details && details.version) || "").trim();
+  if (!version) return;
+  await storageSet({
+    [AVAILABLE_UPDATE_VERSION_KEY]: version,
+    [READY_UPDATE_VERSION_KEY]: version,
+  });
+  const saved = await storageGet([APPLY_UPDATE_TAB_KEY]);
+  const requestedTabId = Number(saved[APPLY_UPDATE_TAB_KEY]);
+  if (Number.isInteger(requestedTabId)) await applyReadyUpdate(requestedTabId);
+}
+
+if (api.runtime.onUpdateAvailable) {
+  api.runtime.onUpdateAvailable.addListener((details) => {
+    handleUpdateAvailable(details).catch(() => {});
+  });
+}
+
+async function checkDeployedUpdate() {
+  const saved = await storageGet([AVAILABLE_UPDATE_VERSION_KEY]);
+  let version = String(saved[AVAILABLE_UPDATE_VERSION_KEY] || "").trim();
+  try {
+    const result = await api.runtime.requestUpdateCheck();
+    console.log("[오뱅알] 배포 버전 확인 결과", result);
+    if (result && result.status === "update_available") {
+      version = String(result.version || "").trim();
+      if (version) await storageSet({ [AVAILABLE_UPDATE_VERSION_KEY]: version });
+    } else if (result && result.status === "no_update") {
+      version = "";
+      await storageRemove([AVAILABLE_UPDATE_VERSION_KEY, READY_UPDATE_VERSION_KEY]);
+    }
+    return { ok: true, version, result };
+  } catch (error) {
+    return { ok: false, version, error: String((error && error.message) || error) };
+  }
+}
+
+async function requestAndApplyUpdate(tabId, targetVersion) {
+  const expectedVersion = String(targetVersion || "").trim();
+  if (Number.isInteger(tabId)) await storageSet({ [APPLY_UPDATE_TAB_KEY]: tabId });
+  const checked = await checkDeployedUpdate();
+  const result = checked.result || null;
+  console.log("[오뱅알] 업데이트 확인 결과", result);
+  if (!checked.version || (expectedVersion && checked.version !== expectedVersion)) {
+    await storageRemove(APPLY_UPDATE_TAB_KEY);
+    return { ok: true, applying: false, result };
+  }
+  const saved = await storageGet([READY_UPDATE_VERSION_KEY]);
+  const readyVersion = String(saved[READY_UPDATE_VERSION_KEY] || "").trim();
+  if (readyVersion && readyVersion === checked.version) {
+    await applyReadyUpdate(tabId);
+    return { ok: true, applying: true, ready: true, result };
+  }
+  return { ok: true, applying: true, ready: false, result };
+}
 
 function isConfigured() {
   const c = CHZZK_SCHEDULE_CONFIG;
@@ -409,6 +503,22 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg && msg.type === "submitFeedback") {
     submitFeedback(msg.payload || {}).then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "requestAndApplyUpdate") {
+    requestAndApplyUpdate(_sender && _sender.tab && _sender.tab.id, msg.targetVersion).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: String((error && error.message) || error) });
+    });
+    return true;
+  }
+  if (msg && msg.type === "checkDeployedUpdate") {
+    checkDeployedUpdate().then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "getDeployedUpdate") {
+    storageGet([AVAILABLE_UPDATE_VERSION_KEY]).then((saved) => {
+      sendResponse({ ok: true, version: String(saved[AVAILABLE_UPDATE_VERSION_KEY] || "").trim() });
+    });
     return true;
   }
 });

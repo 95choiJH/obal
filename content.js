@@ -66,6 +66,8 @@
     gameOnly: false,
     selectedGame: "",
     noticeIndex: 0,
+    deployedExtensionVersion: "",
+    updateCheckAttempted: false,
     host: null,          // shadow host element
     shadow: null,
     mode: null,          // "inline" | "floating"
@@ -152,6 +154,26 @@
       }
     });
   }
+
+  const handleUpdate = async () => {
+    const button = state.shadow && state.shadow.getElementById("cs-update-refresh");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "확인 중";
+    }
+    const response = await sendRuntimeMessage({
+      type: "requestAndApplyUpdate",
+      targetVersion: state.deployedExtensionVersion,
+    });
+    console.log("[오뱅알] 업데이트 적용 요청 결과", response);
+    if (button && !response.applying) {
+      button.disabled = false;
+      button.textContent = response.ok ? "최신 버전" : "다시 시도";
+    } else if (button) {
+      button.textContent = "적용 중";
+    }
+    return response;
+  };
 
   function loadSchedule(force) {
     return sendRuntimeMessage({ type: "getSchedule", force: !!force });
@@ -1154,13 +1176,14 @@
 
   function shouldShowUpdateNotice() {
     const latest = state.data && state.data.latestExtensionVersion;
-    return !!latest && compareVersions(latest, EXTENSION_VERSION) > 0;
+    const deployed = state.deployedExtensionVersion;
+    return !!latest && !!deployed && compareVersions(latest, EXTENSION_VERSION) > 0 && compareVersions(latest, deployed) === 0;
   }
 
   function noticeItems() {
     const items = [];
     if (shouldShowUpdateNotice()) {
-      items.push({ type: "update", text: "\uc0c8 \ubc84\uc804\uc774 \uc5c5\ub370\uc774\ud2b8\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ud398\uc774\uc9c0\ub97c \uc0c8\ub85c\uace0\uce68 \ud574\uc8fc\uc138\uc694." });
+      items.push({ type: "update", text: "\uc0c8 \ubc84\uc804\uc774 \uc5c5\ub370\uc774\ud2b8\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc5c5\ub370\uc774\ud2b8 \ubc84\ud2bc\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694." });
     }
     ((state.data && state.data.notices) || []).forEach((text) => {
       const value = String(text || "").trim();
@@ -1174,7 +1197,7 @@
     if (!items.length) return "";
     const item = items[state.noticeIndex % items.length];
     const action = item.type === "update"
-      ? '<button type="button" class="cs-update-refresh" id="cs-update-refresh">\uc0c8\ub85c\uace0\uce68</button>'
+      ? '<button type="button" class="cs-update-refresh" id="cs-update-refresh">\uc5c5\ub370\uc774\ud2b8</button>'
       : "";
     const controls = items.length > 1
       ? '<span class="cs-update-notice-controls" aria-label="\uacf5\uc9c0 \uc774\ub3d9">' +
@@ -1624,7 +1647,7 @@
       await refreshData(true);
       render();
     });
-    if (updateRefresh) updateRefresh.addEventListener("click", () => window.location.reload());
+    if (updateRefresh) updateRefresh.addEventListener("click", handleUpdate);
     if (noticePrev) noticePrev.addEventListener("click", () => {
       const items = noticeItems();
       if (items.length < 2) return;
@@ -2667,6 +2690,16 @@
     const res = await loadSchedule(force);
     if (res && res.ok && res.data) {
       state.data = res.data;
+      const announcedVersion = String(res.data.latestExtensionVersion || "").trim();
+      if (announcedVersion && compareVersions(announcedVersion, EXTENSION_VERSION) > 0) {
+        const updateCheck = await sendRuntimeMessage({
+          type: state.updateCheckAttempted ? "getDeployedUpdate" : "checkDeployedUpdate",
+        });
+        state.updateCheckAttempted = true;
+        state.deployedExtensionVersion = String((updateCheck && updateCheck.version) || "").trim();
+      } else {
+        state.deployedExtensionVersion = "";
+      }
       state.fetchedAt = res.fetchedAt;
       const testChannelId = String(CHZZK_SCHEDULE_CONFIG.testChannelId || "").trim();
       const testSourceChannelId = String(CHZZK_SCHEDULE_CONFIG.testSourceChannelId || "").trim();
