@@ -20,10 +20,11 @@
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
   const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
   const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
-  const GNIMTI_IMAGE_URL = api.runtime.getURL("images/gnimti.png");
   const GNIMTI_POPUP_IMAGE_URL = api.runtime.getURL("images/gnimti-back.png");
-  const GNIMTI_BUTTON_IMAGE_URL = api.runtime.getURL("images/gnimti-btn.png");
   const GNIMTI_LOGO_IMAGE_URL = api.runtime.getURL("images/gnimti-logo.png");
+  const GNIMTI_ICON_IMAGE_URL = api.runtime.getURL("images/gnimti-logo2.png");
+  const OBAL_IOS_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal_ios.png");
+  const OBAL_ANDROID_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal-android.png");
   const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
   const GNIMTI_TIER_BACK_IMAGE_URLS = {
     S: api.runtime.getURL("images/gnimti/tier-s-back.png"),
@@ -232,7 +233,8 @@
     .cs-schedule-section { position: relative; border-radius: 10px; }
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
       background: rgba(15,16,18,0.28); }
-    .cs-info-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
+    .cs-info-layout { display: flex; flex-direction: column; gap: 10px; }
+    .cs-info-content-area { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; }
 
     .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .cs-title { color: #efeff1; font-size: 16px; font-weight: 600; }
@@ -385,24 +387,32 @@
     .cs-inline-media-trigger::before { content: "✦"; flex: 0 0 auto; color: #93c5fd; font-size: 0.9em; line-height: 1; }
     .cs-inline-media-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-inline-media-trigger:hover, .cs-inline-media-trigger.cs-open { border-color: rgba(147,197,253,0.62); background: rgba(147,197,253,0.18); color: #dbeafe; }
-    .cs-media-popover { position: absolute; z-index: 2147483647; display: none; width: min(420px, calc(100% - 16px));
+    .cs-media-popover { position: absolute; z-index: 2147483647; display: none; width: fit-content; max-width: calc(100% - 16px);
       max-height: min(70vh, 460px); margin: 0; padding: 10px; border: 1px solid #3a3c40; border-radius: 10px;
       background: #1b1c1f; box-shadow: 0 12px 34px rgba(0,0,0,0.48); }
     .cs-media-popover.cs-open { display: block; }
     .cs-media-popover.cs-media-expanded { width: min(760px, 100%); max-height: none; }
+    .cs-media-popover.cs-install-guide-popover { width: min(634px, calc(100% - 16px)); max-height: min(80vh, 720px); }
     .cs-media-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .cs-media-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 12px; font-weight: 700;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-media-close { flex: 0 0 auto; border: 0; background: none; color: #9d9ea3; font-size: 18px; line-height: 1; cursor: pointer; }
-    .cs-media-body img, .cs-media-body video, .cs-media-body iframe { display: block; width: 100%; max-height: 360px;
+    .cs-media-body { width: fit-content; max-width: 100%; }
+    .cs-media-body img, .cs-media-body video, .cs-media-body iframe { display: block; height: auto; max-width: min(720px, calc(100vw - 72px)); max-height: 360px;
       border: 0; border-radius: 8px; background: #0f1012; object-fit: contain; }
+    .cs-media-body img { width: auto; }
+    .cs-media-body video, .cs-media-body iframe { width: min(720px, calc(100vw - 72px)); }
     .cs-media-body img.cs-media-expandable { cursor: zoom-in; }
     .cs-media-popover.cs-media-expanded .cs-media-body img.cs-media-expandable { max-height: min(75vh, 720px); cursor: zoom-out; }
     .cs-media-viewer { position: fixed; inset: 0; z-index: 2147483647; display: none; padding: 24px;
-      background: rgba(0,0,0,0.78); overflow: auto; cursor: zoom-out; }
+      background: rgba(0,0,0,0.78); overflow: hidden; cursor: default; touch-action: none; }
     .cs-media-viewer.cs-open { display: block; }
-    .cs-media-viewer img { display: block; width: auto; height: auto; max-width: none; max-height: none;
-      margin: 0 auto; border-radius: 8px; background: #0f1012; box-shadow: 0 18px 48px rgba(0,0,0,0.5); cursor: default; }
+    .cs-media-viewer-canvas { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; overflow: hidden; }
+    .cs-media-viewer img { flex: 0 0 auto; display: block; width: auto; height: auto; max-width: none; max-height: none;
+      object-fit: contain; margin: auto; border-radius: 8px; background: #0f1012; box-shadow: 0 18px 48px rgba(0,0,0,0.5); cursor: grab; user-select: none; -webkit-user-drag: none; will-change: transform; }
+    .cs-media-viewer img.cs-dragging { cursor: grabbing; }
+    .cs-media-viewer-close { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid rgba(255,255,255,0.24); border-radius: 50%; background: rgba(15,16,18,0.82); color: #efeff1; font-size: 24px; line-height: 1; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.36); }
+    .cs-media-viewer-close:hover { background: rgba(43,45,49,0.94); border-color: rgba(255,255,255,0.4); }
     .cs-media-body iframe { aspect-ratio: 16 / 9; height: auto; }
     .cs-media-link { color: #93c5fd; font-size: 12px; overflow-wrap: anywhere; }
     .cs-install-guide-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
@@ -412,13 +422,16 @@
     .cs-install-guide-trigger::before { content: "↗"; flex: 0 0 auto; color: #00ffa3; font-size: 0.92em; line-height: 1; }
     .cs-install-guide-trigger:hover, .cs-install-guide-trigger.cs-open { border-color: rgba(0,255,163,0.58); background: rgba(0,255,163,0.18); color: #d7f7ea; }
     .cs-install-guide-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cs-install-guide { display: grid; gap: 10px; color: #d7d9de; font-size: 12px; line-height: 1.5; }
-    .cs-install-guide-lead { color: #f2f3f5; font-weight: 800; }
-    .cs-install-guide-section { display: grid; gap: 6px; padding: 9px; border: 1px solid rgba(157,158,163,0.2); border-radius: 8px; background: rgba(255,255,255,0.035); }
+    .cs-install-guide { display: grid; gap: 10px; width: fit-content; max-width: 100%; max-height: min(62vh, 620px); overflow-y: auto; color: #d7d9de; font-size: 12px; line-height: 1.5; }
+    .cs-install-guide-popover .cs-install-guide { width: 100%; max-height: calc(min(80vh, 720px) - 48px); }
+    .cs-install-guide { scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.58) rgba(15,16,18,0.7); }
+    .cs-install-guide::-webkit-scrollbar { width: 9px; }
+    .cs-install-guide::-webkit-scrollbar-track { border-radius: 999px; background: rgba(15,16,18,0.7); }
+    .cs-install-guide::-webkit-scrollbar-thumb { border: 2px solid rgba(15,16,18,0.92); border-radius: 999px; background: linear-gradient(180deg, rgba(0,255,163,0.72), rgba(0,200,120,0.46)); }
+    .cs-install-guide::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,255,163,0.9), rgba(0,200,120,0.64)); }
+    .cs-install-guide-section { display: grid; gap: 6px; width: fit-content; max-width: 100%; padding: 9px; border: 1px solid rgba(157,158,163,0.2); border-radius: 8px; background: rgba(255,255,255,0.035); }
     .cs-install-guide-section h4 { margin: 0; color: #8fffd5; font-size: 12px; line-height: 1.2; }
-    .cs-install-guide-section ol { margin: 0; padding-left: 18px; }
-    .cs-install-guide-section li + li { margin-top: 3px; }
-    .cs-install-guide-note { color: #9d9ea3; font-size: 11px; line-height: 1.45; }
+    .cs-install-guide-section img { width: auto; max-width: min(720px, calc(100vw - 92px)); max-height: 300px; object-fit: contain; cursor: zoom-in; }
 
     .cs-cell-today { background: rgba(0,255,163,0.08); border-color: rgba(0,255,163,0.45); }
     .cs-cell-today .cs-cell-date,
@@ -457,7 +470,7 @@
     .cs-schedule-notice { flex: 1 1 auto; min-width: 0; margin-right: 12px; color: #6b6d73;
       font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-schedule-notice + .cs-schedule-notice { margin-top: 5px; }
-    .cs-footer-meta-frame { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; }
+    .cs-footer-meta-frame { flex: 0 0 auto; align-self: flex-end; display: inline-flex; align-items: center; gap: 8px; }
     .cs-updated { flex-shrink: 0; color: #6b6d73; font-size: 12px; }
     .cs-refresh { background: none; border: none; cursor: pointer; color: #6b6d73;
       font-size: 16px; line-height: 1; padding: 2px; }
@@ -566,25 +579,26 @@
     .cs-info-dot { display: none; }
     .cs-info-text { display: block; white-space: pre-line; overflow-wrap: anywhere; }
     .cs-info-empty { padding: 10px 0; color: #8b8d92; font-size: 13px; line-height: 1.55; }
-    .cs-info-new-frame { position: relative; padding: 0; overflow: hidden; cursor: pointer; transform: translateZ(0); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
-    .cs-info-new-frame:hover, .cs-info-new-frame:focus-visible { transform: scale(1.025); border-color: rgba(0,255,163,0.34); box-shadow: 0 8px 24px rgba(0,0,0,0.24); }
-    .cs-info-cover { display: block; width: 100%; height: 100%; min-height: 0; object-fit: cover; aspect-ratio: 18 / 5;}
-    .cs-info-cover-btn { position: absolute; right: -7px; bottom: 8px; width: min(30%, 110px); height: auto; display: block; pointer-events: none; }
+    .cs-info-new-frame { display: flex; align-items: center; justify-content: center; width: 102px; height: 40px; padding: 3px 5px; border-radius: 7px; overflow: hidden; cursor: pointer; transition: background 160ms ease; }
+    .cs-info-new-frame:hover, .cs-info-new-frame:focus-visible { background: rgba(0,255,163,0.07); outline: none; }
+    .cs-info-new-icon { display: block; width: 92px; height: 32px; object-fit: contain; pointer-events: none; transition: transform 160ms ease; }
+    .cs-info-new-frame:hover .cs-info-new-icon, .cs-info-new-frame:focus-visible .cs-info-new-icon { transform: scale(1.06); }
     .cs-gnimti-popup { position: fixed; inset: 0; z-index: 2147483647; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,0.72); overflow: hidden; overscroll-behavior: contain; }
     .cs-gnimti-popup.cs-open { display: flex; }
     .cs-gnimti-dialog { position: relative; display: flex; flex-direction: column; width: min(100%, calc(100vw - 48px)); max-height: calc(100vh - 48px); border: 1px solid rgba(157,158,163,0.26); border-radius: 10px; background: #101113; box-shadow: 0 18px 48px rgba(0,0,0,0.5); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.52) rgba(9,10,12,0.62); }
     .cs-gnimti-close { position: absolute; top: 10px; right: 10px; z-index: 2; width: 30px; height: 30px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; background: rgba(0,0,0,0.55); color: #efeff1; font-size: 20px; line-height: 1; cursor: pointer; }
     .cs-gnimti-close:hover { background: rgba(0,0,0,0.72); }
-    .cs-gnimti-visual { position: relative; width: 100%; min-height: 115px; overflow: hidden; }
+    .cs-gnimti-visual { position: relative; width: 100%; min-height: 150px; overflow: hidden; }
     .cs-gnimti-visual::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 72%; z-index: 0; pointer-events: none; background: linear-gradient(0deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.5) 42%, rgba(0,0,0,0) 100%); }
-    .cs-gnimti-image { display: block; width: 100%; height: auto; max-height: 115px; aspect-ratio: 4 / 1; object-fit: cover; }
+    .cs-gnimti-image { display: block; width: 100%; height: 150px; max-height: 150px; object-fit: cover; }
     .cs-gnimti-logo { position: absolute; left: 50%; top: 50%; z-index: 1; transform: translate(-50%, -50%); width: min(38%, 260px); object-fit: contain; pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.52)); }
     .cs-gnimti-button-image { position: absolute; right: -10px; bottom: 14px; width: min(30%, 180px); height: auto; display: block; }
-    .cs-gnimti-tabs { position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 48px); }
+    .cs-gnimti-tabs { position: absolute; left: 14px; bottom: 10px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; max-width: calc(100% - 48px); }
+    .cs-gnimti-tab-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
     .cs-gnimti-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 10px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; background: rgba(8,9,12,0.72); color: #c9cacd; font-size: 12px; font-weight: 800; line-height: 1; cursor: pointer; backdrop-filter: blur(4px); transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease; }
     .cs-gnimti-tab:hover { transform: translateY(-1px); border-color: rgba(0,255,163,0.34); color: #efeff1; }
     .cs-gnimti-tab.cs-active { border-color: rgba(0,255,163,0.56); background: rgba(0,255,163,0.16); color: #bfffe7; }
-    .cs-gnimti-placeholder { min-height: 260px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); color: #9d9ea3; font-size: 13px; font-weight: 800; }
+    .cs-gnimti-placeholder { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: min(520px, calc(100vh - 230px)); border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.035); color: #9d9ea3; font-size: 13px; font-weight: 800; }
     .cs-gnimti-tierlist, .cs-gnimti-roster-board { grid-column: 1 / -1; min-width: 0; max-height: calc(100vh - 210px); border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(0,0,0,0.24); overflow: auto; overscroll-behavior: contain; padding: 10px; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.52) rgba(9,10,12,0.62); }
     .cs-gnimti-tierlist img, .cs-gnimti-roster-board img { display: block; width: auto; max-height: 600px; border-radius: 6px; object-fit: contain; margin: 0 auto; }
     .cs-gnimti-roster-board { display: flex; flex-direction: column; gap: 12px; }
@@ -689,7 +703,7 @@
     :host(.cs-light-theme) .cs-pop-title { border-left-color: #03a950; background: rgba(3,169,80,0.1); color: #083d26; }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
-    :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { border-color: rgba(3,169,80,0.38); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
+    :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { background: rgba(3,169,80,0.07); }
     :host(.cs-light-theme) .cs-gnimti-dialog { background: #ffffff; border-color: rgba(0,0,0,0.12); box-shadow: 0 18px 42px rgba(0,0,0,0.18); }
     :host(.cs-light-theme) .cs-gnimti-tab { background: rgba(255,255,255,0.82); border-color: rgba(0,0,0,0.12); color: #4b4f55; }
     :host(.cs-light-theme) .cs-gnimti-tab:hover { border-color: rgba(3,169,80,0.34); color: #1e2024; }
@@ -774,6 +788,10 @@
     :host(.cs-light-theme) .cs-feedback-open:hover,
     :host(.cs-light-theme) .cs-feedback-open.cs-open { background: #eceef0; color: #1e2024; }
     :host(.cs-light-theme) .cs-feedback-panel { background: #ffffff; border-color: #d8dadd; box-shadow: 0 10px 30px rgba(0,0,0,0.16); }
+    :host(.cs-light-theme) .cs-install-guide { scrollbar-color: rgba(3,169,80,0.58) rgba(238,240,242,0.9); }
+    :host(.cs-light-theme) .cs-install-guide::-webkit-scrollbar-track { background: rgba(238,240,242,0.9); }
+    :host(.cs-light-theme) .cs-install-guide::-webkit-scrollbar-thumb { border-color: #f8f9fa; background: linear-gradient(180deg, rgba(3,169,80,0.7), rgba(3,169,80,0.42)); }
+    :host(.cs-light-theme) .cs-install-guide::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(3,169,80,0.86), rgba(3,169,80,0.58)); }
     :host(.cs-light-theme) .cs-feedback-title { color: #1e2024; }
     :host(.cs-light-theme) .cs-feedback-label,
     :host(.cs-light-theme) .cs-feedback-status,
@@ -816,7 +834,8 @@
       .cs-game-stats { grid-template-columns: 1fr; }
       .cs-gnimti-popup { padding: 14px; }
       .cs-gnimti-dialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
-      .cs-gnimti-tabs { left: 10px; right: 42px; bottom: 10px; max-width: none; gap: 5px; }
+      .cs-gnimti-tabs { left: 10px; right: 42px; bottom: 8px; max-width: none; gap: 4px; }
+      .cs-gnimti-tab-row { gap: 5px; }
       .cs-gnimti-logo { width: min(48%, 190px); max-height: 64%; }
       .cs-gnimti-tab { min-height: 26px; padding: 0 8px; font-size: 11px; }
       .cs-gnimti-content { grid-template-columns: 1fr; padding: 12px; overflow: visible; }
@@ -824,7 +843,6 @@
       .cs-gnimti-roster { grid-template-columns: 1fr; overflow: visible; }
       .cs-gnimti-card { grid-template-columns: 1fr; }
       .cs-gnimti-stat-item img { max-height: 260px; }
-      .cs-info-layout { grid-template-columns: 1fr; }
       .cs-footer-meta-frame { gap: 6px; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
     }
@@ -1083,10 +1101,10 @@
       '<div class="cs-info-title">소식 및 정보</div>' +
       '<ul class="cs-info-list">' + itemsHtml + "</ul>" +
       "</div>" +
-      '<div class="cs-info-frame cs-info-new-frame" role="button" tabindex="0" aria-label="그님티">' +
-      '<img class="cs-info-cover" src="' + GNIMTI_IMAGE_URL + '" alt="" />' +
-      '<img class="cs-info-cover-btn" src="' + GNIMTI_BUTTON_IMAGE_URL + '" alt="" />' +
-      "</div></div></div>"
+      '<div class="cs-info-content-area">' +
+      '<div class="cs-info-new-frame" role="button" tabindex="0" aria-label="그님티">' +
+      '<img class="cs-info-new-icon" src="' + GNIMTI_ICON_IMAGE_URL + '" alt="" />' +
+      "</div></div></div></div>"
     );
   }
 
@@ -1459,7 +1477,7 @@
     if (!c) return "";
     const name = String(c.channelName || "").trim() || "이름 없음";
     if (!disableLink && isRealChzzkChannelRef(c)) {
-      const url = "https://chzzk.naver.com/live/" + encodeURIComponent(c.channelId);
+      const url = "https://chzzk.naver.com/" + encodeURIComponent(c.channelId);
       return '<a class="cs-info-mention" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(name) + "</a>";
     }
     return '<span class="cs-info-mention">' + escapeHtml(name) + "</span>";
@@ -1468,7 +1486,7 @@
     if (!c) return "";
     const tip = '<span class="cs-member-tip">' + escapeHtml(c.channelName || "이름 없음") + "</span>";
     if (!disableLink && isRealChzzkChannelRef(c)) {
-      const url = "https://chzzk.naver.com/live/" + encodeURIComponent(c.channelId);
+      const url = "https://chzzk.naver.com/" + encodeURIComponent(c.channelId);
       return '<a class="cs-member-avatar" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' +
         memberAvatarImgHtml(c) + tip + "</a>";
     }
@@ -1610,13 +1628,6 @@
       if (open && feedbackMessage) setTimeout(() => feedbackMessage.focus(), 0);
     };
     if (root) root.onclick = (event) => {
-      const gnimtiFrame = event.target.closest && event.target.closest(".cs-info-new-frame");
-      if (gnimtiFrame) {
-        event.preventDefault();
-        event.stopPropagation();
-        showGnimtiPopup();
-        return;
-      }
       const mediaImage = event.target.closest && event.target.closest(".cs-media-expandable");
       if (mediaImage) {
         event.preventDefault();
@@ -1643,11 +1654,18 @@
       if (!(event.target.closest && event.target.closest(".cs-media-popover"))) closeMediaPopover();
     };
     const gnimtiFrame = s.querySelector(".cs-info-new-frame");
-    if (gnimtiFrame) gnimtiFrame.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " " && event.code !== "Space" && event.code !== "Spacebar") return;
-      event.preventDefault();
-      showGnimtiPopup();
-    });
+    if (gnimtiFrame) {
+      gnimtiFrame.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showGnimtiPopup();
+      });
+      gnimtiFrame.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " " && event.code !== "Space" && event.code !== "Spacebar") return;
+        event.preventDefault();
+        showGnimtiPopup();
+      });
+    }
     if (feedbackOpen) feedbackOpen.addEventListener("click", () => setFeedbackOpen(!state.feedbackOpen));
     s.querySelectorAll(".cs-inline-feedback-trigger").forEach((trigger) => {
       trigger.addEventListener("click", (event) => {
@@ -1992,16 +2010,24 @@
       }).join("") + '</div></div></aside>';
   }
 
+  function gnimtiTabs() {
+    return [
+      { id: "members", month: "august", label: "8\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00" },
+      { id: "tier", month: "august", label: "8\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" },
+      { id: "roster", month: "august", label: "8\uC6D4 \uB85C\uC2A4\uD130" },
+      { id: "september-members", month: "september", label: "9\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00" },
+      { id: "september-tier", month: "september", label: "9\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" },
+      { id: "september-roster", month: "september", label: "9\uC6D4 \uB85C\uC2A4\uD130" },
+    ];
+  }
+
   function gnimtiTabsHtml(activeTab) {
     const current = activeTab || "members";
-    const tabs = [
-      { key: "members", label: "8\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00" },
-      { key: "tier", label: "8\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" },
-      { key: "roster", label: "8\uC6D4 \uB85C\uC2A4\uD130" },
-    ];
-    return '<div class="cs-gnimti-tabs" role="tablist" aria-label="\uADF8\uB2D8\uD2F0 \uBA54\uB274">' + tabs.map((tab) =>
-      '<button type="button" class="cs-gnimti-tab' + (tab.key === current ? " cs-active" : "") + '" data-gnimti-tab="' + tab.key + '" role="tab" aria-selected="' + (tab.key === current ? "true" : "false") + '">' + tab.label + '</button>'
+    const tabs = gnimtiTabs();
+    const rowHtml = (month) => '<div class="cs-gnimti-tab-row">' + tabs.filter((tab) => tab.month === month).map((tab) =>
+      '<button type="button" class="cs-gnimti-tab' + (tab.id === current ? " cs-active" : "") + '" data-gnimti-tab="' + tab.id + '" role="tab" aria-selected="' + (tab.id === current ? "true" : "false") + '">' + tab.label + '</button>'
     ).join("") + '</div>';
+    return '<div class="cs-gnimti-tabs" role="tablist" aria-label="\uADF8\uB2D8\uD2F0 \uBA54\uB274">' + rowHtml("august") + rowHtml("september") + '</div>';
   }
 
   function gnimtiPlaceholderHtml(label) {
@@ -2018,6 +2044,9 @@
   }
 
   function gnimtiContentHtml(tab, selectedName) {
+    if (tab === "september-members") return gnimtiPlaceholderHtml("9\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00 \uC900\uBE44 \uC911");
+    if (tab === "september-tier") return gnimtiPlaceholderHtml("9\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8 \uC900\uBE44 \uC911");
+    if (tab === "september-roster") return gnimtiPlaceholderHtml("9\uC6D4 \uB85C\uC2A4\uD130 \uC900\uBE44 \uC911");
     if (tab === "tier") return gnimtiTierlistHtml();
     if (tab === "roster") return gnimtiRosterBoardHtml();
     return gnimtiRosterHtml(selectedName);
@@ -2141,12 +2170,68 @@
     viewer = document.createElement("div");
     viewer.id = "cs-media-viewer";
     viewer.className = "cs-media-viewer";
-    viewer.innerHTML = '<img id="cs-media-viewer-img" alt="" />';
+    viewer.innerHTML = '<button type="button" class="cs-media-viewer-close" id="cs-media-viewer-close" aria-label="닫기">×</button><div class="cs-media-viewer-canvas" id="cs-media-viewer-canvas"><img id="cs-media-viewer-img" alt="" draggable="false" /></div>';
     viewer.addEventListener("click", (event) => {
-      if (event.target === viewer) closeOriginalImage();
+      if (event.target === viewer || event.target.id === "cs-media-viewer-canvas") closeOriginalImage();
     });
     const img = viewer.querySelector("#cs-media-viewer-img");
+    const close = viewer.querySelector("#cs-media-viewer-close");
+    if (close) close.addEventListener("click", closeOriginalImage);
+    const applyImageTransform = () => {
+      if (!img) return;
+      const zoom = Number(img.dataset.zoom || 1);
+      const panX = Number(img.dataset.panX || 0);
+      const panY = Number(img.dataset.panY || 0);
+      img.style.transform = "translate3d(" + panX + "px," + panY + "px,0) scale(" + zoom + ")";
+    };
     if (img) img.addEventListener("click", (event) => event.stopPropagation());
+    viewer.addEventListener("wheel", (event) => {
+      if (!img || !viewer.classList.contains("cs-open")) return;
+      const baseWidth = Number(img.dataset.baseWidth || 0);
+      const baseHeight = Number(img.dataset.baseHeight || 0);
+      if (!baseWidth || !baseHeight) return;
+      event.preventDefault();
+      const currentZoom = Number(img.dataset.zoom || 1);
+      const nextZoom = Math.max(1, Math.min(5, currentZoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      if (Math.abs(nextZoom - currentZoom) < 0.001) return;
+      const canvas = viewer.querySelector("#cs-media-viewer-canvas");
+      const canvasRect = canvas.getBoundingClientRect();
+      const centerX = canvasRect.left + canvasRect.width / 2;
+      const centerY = canvasRect.top + canvasRect.height / 2;
+      const currentPanX = Number(img.dataset.panX || 0);
+      const currentPanY = Number(img.dataset.panY || 0);
+      const imagePointX = (event.clientX - centerX - currentPanX) / currentZoom;
+      const imagePointY = (event.clientY - centerY - currentPanY) / currentZoom;
+      img.dataset.zoom = String(nextZoom);
+      img.dataset.panX = String(event.clientX - centerX - imagePointX * nextZoom);
+      img.dataset.panY = String(event.clientY - centerY - imagePointY * nextZoom);
+      applyImageTransform();
+    }, { passive: false });
+    if (img) {
+      img.addEventListener("pointerdown", (event) => {
+        if (Number(img.dataset.zoom || 1) <= 1) return;
+        event.preventDefault();
+        img.setPointerCapture(event.pointerId);
+        img.dataset.dragStartX = String(event.clientX);
+        img.dataset.dragStartY = String(event.clientY);
+        img.dataset.dragPanX = img.dataset.panX || "0";
+        img.dataset.dragPanY = img.dataset.panY || "0";
+        img.classList.add("cs-dragging");
+      });
+      img.addEventListener("pointermove", (event) => {
+        if (!img.classList.contains("cs-dragging")) return;
+        img.dataset.panX = String(Number(img.dataset.dragPanX || 0) + event.clientX - Number(img.dataset.dragStartX || 0));
+        img.dataset.panY = String(Number(img.dataset.dragPanY || 0) + event.clientY - Number(img.dataset.dragStartY || 0));
+        applyImageTransform();
+      });
+      const stopDragging = (event) => {
+        if (!img.classList.contains("cs-dragging")) return;
+        img.classList.remove("cs-dragging");
+        if (event && img.hasPointerCapture(event.pointerId)) img.releasePointerCapture(event.pointerId);
+      };
+      img.addEventListener("pointerup", stopDragging);
+      img.addEventListener("pointercancel", stopDragging);
+    }
     s.appendChild(viewer);
     return viewer;
   }
@@ -2155,9 +2240,29 @@
     const viewer = ensureOriginalImageViewer();
     const img = viewer.querySelector("#cs-media-viewer-img");
     if (!img) return;
-    img.src = image.currentSrc || image.src;
     img.alt = image.alt || "이미지 원본";
+    const fitImage = () => {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      const horizontalPadding = 48;
+      const verticalPadding = 48;
+      const availableWidth = Math.max(1, viewer.clientWidth - horizontalPadding);
+      const availableHeight = Math.max(1, viewer.clientHeight - verticalPadding);
+      const fitScale = Math.min(availableWidth / img.naturalWidth, availableHeight / img.naturalHeight);
+      const baseWidth = Math.max(1, img.naturalWidth * fitScale);
+      const baseHeight = Math.max(1, img.naturalHeight * fitScale);
+      img.dataset.baseWidth = String(baseWidth);
+      img.dataset.baseHeight = String(baseHeight);
+      img.dataset.zoom = "1";
+      img.dataset.panX = "0";
+      img.dataset.panY = "0";
+      img.style.width = baseWidth + "px";
+      img.style.height = baseHeight + "px";
+      img.style.transform = "translate3d(0,0,0) scale(1)";
+    };
+    img.onload = fitImage;
     viewer.classList.add("cs-open");
+    img.src = image.currentSrc || image.src;
+    if (img.complete) requestAnimationFrame(fitImage);
   }
   function ensureMediaPopover() {
     const s = state.shadow;
@@ -2176,7 +2281,7 @@
 
   function closeMediaPopover() {
     const pop = state.shadow && state.shadow.getElementById("cs-media-popover");
-    if (pop) pop.classList.remove("cs-open", "cs-media-expanded");
+    if (pop) pop.classList.remove("cs-open", "cs-media-expanded", "cs-install-guide-popover");
     closeOriginalImage();
     if (state.shadow) state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
   }
@@ -2189,6 +2294,7 @@
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = mediaEmbedHtml(url, label);
+    pop.classList.remove("cs-install-guide-popover");
     state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
@@ -2209,18 +2315,12 @@
   }
   function installGuideHtml() {
     return '<div class="cs-install-guide">' +
-      '<p class="cs-install-guide-lead">오뱅알 모바일 페이지를 홈 화면에 추가하면 앱처럼 바로 열 수 있습니다.</p>' +
-      '<section class="cs-install-guide-section"><h4>Android Chrome</h4><ol>' +
-        '<li>모바일 페이지를 Chrome으로 엽니다.</li>' +
-        '<li>주소창 또는 메뉴의 설치/홈 화면에 추가를 누릅니다.</li>' +
-        '<li>확인을 누르면 홈 화면에 오뱅알 아이콘이 추가됩니다.</li>' +
-      '</ol></section>' +
-      '<section class="cs-install-guide-section"><h4>iPhone Safari</h4><ol>' +
-        '<li>모바일 페이지를 Safari로 엽니다.</li>' +
-        '<li>하단 공유 버튼을 누릅니다.</li>' +
-        '<li>홈 화면에 추가를 선택한 뒤 추가를 누릅니다.</li>' +
-      '</ol></section>' +
-      '<p class="cs-install-guide-note">iOS는 브라우저 정책상 설치 팝업을 코드로 직접 띄울 수 없어 수동 추가가 필요합니다.</p>' +
+      '<section class="cs-install-guide-section"><h4>iOS</h4>' +
+        '<img class="cs-media-expandable" src="' + OBAL_IOS_GUIDE_IMAGE_URL + '" alt="iOS 오뱅알 설치 방법" title="클릭해서 확대" />' +
+      '</section>' +
+      '<section class="cs-install-guide-section"><h4>Android</h4>' +
+        '<img class="cs-media-expandable" src="' + OBAL_ANDROID_GUIDE_IMAGE_URL + '" alt="Android 오뱅알 설치 방법" title="클릭해서 확대" />' +
+      '</section>' +
       '</div>';
   }
 
@@ -2231,6 +2331,7 @@
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = installGuideHtml();
+    pop.classList.add("cs-install-guide-popover");
     state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");

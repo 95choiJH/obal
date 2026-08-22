@@ -1370,6 +1370,12 @@ function infoItemHtml(u, i) {
     return offsets;
   }
 
+  function captureToolbarSelection(editor, event) {
+    if (event) event.preventDefault();
+    const offsets = currentEditorSelectionOffsets(editor) || editor._lastSelectionOffsets;
+    if (offsets) editor._toolbarSelectionOffsets = { start: offsets.start, end: offsets.end };
+  }
+
   function editorSelectionOffsets(editor) {
     const current = rememberEditorSelection(editor);
     if (current) return current;
@@ -1636,10 +1642,12 @@ function infoItemHtml(u, i) {
       button.className = "style-btn " + style.cls;
       button.textContent = style.label;
       button.title = style.title;
-      button.onmousedown = (event) => { event.preventDefault(); rememberEditorSelection(editor); };
+      button.onpointerdown = (event) => captureToolbarSelection(editor, event);
+      button.onmousedown = (event) => captureToolbarSelection(editor, event);
       button.onclick = () => {
         syncEditorToSource(source, editor, false);
-        const offsets = editorSelectionOffsets(editor);
+        const offsets = editor._toolbarSelectionOffsets || editorSelectionOffsets(editor);
+        editor._toolbarSelectionOffsets = null;
         const value = source.value || "";
         if (style.insert) {
           source.value = value.slice(0, offsets.start) + style.insert + value.slice(offsets.end);
@@ -1888,10 +1896,12 @@ function infoItemHtml(u, i) {
       button.className = "style-btn " + style.cls;
       button.textContent = style.label;
       button.title = style.title;
-      button.onmousedown = (event) => { event.preventDefault(); rememberEditorSelection(editor); };
+      button.onpointerdown = (event) => captureToolbarSelection(editor, event);
+      button.onmousedown = (event) => captureToolbarSelection(editor, event);
       button.onclick = () => {
         syncEditorToSource(source, editor, false);
-        const offsets = editorSelectionOffsets(editor);
+        const offsets = editor._toolbarSelectionOffsets || editorSelectionOffsets(editor);
+        editor._toolbarSelectionOffsets = null;
         const value = source.value || "";
         pushEditorUndo(source);
         if (style.insert) {

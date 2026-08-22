@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "오뱅알",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "치지직 스트리머 '따효니'님의 방송 일정을 채널 페이지에 표시하는 확장 프로그램입니다.",
   "minimum_chrome_version": "121",
   "permissions": [
@@ -48,6 +48,9 @@
         "images/gnimti.png",
         "images/gnimti-btn.png",
         "images/gnimti-logo.png",
+        "images/gnimti-logo2.png",
+        "images/obal_ios.png",
+        "images/obal-android.png",
         "images/gnimti-back.png",
         "images/gnimti2.png",
         "images/gnimti/tierlist.png",

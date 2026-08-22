@@ -228,8 +228,16 @@ async function resolveDirectiveProfiles(channels) {
     const key = String(name || "").trim();
     if (!key) return;
     const cached = normalizeChannelRef(profileCache[key]);
-    if (cached) {
+    if (cached && /^[0-9a-f]{32}$/i.test(String(cached.channelId || "").trim())) {
       profiles[key] = cached;
+      return;
+    }
+    const overrideId = String(GNIMTI_PROFILE_OVERRIDES[key] || "").trim();
+    if (/^[0-9a-f]{32}$/i.test(overrideId)) {
+      const overridden = { ...(cached || {}), channelId: overrideId, channelName: (cached && cached.channelName) || key, channelImageUrl: (cached && cached.channelImageUrl) || "" };
+      profiles[key] = overridden;
+      profileCache[key] = overridden;
+      cacheChanged = true;
       return;
     }
     try {
@@ -302,13 +310,16 @@ async function fetchFromSupabase() {
 
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
-  return { version: 1, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
 }
 
 async function attachCachedProfiles(data) {
   if (!data || typeof data !== "object") return data;
   const profileCache = await getProfileCache();
-  data.directiveProfiles = { ...(data.directiveProfiles || {}), ...profileCache };
+  const linkedCache = Object.fromEntries(Object.entries(profileCache).filter(([, profile]) =>
+    /^[0-9a-f]{32}$/i.test(String((profile && profile.channelId) || "").trim())
+  ));
+  data.directiveProfiles = { ...linkedCache, ...(data.directiveProfiles || {}) };
   return data;
 }
 async function fetchSchedule(force) {
@@ -321,7 +332,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.gnimtiProfileVersion === 3 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 3 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

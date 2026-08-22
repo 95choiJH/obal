@@ -6,12 +6,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $root $OutputPath }
 
-$version = "0.0.0"
-$manifestPath = Join-Path $root "manifest.json"
-if (Test-Path -LiteralPath $manifestPath) {
-  $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-  $version = $manifest.version
-}
+$version = "1.2.1"
 
 $mobileFiles = @(
   "index.html",
@@ -21,6 +16,12 @@ $mobileFiles = @(
   "manifest.webmanifest",
   "service-worker.js"
 )
+$mobileVersion = "unknown"
+$mobileAppPath = Join-Path (Join-Path $root "mobile") "app.js"
+$mobileAppSource = Get-Content -LiteralPath $mobileAppPath -Raw -Encoding UTF8
+if ($mobileAppSource -match 'MOBILE_APP_VERSION\s*=\s*"([^"]+)"') {
+  $mobileVersion = $Matches[1]
+}
 
 if (Test-Path -LiteralPath $out) {
   Remove-Item -LiteralPath $out -Recurse -Force
@@ -53,7 +54,16 @@ $headers = @(
   "  X-Content-Type-Options: nosniff",
   "  Referrer-Policy: no-referrer",
   "  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()",
-  "  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self' https://ggebdrlvzrgoyumlrnxe.supabase.co wss://ggebdrlvzrgoyumlrnxe.supabase.co; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+  "  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self' https://ggebdrlvzrgoyumlrnxe.supabase.co wss://ggebdrlvzrgoyumlrnxe.supabase.co; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "",
+  "/mobile/service-worker.js",
+  "  Cache-Control: no-cache, no-store, must-revalidate",
+  "",
+  "/mobile/index.html",
+  "  Cache-Control: no-cache, no-store, must-revalidate",
+  "",
+  "/deploy-info.json",
+  "  Cache-Control: no-cache, no-store, must-revalidate"
 )
 [System.IO.File]::WriteAllText((Join-Path $out "_headers"), ($headers -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 
@@ -67,6 +77,7 @@ $deployInfo = [ordered]@{
   name = "obaengal-mobile"
   source = "mobile"
   version = $version
+  mobileVersion = $mobileVersion
   generatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   files = @($mobileFiles | ForEach-Object { "mobile/$_" }) + @(Get-ChildItem -LiteralPath $iconsRoot -File | ForEach-Object { "icons/$($_.Name)" })
 }

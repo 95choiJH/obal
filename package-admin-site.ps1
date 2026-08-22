@@ -5,12 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $root $OutputPath }
-$version = "0.0.0"
-$manifestPath = Join-Path $root "manifest.json"
-if (Test-Path -LiteralPath $manifestPath) {
-  $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-  $version = $manifest.version
-}
+$version = "1.2.1"
 
 $allowedFiles = @(
   "index.html",

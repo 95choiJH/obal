@@ -17,6 +17,12 @@
 
 * { box-sizing: border-box; }
 
+html,
+body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 html { min-height: 100%; background: var(--bg); }
 
 body {
@@ -2560,10 +2566,17 @@ body {
 }
 
 .topbar {
+  height: calc(56px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   background: #1b1c1f;
   border-bottom-color: #2e3033;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
+
+.app-update-banner[hidden] { display: none; }
+.app-update-banner { position: sticky; top: calc(56px + env(safe-area-inset-top)); z-index: 9; display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 38px; padding: 7px max(12px, env(safe-area-inset-right)) 7px max(12px, env(safe-area-inset-left)); border-bottom: 1px solid rgba(0,255,163,0.3); background: #124233; color: #d7f7ea; font-size: 12px; font-weight: 800; }
+.app-update-banner button { flex: 0 0 auto; min-height: 26px; padding: 4px 9px; border: 1px solid rgba(0,255,163,0.48); border-radius: 7px; background: rgba(0,255,163,0.16); color: #bfffe7; font-size: 12px; font-weight: 900; cursor: pointer; }
+.app-update-banner button:disabled { opacity: 0.65; cursor: wait; }
 
 .icon-button,
 .month-nav {
@@ -3427,9 +3440,22 @@ body {
   }
 
   .main.schedule-only {
-    padding-left: 8px;
-    padding-right: 8px;
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
   }
+}
+
+/* iOS/Android standalone safe-area guardrails */
+.app-shell {
+  min-height: 100dvh;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+.info-popup {
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-right: max(10px, env(safe-area-inset-right));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(10px, env(safe-area-inset-left));
 }
 
 /* Allow horizontal scroll below the deployment minimum width */
@@ -3489,8 +3515,10 @@ body {
   max-width: none;
   gap: 7px;
   padding-right: 12px;
-  box-sizing: content-box;
+  box-sizing: border-box;
   vertical-align: top;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .selected-schedule-view .schedule-detail-empty-text,
@@ -3542,6 +3570,19 @@ body {
 .selected-schedule-view .schedule-detail-note-text {
   display: inline-block;
 }
+
+.selected-schedule-view .schedule-detail-part-notes {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.selected-schedule-view .schedule-detail-part .schedule-inline-streamer {
+  touch-action: pan-x pan-y !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* PC-matched tag badge tones */
 .schedule-tag-tone,
 .selected-schedule-view .schedule-inline-tag.schedule-tag-tone,

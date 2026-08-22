@@ -2,6 +2,7 @@
   "use strict";
 
   const cfg = OBAENGAL_MOBILE_CONFIG;
+  const MOBILE_APP_VERSION = "v24";
   const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey() };
   const $ = (id) => document.getElementById(id);
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
@@ -391,8 +392,8 @@
   function renderHeader() {
     const updated = state.updatedAt ? new Date(state.updatedAt) : null;
     $("updatedLabel").textContent = updated && !Number.isNaN(updated.getTime())
-      ? `업데이트 ${updated.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}`
-      : "업데이트 확인 중";
+      ? `${MOBILE_APP_VERSION} · 데이터 ${updated.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}`
+      : `${MOBILE_APP_VERSION} · 데이터 확인 중`;
   }
 
   function scheduleNotesHtml(entry) {
@@ -592,8 +593,50 @@
 
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    let refreshing = false;
+    let registration = null;
+    const banner = $("appUpdateBanner");
+    const message = $("appUpdateMessage");
+    const updateButton = $("appUpdateBtn");
+
+    const showUpdate = (worker) => {
+      if (!worker || !banner || !updateButton) return;
+      if (message) message.textContent = "새 앱 버전을 사용할 수 있습니다.";
+      banner.hidden = false;
+      updateButton.onclick = () => {
+        updateButton.disabled = true;
+        updateButton.textContent = "업데이트 중…";
+        worker.postMessage({ type: "SKIP_WAITING" });
+      };
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    const checkForUpdate = () => {
+      if (registration) registration.update().catch(() => {});
+    };
+
+    window.addEventListener("load", async () => {
+      try {
+        registration = await navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" });
+        if (registration.waiting) showUpdate(registration.waiting);
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) showUpdate(worker);
+          });
+        });
+        checkForUpdate();
+      } catch (_error) {}
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") checkForUpdate();
     });
   }
 

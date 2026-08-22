@@ -32,6 +32,9 @@ $allowedIconFiles = @(
   "images\gnimti2.png",
   "images\gnimti-btn.png",
   "images\gnimti-logo.png",
+  "images\gnimti-logo2.png",
+  "images\obal_ios.png",
+  "images\obal-android.png",
   "images\gnimti-back.png"
 )
 $allowedGnimtiFiles = Get-ChildItem -LiteralPath (Join-Path $root "images\gnimti") -Recurse -File -Filter "*.png" | ForEach-Object {
