@@ -2,8 +2,10 @@
   "use strict";
 
   const cfg = OBAENGAL_MOBILE_CONFIG;
-  const MOBILE_APP_VERSION = "v24";
+  const MOBILE_APP_VERSION = "v27";
+  const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
   const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey() };
+  let channelLoadPromise = null;
   const $ = (id) => document.getElementById(id);
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -537,30 +539,48 @@
     return { id: cfg.defaultChannelId, name: cfg.defaultChannelName };
   }
 
-  async function loadChannel(channel) {
+  async function loadChannel(channel, { silent = false } = {}) {
+    if (channelLoadPromise) return channelLoadPromise;
     state.channelId = channel.id;
     state.channelName = channel.name || cfg.defaultChannelName;
-    renderAll();
-    setLoading(true);
-    try {
-      const [scheduleRows, infoRows] = await Promise.all([
-        restFetch(cfg.tableName || "schedule", { select: "*", channel_id: `eq.${state.channelId}`, order: "date.asc" }),
-        restFetch(cfg.upcomingContentTableName || "upcoming_content", { select: "id,content,hidden,sort_order,created_at", channel_id: `eq.${state.channelId}`, hidden: "is.false", order: "sort_order.asc,id.asc" }).catch(() => []),
-      ]);
-      state.rows = (scheduleRows || []).map(rowToEntry);
-      state.infoRows = (infoRows || []).map(rowToInfo).filter((item) => item.content);
-      const rowChannelName = (scheduleRows || []).find((row) => row.channel_name)?.channel_name;
-      if (rowChannelName) state.channelName = rowChannelName;
-      const scheduleUpdatedAt = state.rows.reduce((latest, row) => row.updatedAt && (!latest || row.updatedAt > latest) ? row.updatedAt : latest, null);
-      const infoUpdatedAt = state.infoRows.reduce((latest, row) => row.updatedAt && (!latest || row.updatedAt > latest) ? row.updatedAt : latest, null);
-      state.updatedAt = [scheduleUpdatedAt, infoUpdatedAt].filter(Boolean).sort().pop() || null;
+    if (!silent) {
       renderAll();
-    } catch (error) {
-      $("scheduleList").innerHTML = `<div class="empty-state"><strong>일정을 불러오지 못했습니다.</strong><span>${esc(error.message || error)}</span></div>`;
-      $("monthGrid").innerHTML = `<div class="empty-state month-error"><strong>월간 일정을 불러오지 못했습니다.</strong><span>${esc(error.message || error)}</span></div>`;
-    } finally {
-      setLoading(false);
+      setLoading(true);
     }
+    channelLoadPromise = (async () => {
+      try {
+        const [scheduleRows, infoRows] = await Promise.all([
+          restFetch(cfg.tableName || "schedule", { select: "*", channel_id: `eq.${state.channelId}`, order: "date.asc" }),
+          restFetch(cfg.upcomingContentTableName || "upcoming_content", { select: "id,content,hidden,sort_order,created_at", channel_id: `eq.${state.channelId}`, hidden: "is.false", order: "sort_order.asc,id.asc" }).catch(() => []),
+        ]);
+        state.rows = (scheduleRows || []).map(rowToEntry);
+        state.infoRows = (infoRows || []).map(rowToInfo).filter((item) => item.content);
+        const rowChannelName = (scheduleRows || []).find((row) => row.channel_name)?.channel_name;
+        if (rowChannelName) state.channelName = rowChannelName;
+        const scheduleUpdatedAt = state.rows.reduce((latest, row) => row.updatedAt && (!latest || row.updatedAt > latest) ? row.updatedAt : latest, null);
+        const infoUpdatedAt = state.infoRows.reduce((latest, row) => row.updatedAt && (!latest || row.updatedAt > latest) ? row.updatedAt : latest, null);
+        state.updatedAt = [scheduleUpdatedAt, infoUpdatedAt].filter(Boolean).sort().pop() || null;
+        renderAll();
+      } catch (error) {
+        if (!silent) {
+          $("scheduleList").innerHTML = `<div class="empty-state"><strong>일정을 불러오지 못했습니다.</strong><span>${esc(error.message || error)}</span></div>`;
+          $("monthGrid").innerHTML = `<div class="empty-state month-error"><strong>월간 일정을 불러오지 못했습니다.</strong><span>${esc(error.message || error)}</span></div>`;
+        }
+      } finally {
+        if (!silent) setLoading(false);
+        channelLoadPromise = null;
+      }
+    })();
+    return channelLoadPromise;
+  }
+
+  function refreshChannelSilently() {
+    if (document.visibilityState !== "visible" || !state.channelId) return;
+    loadChannel({ id: state.channelId, name: state.channelName }, { silent: true });
+  }
+
+  function startAutoRefresh() {
+    window.setInterval(refreshChannelSilently, AUTO_REFRESH_INTERVAL_MS);
   }
 
   function bindActions() {
@@ -636,13 +656,17 @@
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") checkForUpdate();
+      if (document.visibilityState === "visible") {
+        checkForUpdate();
+        refreshChannelSilently();
+      }
     });
   }
 
   function init() {
     bindActions();
     registerServiceWorker();
+    startAutoRefresh();
     loadChannel(readInitialChannel());
   }
 

@@ -10,7 +10,7 @@ const APP_SHELL = [
   "../icons/icon128.png",
   "../icons/오뱅알.png",
 ];
-const ACTIVE_CACHE_NAME = CACHE_NAME.replace(/v\d+$/, "v24");
+const ACTIVE_CACHE_NAME = CACHE_NAME.replace(/v\d+$/, "v27");
 const CACHE_PREFIX = CACHE_NAME.replace(/v\d+$/, "");
 let legacyAutoActivate = false;
 
