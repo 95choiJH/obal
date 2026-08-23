@@ -1830,7 +1830,7 @@
     const popover = s.getElementById("cs-popover");
     const body = s.getElementById("cs-pop-body");
     const arrow = s.getElementById("cs-pop-arrow");
-    const section = popover ? popover.parentElement : null;
+    const section = popover ? popover.closest(".cs-schedule-section") : null;
     if (!popover || !body || !section) return;
 
     const key = cell.getAttribute("data-date");
@@ -1936,7 +1936,9 @@
     popover.style.width = "max-content";
     popover.classList.add("cs-open");
 
-    // 위치 계산: 해당 칸 바로 아래, 섹션 좌우로 벗어나지 않게 보정
+    // 위치 계산: 팝오버의 실제 absolute 기준인 일정 섹션을 사용한다.
+    // 본문(.cs-schedule-body)을 기준으로 계산하면 헤더 높이만큼 위로
+    // 당겨져 팝오버가 hover 중인 일정 칸을 가리게 된다.
     const sectionRect = section.getBoundingClientRect();
     const cellRect = cell.getBoundingClientRect();
     const popW = popover.offsetWidth || 250;
