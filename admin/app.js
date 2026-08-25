@@ -7,6 +7,7 @@
   const sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const INFO_SECTION_PREFIX = "@section:";
+  const STRUCTURED_INFO_PREFIX = "@info-v2:";
 
   // ---- 상태 ----
   let rows = [];         // 현재 편집 중인 일정 (로컬)
@@ -451,6 +452,51 @@
     return INFO_SECTION_PREFIX + String(value || "").trim();
   }
 
+
+  function isStructuredInfoItem(item) {
+    return String((item && item.content) || "").trim().startsWith(STRUCTURED_INFO_PREFIX);
+  }
+
+  function emptyInfoSubItem(body) {
+    return { title: "", body: body || "", collapsed: true };
+  }
+
+  function structuredInfoData(item) {
+    const raw = String((item && item.content) || "").trim();
+    if (!raw.startsWith(STRUCTURED_INFO_PREFIX)) return null;
+    try {
+      const parsed = JSON.parse(raw.slice(STRUCTURED_INFO_PREFIX.length));
+      const items = Array.isArray(parsed.items) ? parsed.items.map((entry) => ({
+        title: String((entry && entry.title) || ""),
+        body: String((entry && entry.body) || ""),
+        collapsed: entry && entry.collapsed !== false,
+      })) : [];
+      return { title: String((parsed && parsed.title) || ""), items };
+    } catch (_e) {
+      return { title: "", items: [emptyInfoSubItem(raw.slice(STRUCTURED_INFO_PREFIX.length))] };
+    }
+  }
+
+  function structuredInfoContent(data) {
+    const clean = {
+      title: String((data && data.title) || ""),
+      items: (data && Array.isArray(data.items) ? data.items : []).map((entry) => ({
+        title: String((entry && entry.title) || ""),
+        body: String((entry && entry.body) || ""),
+        collapsed: entry && entry.collapsed !== false,
+      })),
+    };
+    return STRUCTURED_INFO_PREFIX + JSON.stringify(clean);
+  }
+
+  function setStructuredInfoData(index, data) {
+    info[index].content = structuredInfoContent(data);
+  }
+
+  function infoStructuredKeepContent(data) {
+    if (!data) return false;
+    return Array.isArray(data.items);
+  }
   function noticeText(item) {
     return String((item && item.content) || "").trim().replace(/^@notice\s*:\s*/i, "");
   }
@@ -468,19 +514,11 @@
       ? visibleItems.map((item) => infoItemHtml(item.u, item.i)).join("")
       : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uc18c\uc2dd\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
 
-    const actions = document.createElement("div");
-    actions.className = "info-add-actions";
     const add = document.createElement("button");
     add.className = "add-btn info-add-card";
     add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>\ud56d\ubaa9 \ucd94\uac00';
     add.onclick = addInfoRow;
-    const addSection = document.createElement("button");
-    addSection.className = "add-btn info-add-card info-section-add-card";
-    addSection.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>\uad6c\ubd84\uc120 \ucd94\uac00';
-    addSection.onclick = addInfoSectionRow;
-    actions.appendChild(add);
-    actions.appendChild(addSection);
-    list.appendChild(actions);
+    list.appendChild(add);
 
     bindInfoCards();
     bindDirectiveAutocompletes();
@@ -558,8 +596,57 @@
       '</div>'
     );
   }
-function infoItemHtml(u, i) {
+
+
+  function structuredInfoItemHtml(u, i) {
+    const data = structuredInfoData(u) || { title: "", items: [] };
+    const items = data.items.length ? data.items : [emptyInfoSubItem("")];
+    const subItems = items.map((entry, si) => structuredInfoSubItemHtml(entry, i, si, items.length)).join("");
+    return (
+      '<div class="card info-card info-structured-card" data-ii="' + i + '">' +
+        '<div class="info-structured-head">' +
+          '<input class="info-structured-title" data-structured-title="' + i + '" value="' + esc(data.title) + '" placeholder="\ud070 \ubd84\ub958 \uc608: ENCHANT \ucee8\ud150\uce20" />' +
+          '<div class="info-card-actions">' +
+            '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="\uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
+            '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="\uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
+            '<button type="button" class="flag-toggle' + (u.hidden ? " on" : "") + '" data-ihiddentoggle="' + i + '" title="\ud655\uc7a5 \ud504\ub85c\uadf8\ub7a8\uc5d0\uc11c \uc774 \uc18c\uc2dd\uc744 \uc228\uae41\ub2c8\ub2e4">\uc228\uae40</button>' +
+            deleteInfoBtn(i) +
+          '</div>' +
+        '</div>' +
+        '<div class="info-sub-list">' + subItems + '</div>' +
+        '<button type="button" class="add-btn small info-sub-add" data-isub-add="' + i + '">+ \uc138\ubd80 \uc18c\uc2dd \ucd94\uac00</button>' +
+      '</div>'
+    );
+  }
+
+  function structuredInfoSubItemHtml(entry, i, si, total) {
+    const fieldId = "info-sub-body-" + i + "-" + si;
+    const titleId = "info-sub-title-" + i + "-" + si;
+    return (
+      '<div class="info-sub-card" data-info-sub="' + i + '-' + si + '">' +
+        '<div class="info-sub-head">' +
+          '<div class="info-sub-title-shell">' +
+            '<div class="info-sub-title-toolbar"></div>' +
+            '<input id="' + titleId + '" class="info-sub-title" data-isub-title="' + i + '-' + si + '" value="' + esc(entry.title || "") + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \uc81c\ubaa9 \uc608: \uc2a4\ud0c0\ud06c\ub798\ud504\ud2b8" />' +
+          '</div>' +
+          '<div class="info-card-actions">' +
+            '<button class="move-btn" data-isub-move="up" data-ii="' + i + '" data-si="' + si + '"' + (si === 0 ? " disabled" : "") + ' aria-label="\uc138\ubd80 \uc18c\uc2dd \uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
+            '<button class="move-btn" data-isub-move="down" data-ii="' + i + '" data-si="' + si + '"' + (si === total - 1 ? " disabled" : "") + ' aria-label="\uc138\ubd80 \uc18c\uc2dd \uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
+            '<button type="button" class="flag-toggle' + (entry.collapsed !== false ? " on" : "") + '" data-isub-collapse="' + i + '-' + si + '" title="\ud504\ub860\ud2b8\uc5d0\uc11c \uae30\ubcf8 \uc811\ud798 \uc0c1\ud0dc\ub85c \ud45c\uc2dc">\uae30\ubcf8\uc811\ud798</button>' +
+            '<button type="button" class="icon-btn" data-isub-del="' + i + '-' + si + '" aria-label="\uc138\ubd80 \uc18c\uc2dd \uc0ad\uc81c">' + trashSvg() + '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="info-sub-editor-shell">' +
+          '<div class="info-sub-toolbar"></div>' +
+          '<textarea id="' + fieldId + '" class="info-sub-body" data-isub-body="' + i + '-' + si + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \ubcf8\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694. \ubbf8\ub514\uc5b4 \ubc84\ud2bc\uc73c\ub85c \uc774\ubbf8\uc9c0/\ub9c1\ud06c\ub97c \ucd94\uac00\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4." data-ii="' + i + '" data-si="' + si + '">' + esc(entry.body || "") + '</textarea>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function infoItemHtml(u, i) {
     if (isInfoSectionInfoItem(u)) return infoSectionItemHtml(u, i);
+    if (isStructuredInfoItem(u)) return structuredInfoItemHtml(u, i);
     const text = u.content || "";
     const fieldId = "info-content-" + i;
     return (
@@ -571,6 +658,7 @@ function infoItemHtml(u, i) {
               '<div class="info-card-actions">' +
                 '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="\uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
                 '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="\uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
+                '<button type="button" class="flag-toggle" data-istructure="' + i + '" title="\uc774 \uc18c\uc2dd\uc744 \uc138\ubd80 \uc18c\uc2dd \ud3b8\uc9d1\uc73c\ub85c \uc804\ud658\ud569\ub2c8\ub2e4">\uc138\ubd80\uc18c\uc2dd</button>' +
                 '<button type="button" class="flag-toggle' + (u.hidden ? " on" : "") + '" data-ihiddentoggle="' + i + '" title="\ud655\uc7a5 \ud504\ub85c\uadf8\ub7a8\uc5d0\uc11c \uc774 \uc18c\uc2dd\uc744 \uc228\uae41\ub2c8\ub2e4">\uc228\uae40</button>' +
                 deleteInfoBtn(i) +
               '</div>' +
@@ -607,7 +695,90 @@ function infoItemHtml(u, i) {
         markDirty();
       };
     });
-    document.querySelectorAll("[data-imove]").forEach((el) => {
+    document.querySelectorAll("[data-structured-title]").forEach((el) => {
+      const i = +el.getAttribute("data-structured-title");
+      el.oninput = () => {
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.title = el.value;
+        setStructuredInfoData(i, data);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-title]").forEach((el) => {
+      const [i, si] = el.getAttribute("data-isub-title").split("-").map(Number);
+      el.oninput = () => {
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.items[si] = data.items[si] || emptyInfoSubItem("");
+        data.items[si].title = el.value;
+        setStructuredInfoData(i, data);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-body]").forEach((el) => {
+      const [i, si] = el.getAttribute("data-isub-body").split("-").map(Number);
+      el.oninput = () => {
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.items[si] = data.items[si] || emptyInfoSubItem("");
+        data.items[si].body = el.value;
+        setStructuredInfoData(i, data);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-collapse]").forEach((el) => {
+      el.onclick = () => {
+        const [i, si] = el.getAttribute("data-isub-collapse").split("-").map(Number);
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.items[si] = data.items[si] || emptyInfoSubItem("");
+        data.items[si].collapsed = data.items[si].collapsed === false;
+        setStructuredInfoData(i, data);
+        renderInfo();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-move]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-ii");
+        const si = +el.getAttribute("data-si");
+        const dir = el.getAttribute("data-isub-move");
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        const target = dir === "up" ? si - 1 : si + 1;
+        if (target < 0 || target >= data.items.length) return;
+        [data.items[si], data.items[target]] = [data.items[target], data.items[si]];
+        setStructuredInfoData(i, data);
+        renderInfo();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-del]").forEach((el) => {
+      el.onclick = () => {
+        const [i, si] = el.getAttribute("data-isub-del").split("-").map(Number);
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.items.splice(si, 1);
+        if (!data.items.length) data.items.push(emptyInfoSubItem(""));
+        setStructuredInfoData(i, data);
+        renderInfo();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-add]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-isub-add");
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.items.push(emptyInfoSubItem(""));
+        setStructuredInfoData(i, data);
+        renderInfo();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-istructure]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-istructure");
+        const current = String((info[i] && info[i].content) || "");
+        info[i].content = structuredInfoContent({ title: "", items: [emptyInfoSubItem(current)] });
+        renderInfo();
+        markDirty();
+      };
+    });    document.querySelectorAll("[data-imove]").forEach((el) => {
       el.onclick = () => {
         const i = +el.getAttribute("data-ii");
         const dir = el.getAttribute("data-imove");
@@ -638,12 +809,14 @@ function infoItemHtml(u, i) {
   }
 
   function addInfoRow() {
-    info.push({ id: null, content: "", hidden: false });
+    info.push({ id: null, content: structuredInfoContent({ title: "", items: [emptyInfoSubItem("")] }), hidden: false });
     renderInfo();
+    markDirty();
   }
 
-  function addInfoSectionRow() {
-    info.push({ id: null, content: infoSectionContent(""), hidden: false });
+  function addInfoSectionAfter(index) {
+    const insertIndex = Math.max(0, Math.min(info.length, Number(index) + 1));
+    info.splice(insertIndex, 0, { id: null, content: infoSectionContent(""), hidden: false });
     renderInfo();
     markDirty();
   }
@@ -2000,7 +2173,7 @@ function infoItemHtml(u, i) {
     return toolbar;
   }
   function bindDirectiveEditors() {
-    const selector = '[data-pf="content"], [data-if="content"], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-isub-title], [data-isub-body], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((source) => {
       if (source.dataset.directiveEditorBound) return;
       source.dataset.directiveEditorBound = "1";
@@ -2013,7 +2186,7 @@ function infoItemHtml(u, i) {
       editor.dataset.placeholder = source.getAttribute("placeholder") || "";
       source.insertAdjacentElement("afterend", editor);
       const toolbar = makeStyleToolbar(source, editor);
-      const toolbarSlot = (source.classList.contains("info-textarea") ? source.closest(".info-editor-shell").querySelector(".info-card-toolbar") : (source.classList.contains("notice-textarea") ? source.closest(".notice-editor-shell").querySelector(".notice-card-toolbar") : null));
+      const toolbarSlot = (source.classList.contains("info-textarea") ? source.closest(".info-editor-shell").querySelector(".info-card-toolbar") : (source.classList.contains("notice-textarea") ? source.closest(".notice-editor-shell").querySelector(".notice-card-toolbar") : (source.classList.contains("info-sub-title") ? source.closest(".info-sub-title-shell").querySelector(".info-sub-title-toolbar") : (source.classList.contains("info-sub-body") ? source.closest(".info-sub-editor-shell").querySelector(".info-sub-toolbar") : null))));
       if (toolbarSlot) toolbarSlot.appendChild(toolbar);
       else source.insertAdjacentElement("afterend", toolbar);
       source._directiveEditor = editor;
@@ -2248,7 +2421,7 @@ function infoItemHtml(u, i) {
   }
   function bindDirectiveAutocompletes() {
     bindDirectiveEditors();
-    const selector = '[data-pf="content"], [data-if="content"], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-isub-title], [data-isub-body], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((el) => {
       if (el.dataset.directiveAutocompleteBound) return;
       el.dataset.directiveAutocompleteBound = "1";
@@ -3018,7 +3191,8 @@ function infoItemHtml(u, i) {
         const content = (u.content || "").trim();
         const noticeMatch = content.match(/^@notice\s*:\s*([\s\S]*)$/i);
         const sectionMatch = content.match(/^@section\s*:\s*([\s\S]*)$/i);
-        const keepContent = content && (!noticeMatch || noticeMatch[1].trim()) && (!sectionMatch || sectionMatch[1].trim());
+        const structuredMatch = isStructuredInfoItem(u) ? structuredInfoData(u) : null;
+        const keepContent = content && (!noticeMatch || noticeMatch[1].trim()) && (!sectionMatch || sectionMatch[1].trim()) && (!structuredMatch || infoStructuredKeepContent(structuredMatch));
         if (u.id) {
           if (keepContent) infoToUpdate.push({ id: u.id, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
           else infoDeleteIds.push(u.id);

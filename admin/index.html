@@ -502,13 +502,31 @@
   #infoList, #noticeList { display: flex; flex-direction: column; gap: 8px; }
   #noticeList > .card { min-width: 0; margin-bottom: 0; }
 
-  .info-add-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .info-section-card { display: grid; grid-template-columns: minmax(52px, 0.24fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px 13px; background: rgba(0,255,163,0.035); }
   .info-section-card-line { height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.65), rgba(0,255,163,0.06)); }
   .info-section-input { height: 34px; padding: 0 10px; border-color: transparent; background: transparent; color: var(--text); font-size: 13px; font-weight: 900; }
   .info-section-input:focus { border-color: var(--mint); background: var(--surface2); }
   .info-section-card .info-card-actions { min-height: 34px; }
-  @media (max-width: 560px) { .info-add-actions { grid-template-columns: 1fr; } .info-section-card { grid-template-columns: 32px minmax(0, 1fr); } .info-section-card .info-card-actions { grid-column: 1 / -1; justify-content: flex-end; } }
+  .info-section-toolbar-btn { min-width: 58px; }
+  @media (max-width: 560px) { .info-section-card { grid-template-columns: 32px minmax(0, 1fr); } .info-section-card .info-card-actions { grid-column: 1 / -1; justify-content: flex-end; } }
+  .info-structured-card { display: flex; flex-direction: column; gap: 10px; }
+  .info-structured-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .info-structured-title { height: 42px; color: var(--text); font-size: 16px; font-weight: 950; border-color: rgba(0,255,163,0.36); background: rgba(0,255,163,0.055); }
+  .info-sub-title { display: block; width: 100%; height: 36px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 13px; font-weight: 850; outline: none; }
+  .info-sub-list { display: flex; flex-direction: column; gap: 9px; }
+  .info-sub-card { padding: 9px; border: 1px solid rgba(127,127,127,0.16); border-radius: 8px; background: rgba(255,255,255,0.025); }
+  .info-sub-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .info-sub-title-shell { overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface2); }
+  .info-sub-title-toolbar { min-height: 34px; display: flex; align-items: center; padding: 4px 6px; border-bottom: 1px solid rgba(127,127,127,0.16); background: rgba(0,0,0,0.06); }
+  .info-sub-title-toolbar .style-toolbar { margin: 0; }
+  .info-sub-title-shell .directive-editor { min-height: 38px; border: 0; border-radius: 0; background: transparent; box-shadow: none; font-size: 13px; font-weight: 850; }
+  .info-sub-editor-shell { overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface2); }
+  .info-sub-toolbar { min-height: 38px; display: flex; align-items: center; padding: 5px 6px; border-bottom: 1px solid rgba(127,127,127,0.16); background: rgba(0,0,0,0.08); }
+  .info-sub-toolbar .style-toolbar { margin: 0; }
+  .info-sub-editor-shell .directive-editor { min-height: 116px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .info-sub-body { display: block; width: 100%; min-height: 116px; resize: vertical; padding: 11px 12px; border: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1.65; outline: none; }
+  .info-sub-add { margin-top: 0; }
+  @media (max-width: 560px) { .info-structured-head, .info-sub-head { grid-template-columns: 1fr; } .info-sub-head .info-card-actions, .info-structured-head .info-card-actions { justify-content: flex-end; } }
   .info-card { padding: 13px; }
   .info-field { min-width: 0; width: 100%; }
   .info-editor-shell { width: 100%; min-width: 0; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-strong); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), var(--surface2); transition: border-color 0.14s, box-shadow 0.14s, background 0.14s; }
@@ -631,7 +649,7 @@
 
 <script src="config.js?v=20260712-feedback-drawer"></script>
 <script src="vendor/supabase-2.45.4.min.js"></script>
-<script src="app.js?v=20260825-section"></script>
+<script src="app.js?v=20260825-info-v2-title-media"></script>
 </body>
 </html>
 

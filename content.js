@@ -76,12 +76,14 @@
     popoverCloseTimer: null,
     pageTheme: null,
     feedbackOpen: false,
+    infoExpanded: new Set(),
     feedbackDraft: { type: "일정", message: "", relatedLink: "", contact: "" },
     feedbackOutsideHandler: null,
   };
 
   const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
   const PAGE_SIZE = 5;
+  const INFO_V2_PREFIX = "@info-v2:";
 
   // 치지직 DOM 앵커 후보 (실제 확장프로그램들이 사용하는 클래스 접두어 기반)
   // 위에서부터 순서대로 시도하고, 모두 실패하면 플로팅 모드로 폴백
@@ -627,6 +629,18 @@
     .cs-info-subhead:first-child { padding-top: 10px; }
     .cs-info-subhead::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
     .cs-info-subhead-label { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .cs-info-group { padding: 13px 0 9px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-group:first-child { padding-top: 10px; }
+    .cs-info-group-title { display: flex; align-items: center; gap: 10px; color: #ffffff; font-size: 15px; font-weight: 950; line-height: 1.25; }
+    .cs-info-group-title::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
+    .cs-info-detail { padding: 9px 0 0; }
+    .cs-info-detail + .cs-info-detail { margin-top: 9px; border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-detail-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+    .cs-info-detail-toggle { flex: 0 0 auto; width: 24px; height: 24px; border: 1px solid rgba(143,255,213,0.22); border-radius: 6px; background: rgba(255,255,255,0.04); color: #d7f7ea; font-size: 13px; font-weight: 900; line-height: 1; cursor: pointer; }
+    .cs-info-detail-toggle:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
+    .cs-info-detail-body { display: block; padding: 8px 0 0 13px; color: #c9cacd; font-size: 13px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+    .cs-info-detail-body[hidden] { display: none; }
     .cs-info-item { position: relative; display: block; padding: 10px 0 10px 13px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #c9cacd; font-size: 13px; line-height: 1.55; }
     .cs-info-item::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 12px; width: 2px; border-radius: 2px; background: rgba(0,255,163,0.55); }
     .cs-info-dot { display: none; }
@@ -759,6 +773,11 @@
     :host(.cs-light-theme) .cs-pop-title { border-left-color: #03a950; background: rgba(3,169,80,0.1); color: #083d26; }
     :host(.cs-light-theme) .cs-info-subhead { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-subhead::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
+    :host(.cs-light-theme) .cs-info-group, :host(.cs-light-theme) .cs-info-detail + .cs-info-detail { border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-info-group-title, :host(.cs-light-theme) .cs-info-detail-title { color: #1e2024; }
+    :host(.cs-light-theme) .cs-info-group-title::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
+    :host(.cs-light-theme) .cs-info-detail-body { color: #4b4f55; }
+    :host(.cs-light-theme) .cs-info-detail-toggle { border-color: rgba(3,169,80,0.22); background: rgba(3,169,80,0.07); color: #047344; }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
     :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { background: rgba(3,169,80,0.07); }
@@ -1148,12 +1167,52 @@
     const match = String(text || "").trim().match(/^@section\s*:\s*([\s\S]+)$/i);
     return match ? match[1].trim() : "";
   }
+
+  function structuredInfoDataFromText(text) {
+    const raw = String(text || "").trim();
+    if (!raw.startsWith(INFO_V2_PREFIX)) return null;
+    try {
+      const parsed = JSON.parse(raw.slice(INFO_V2_PREFIX.length));
+      const items = Array.isArray(parsed.items) ? parsed.items.map((entry) => ({
+        title: String((entry && entry.title) || ""),
+        body: String((entry && entry.body) || ""),
+        collapsed: entry && entry.collapsed !== false,
+      })).filter((entry) => entry.title.trim() || entry.body.trim()) : [];
+      return { title: String((parsed && parsed.title) || ""), items };
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function structuredInfoHtml(data, infoIndex) {
+    if (!data || !data.items.length) return "";
+    const title = String(data.title || "").trim();
+    const groupTitle = title ? '<div class="cs-info-group-title">' + directiveHtml(title, { infoMode: true }) + '</div>' : "";
+    const details = data.items.map((entry, subIndex) => {
+      const key = infoIndex + "-" + subIndex;
+      const defaultExpanded = entry.collapsed === false;
+      const expanded = state.infoExpanded.has(key) || (defaultExpanded && !state.infoExpanded.has("closed:" + key));
+      const body = String(entry.body || "").trim();
+      const label = expanded ? "\u25b2" : "\u25bc";
+      const titleHtml = directiveHtml(String(entry.title || "").trim() || "\uc138\ubd80 \uc18c\uc2dd", { infoMode: true });
+      return '<div class="cs-info-detail" data-info-detail="' + escapeHtml(key) + '">' +
+        '<div class="cs-info-detail-head">' +
+          '<span class="cs-info-detail-title">' + titleHtml + '</span>' +
+          '<button type="button" class="cs-info-detail-toggle" data-info-toggle="' + escapeHtml(key) + '" aria-expanded="' + String(expanded) + '" aria-label="' + (expanded ? "\uc811\uae30" : "\ud3bc\uce58\uae30") + '">' + label + '</button>' +
+        '</div>' +
+        '<div class="cs-info-detail-body"' + (expanded ? "" : " hidden") + '>' + directiveHtml(body, { infoMode: true }) + '</div>' +
+      '</div>';
+    }).join("");
+    return '<li class="cs-info-group">' + groupTitle + details + '</li>';
+  }
   function infoSectionHtml() {
     const items = (state.channel && state.channel.info) || [];
     if (!items.length) return "";
 
     const itemsHtml = items
-      .map((text) => {
+      .map((text, index) => {
+        const structured = structuredInfoDataFromText(text);
+        if (structured) return structuredInfoHtml(structured, index);
         const sectionTitle = infoSectionTitle(text);
         if (sectionTitle) {
           return '<li class="cs-info-subhead"><span class="cs-info-subhead-label">' + directiveHtml(sectionTitle, { infoMode: true }) + "</span></li>";
@@ -1705,6 +1764,23 @@
       if (open && feedbackMessage) setTimeout(() => feedbackMessage.focus(), 0);
     };
     if (root) root.onclick = (event) => {
+      const infoToggle = event.target.closest && event.target.closest("[data-info-toggle]");
+      if (infoToggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        const key = infoToggle.getAttribute("data-info-toggle") || "";
+        if (!key) return;
+        const expandedNow = infoToggle.getAttribute("aria-expanded") === "true";
+        if (expandedNow) {
+          state.infoExpanded.delete(key);
+          state.infoExpanded.add("closed:" + key);
+        } else {
+          state.infoExpanded.add(key);
+          state.infoExpanded.delete("closed:" + key);
+        }
+        render();
+        return;
+      }
       const mediaImage = event.target.closest && event.target.closest(".cs-media-expandable");
       if (mediaImage) {
         event.preventDefault();
