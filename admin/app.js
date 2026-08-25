@@ -6,6 +6,7 @@
   const cfg = ADMIN_CONFIG;
   const sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+  const INFO_SECTION_PREFIX = "@section:";
 
   // ---- 상태 ----
   let rows = [];         // 현재 편집 중인 일정 (로컬)
@@ -438,6 +439,17 @@
   function isExtensionVersionInfoItem(item) {
     return /^@extension-version\s*:/i.test(String((item && item.content) || "").trim());
   }
+  function isInfoSectionInfoItem(item) {
+    return /^@section\s*:/i.test(String((item && item.content) || "").trim());
+  }
+
+  function infoSectionText(item) {
+    return String((item && item.content) || "").trim().replace(/^@section\s*:\s*/i, "");
+  }
+
+  function infoSectionContent(value) {
+    return INFO_SECTION_PREFIX + String(value || "").trim();
+  }
 
   function noticeText(item) {
     return String((item && item.content) || "").trim().replace(/^@notice\s*:\s*/i, "");
@@ -456,11 +468,19 @@
       ? visibleItems.map((item) => infoItemHtml(item.u, item.i)).join("")
       : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uc18c\uc2dd\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
 
+    const actions = document.createElement("div");
+    actions.className = "info-add-actions";
     const add = document.createElement("button");
     add.className = "add-btn info-add-card";
     add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>\ud56d\ubaa9 \ucd94\uac00';
     add.onclick = addInfoRow;
-    list.appendChild(add);
+    const addSection = document.createElement("button");
+    addSection.className = "add-btn info-add-card info-section-add-card";
+    addSection.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>\uad6c\ubd84\uc120 \ucd94\uac00';
+    addSection.onclick = addInfoSectionRow;
+    actions.appendChild(add);
+    actions.appendChild(addSection);
+    list.appendChild(actions);
 
     bindInfoCards();
     bindDirectiveAutocompletes();
@@ -523,7 +543,23 @@
       };
     });
   }
+
+  function infoSectionItemHtml(u, i) {
+    const title = infoSectionText(u);
+    return (
+      '<div class="card info-card info-section-card" data-ii="' + i + '">' +
+        '<div class="info-section-card-line"></div>' +
+        '<input class="info-section-input" data-isection="' + i + '" value="' + esc(title) + '" placeholder="\uad6c\ubd84 \uc81c\ubaa9 \uc608: \uce58\uc988\uc1fc" />' +
+        '<div class="info-card-actions">' +
+          '<button class="move-btn" data-imove="up" data-ii="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="\uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
+          '<button class="move-btn" data-imove="down" data-ii="' + i + '"' + (i === info.length - 1 ? " disabled" : "") + ' aria-label="\uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
+          deleteInfoBtn(i) +
+        '</div>' +
+      '</div>'
+    );
+  }
 function infoItemHtml(u, i) {
+    if (isInfoSectionInfoItem(u)) return infoSectionItemHtml(u, i);
     const text = u.content || "";
     const fieldId = "info-content-" + i;
     return (
@@ -564,6 +600,13 @@ function infoItemHtml(u, i) {
         markDirty();
       };
     });
+    document.querySelectorAll("[data-isection]").forEach((el) => {
+      const i = +el.getAttribute("data-isection");
+      el.oninput = () => {
+        info[i].content = infoSectionContent(el.value);
+        markDirty();
+      };
+    });
     document.querySelectorAll("[data-imove]").forEach((el) => {
       el.onclick = () => {
         const i = +el.getAttribute("data-ii");
@@ -597,6 +640,12 @@ function infoItemHtml(u, i) {
   function addInfoRow() {
     info.push({ id: null, content: "", hidden: false });
     renderInfo();
+  }
+
+  function addInfoSectionRow() {
+    info.push({ id: null, content: infoSectionContent(""), hidden: false });
+    renderInfo();
+    markDirty();
   }
 
   function cardHtml(r, i) {
@@ -2967,8 +3016,9 @@ function infoItemHtml(u, i) {
       let order = 0;
       for (const u of info) {
         const content = (u.content || "").trim();
-        const noticeMatch = content.match(/^@notice\s*:\s*(.*)$/i);
-        const keepContent = content && (!noticeMatch || noticeMatch[1].trim());
+        const noticeMatch = content.match(/^@notice\s*:\s*([\s\S]*)$/i);
+        const sectionMatch = content.match(/^@section\s*:\s*([\s\S]*)$/i);
+        const keepContent = content && (!noticeMatch || noticeMatch[1].trim()) && (!sectionMatch || sectionMatch[1].trim());
         if (u.id) {
           if (keepContent) infoToUpdate.push({ id: u.id, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
           else infoDeleteIds.push(u.id);

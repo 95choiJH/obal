@@ -1,4 +1,4 @@
-﻿// content.js — 치지직 페이지에 일정 그리드를 주입
+// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -352,7 +352,7 @@
     .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
     .cs-month-weekday { color: #6b6d73; font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0 4px; }
     .cs-month-blank { min-height: 88px; border-radius: 8px; background: rgba(255,255,255,0.02); }
-    .cs-month-grid .cs-month-cell { min-height: 88px; padding: 9px 8px 35px; text-align: left; }
+    .cs-month-grid .cs-month-cell { min-height: 130px; padding: 9px 8px 35px; text-align: left; }
     .cs-month-grid .cs-month-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
     .cs-month-cell .cs-cell-date { font-size: 12px; font-weight: 700; }
     .cs-month-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 7px; z-index: 2; text-align: center; }
@@ -623,6 +623,10 @@
     .cs-info-frame { min-width: 0; height: 100%; padding: 12px 13px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.025); }
     .cs-info-title { color: #efeff1; font-size: 13px; line-height: 1.2; font-weight: 800; margin-bottom: 8px; }
     .cs-info-list { list-style: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-subhead { display: flex; align-items: center; gap: 10px; padding: 14px 0 7px; color: #f2fff9; font-size: 12px; font-weight: 900; line-height: 1.2; }
+    .cs-info-subhead:first-child { padding-top: 10px; }
+    .cs-info-subhead::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
+    .cs-info-subhead-label { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
     .cs-info-item { position: relative; display: block; padding: 10px 0 10px 13px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #c9cacd; font-size: 13px; line-height: 1.55; }
     .cs-info-item::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 12px; width: 2px; border-radius: 2px; background: rgba(0,255,163,0.55); }
     .cs-info-dot { display: none; }
@@ -753,6 +757,8 @@
     :host(.cs-light-theme) .cs-pop-text,
     :host(.cs-light-theme) .cs-info-list { border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-pop-title { border-left-color: #03a950; background: rgba(3,169,80,0.1); color: #083d26; }
+    :host(.cs-light-theme) .cs-info-subhead { color: #1e2024; }
+    :host(.cs-light-theme) .cs-info-subhead::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
     :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { background: rgba(3,169,80,0.07); }
@@ -1138,15 +1144,23 @@
     return '<span class="cs-time-indicators">' + html + "</span>";
   }
 
+  function infoSectionTitle(text) {
+    const match = String(text || "").trim().match(/^@section\s*:\s*([\s\S]+)$/i);
+    return match ? match[1].trim() : "";
+  }
   function infoSectionHtml() {
     const items = (state.channel && state.channel.info) || [];
     if (!items.length) return "";
 
     const itemsHtml = items
-      .map((text) =>
-        '<li class="cs-info-item"><span class="cs-info-dot"></span>' +
-        '<span class="cs-info-text">' + directiveHtml(text, { infoMode: true }) + "</span></li>"
-      )
+      .map((text) => {
+        const sectionTitle = infoSectionTitle(text);
+        if (sectionTitle) {
+          return '<li class="cs-info-subhead"><span class="cs-info-subhead-label">' + directiveHtml(sectionTitle, { infoMode: true }) + "</span></li>";
+        }
+        return '<li class="cs-info-item"><span class="cs-info-dot"></span>' +
+          '<span class="cs-info-text">' + directiveHtml(text, { infoMode: true }) + "</span></li>";
+      })
       .join("");
 
     return (

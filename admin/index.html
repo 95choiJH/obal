@@ -502,6 +502,13 @@
   #infoList, #noticeList { display: flex; flex-direction: column; gap: 8px; }
   #noticeList > .card { min-width: 0; margin-bottom: 0; }
 
+  .info-add-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .info-section-card { display: grid; grid-template-columns: minmax(52px, 0.24fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px 13px; background: rgba(0,255,163,0.035); }
+  .info-section-card-line { height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.65), rgba(0,255,163,0.06)); }
+  .info-section-input { height: 34px; padding: 0 10px; border-color: transparent; background: transparent; color: var(--text); font-size: 13px; font-weight: 900; }
+  .info-section-input:focus { border-color: var(--mint); background: var(--surface2); }
+  .info-section-card .info-card-actions { min-height: 34px; }
+  @media (max-width: 560px) { .info-add-actions { grid-template-columns: 1fr; } .info-section-card { grid-template-columns: 32px minmax(0, 1fr); } .info-section-card .info-card-actions { grid-column: 1 / -1; justify-content: flex-end; } }
   .info-card { padding: 13px; }
   .info-field { min-width: 0; width: 100%; }
   .info-editor-shell { width: 100%; min-width: 0; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-strong); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), var(--surface2); transition: border-color 0.14s, box-shadow 0.14s, background 0.14s; }
@@ -624,7 +631,7 @@
 
 <script src="config.js?v=20260712-feedback-drawer"></script>
 <script src="vendor/supabase-2.45.4.min.js"></script>
-<script src="app.js?v=20260819-admin"></script>
+<script src="app.js?v=20260825-section"></script>
 </body>
 </html>
 
