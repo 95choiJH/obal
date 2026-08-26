@@ -631,7 +631,8 @@
     .cs-info-subhead-label { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
     .cs-info-group { padding: 13px 0 9px; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .cs-info-group:first-child { padding-top: 10px; }
-    .cs-info-group-title { display: flex; align-items: center; gap: 10px; color: #ffffff; font-size: 15px; font-weight: 950; line-height: 1.25; }
+    .cs-info-group-title { display: flex; align-items: center; gap: 10px; color: #ffffff; font-size: 16px; font-weight: 950; line-height: 1.25; }
+    .cs-info-group-title::before { content: ""; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #00FFA3; box-shadow: 0 0 0 3px rgba(0,255,163,0.12); }
     .cs-info-group-title::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
     .cs-info-detail { padding: 9px 0 0; }
     .cs-info-detail + .cs-info-detail { margin-top: 9px; border-top: 1px solid rgba(255,255,255,0.06); }
