@@ -744,6 +744,7 @@
     .cs-gnimti-stat-label { display: flex; align-items: center; justify-content: center; min-height: 24px; border-radius: 999px; background: rgba(0,255,163,0.11); color: #bfffe7; font-size: 12px; font-weight: 800; padding: 5px 10px; }
     .cs-gnimti-stat-label-team { background: rgba(82,118,255,0.14); color: #c9d4ff; }
     .cs-gnimti-stat-item img { display: block; width: 100%; height: 45%; min-height: 0; object-fit: contain; }
+    .cs-gnimti-stat-empty { display: flex; align-items: center; justify-content: center; min-width: 160px; min-height: 220px; padding: 14px; border: 1px dashed rgba(157,158,163,0.22); border-radius: 7px; color: #8b8d92; font-size: 12px; font-weight: 800; text-align: center; }
     .cs-gnimti-empty-detail { margin: auto; color: #8b8d92; font-size: 13px; font-weight: 600; }
     .cs-info-mention { color: #efeff1; font-weight: 700; text-decoration: none; }
     .cs-info-mention:hover { color: #00FFA3; text-decoration: underline; text-underline-offset: 3px; }
@@ -850,6 +851,7 @@
 
     :host(.cs-light-theme) .cs-gnimti-stat-label { background: rgba(3,169,80,0.12); color: #007a3a; }
     :host(.cs-light-theme) .cs-gnimti-stat-label-team { background: rgba(72,93,210,0.12); color: #3344aa; }
+    :host(.cs-light-theme) .cs-gnimti-stat-empty { border-color: #d3d6da; color: #777c83; }
     :host(.cs-light-theme) .cs-gnimti-member.cs-selected { background: #eef0f2; box-shadow: inset 0 0 0 1px rgba(3,169,80,0.4); }
     :host(.cs-light-theme) .cs-info-item::before { background: rgba(3,169,80,0.55); }
     :host(.cs-light-theme) .cs-info-mention { color: #1e2024; }
@@ -2307,7 +2309,39 @@
     }
   }
 
-  function gnimtiRosterColumns() {
+  function gnimtiAdminContent() {
+    const byChannel = (state.data && state.data.gnimtiContentByChannel) || {};
+    return byChannel[state.channelId] || (state.data && state.data.gnimtiContent) || {};
+  }
+
+  function gnimtiMonthData(month) {
+    const content = gnimtiAdminContent();
+    const data = content && content[month];
+    return data && typeof data === "object" ? data : {};
+  }
+
+  function gnimtiSeptemberMembers() {
+    const data = gnimtiMonthData("september");
+    return Array.isArray(data.members) ? data.members.map((member) => ({
+      name: String((member && member.name) || "").trim(),
+      position: String((member && member.position) || "").trim(),
+      tier: String((member && member.tier) || "").trim().toUpperCase(),
+      selfImageUrl: String((member && member.selfImageUrl) || "").trim(),
+      analysisImageUrl: String((member && member.analysisImageUrl) || "").trim(),
+    })).filter((member) => member.name) : [];
+  }
+
+  function gnimtiRosterColumns(month) {
+    if (month === "september") {
+      const order = ["탑", "정글", "미드", "원딜", "서포터"];
+      const columns = order.map((position) => ({ position, folder: "", members: [] }));
+      const extra = { position: "기타", folder: "", members: [] };
+      gnimtiSeptemberMembers().forEach((member) => {
+        const column = columns.find((item) => item.position === member.position) || extra;
+        column.members.push(member.name);
+      });
+      return extra.members.length ? columns.concat(extra) : columns;
+    }
     return [
       { position: "탑", folder: "TOP", members: ["김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙"] },
       { position: "정글", folder: "JG", members: ["꼴랑이", "멋사", "삼식", "소우릎", "플레임", "헤징"] },
@@ -2317,17 +2351,36 @@
     ];
   }
 
-  function gnimtiMemberInfo(name) {
+  function gnimtiMemberData(name, month) {
+    if (month !== "september") return null;
+    const key = String(name || "").trim();
+    return gnimtiSeptemberMembers().find((member) => member.name === key) || null;
+  }
+
+  function gnimtiMemberInfo(name, month) {
+    const adminMember = gnimtiMemberData(name, month);
+    if (adminMember) return { name, position: adminMember.position, folder: "" };
     for (const column of gnimtiRosterColumns()) {
       if (column.members.includes(name)) return { name, position: column.position, folder: column.folder };
     }
     return { name, position: "", folder: "" };
   }
 
-  function gnimtiMemberImages(name) {
+  function gnimtiMemberImages(name, month) {
+    const adminMember = gnimtiMemberData(name, month);
+    if (adminMember) {
+      return [
+        { label: "본인 평가", url: adminMember.selfImageUrl, team: false },
+        { label: "분석관팀 평가", url: adminMember.analysisImageUrl, team: true },
+      ];
+    }
     const info = gnimtiMemberInfo(name);
     if (!info.folder) return [];
-    return [1, 2].map((index) => api.runtime.getURL("images/gnimti/" + info.folder + "/" + name + index + ".png"));
+    return [1, 2].map((index) => ({
+      label: index === 1 ? "본인 평가" : "분석관팀 평가",
+      url: api.runtime.getURL("images/gnimti/" + info.folder + "/" + name + index + ".png"),
+      team: index !== 1,
+    }));
   }
 
   const GNIMTI_MEMBER_TIERS = Object.freeze({
@@ -2373,44 +2426,45 @@
     "피닉스박": "A",
   });
 
-  function gnimtiMemberTier(name) {
-    const tier = GNIMTI_MEMBER_TIERS[String(name || "").trim()] || "";
+  function gnimtiMemberTier(name, month) {
+    const adminMember = gnimtiMemberData(name, month);
+    const tier = adminMember ? adminMember.tier : (GNIMTI_MEMBER_TIERS[String(name || "").trim()] || "");
     const imageUrl = GNIMTI_TIER_BACK_IMAGE_URLS[tier];
     return imageUrl ? { tier, imageUrl } : null;
   }
-  function gnimtiMemberProfile(name) {
+  function gnimtiMemberProfile(name, month) {
     const profiles = (state.data && state.data.gnimtiProfiles) || {};
     return profiles[name] || profiles[String(name || "").trim()] || { channelId: "", channelName: name, channelImageUrl: "" };
   }
 
 
-  function gnimtiMemberHtml(name, selectedName) {
-    const profile = gnimtiMemberProfile(name);
+  function gnimtiMemberHtml(name, selectedName, month) {
+    const profile = gnimtiMemberProfile(name, month);
     const displayName = String((profile && profile.channelName) || name || "").trim();
-    const tier = gnimtiMemberTier(name);
+    const tier = gnimtiMemberTier(name, month);
     const avatar = '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>';
     const nameHtml = '<span class="cs-gnimti-name">' + escapeHtml(displayName) + '</span>';
     const className = "cs-gnimti-member" + (tier ? " cs-gnimti-member-tier-bg" : "") + (name === selectedName ? " cs-selected" : "");
     const style = tier ? ' style="--gnimti-tier-bg: url(' + escapeHtml(tier.imageUrl) + ')" title="' + escapeHtml(tier.tier + " 티어") + '"' : "";
     return '<button type="button" class="' + className + '" data-gnimti-member="' + escapeHtml(name) + '"' + style + '>' + avatar + nameHtml + '</button>';
   }
-  function gnimtiMemberDetailHtml(name) {
+  function gnimtiMemberDetailHtml(name, month) {
     if (!name) return '<aside class="cs-gnimti-detail"><div class="cs-gnimti-empty-detail">멤버를 선택하세요</div></aside>';
-    const profile = gnimtiMemberProfile(name);
+    const profile = gnimtiMemberProfile(name, month);
     const displayName = String((profile && profile.channelName) || name || "").trim();
-    const info = gnimtiMemberInfo(name);
-    const images = gnimtiMemberImages(name);
+    const info = gnimtiMemberInfo(name, month);
+    const images = gnimtiMemberImages(name, month);
     return '<aside class="cs-gnimti-detail" data-gnimti-detail="1">' +
       '<div class="cs-gnimti-detail-head">' +
       '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>' +
       '<div class="cs-gnimti-detail-title">' + escapeHtml(displayName) + (info.position ? ' · ' + escapeHtml(info.position) : '') + '</div>' +
       '</div>' +
-      '<div class="cs-gnimti-images"><div class="cs-gnimti-card">' + images.map((src, index) => {
-        const label = index === 0 ? "본인 평가" : "분석관팀 평가";
-        const labelClass = index === 0 ? "cs-gnimti-stat-label" : "cs-gnimti-stat-label cs-gnimti-stat-label-team";
-        return '<figure class="cs-gnimti-stat-item"><figcaption class="' + labelClass + '">' + label + '</figcaption>' +
-          '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(displayName + ' ' + label) + '" />' +
-          '</figure>';
+      '<div class="cs-gnimti-images"><div class="cs-gnimti-card">' + images.map((item) => {
+        const labelClass = item.team ? "cs-gnimti-stat-label cs-gnimti-stat-label-team" : "cs-gnimti-stat-label";
+        const media = item.url
+          ? '<img src="' + escapeHtml(item.url) + '" alt="' + escapeHtml(displayName + ' ' + item.label) + '" />'
+          : '<div class="cs-gnimti-stat-empty">이미지 준비 중</div>';
+        return '<figure class="cs-gnimti-stat-item"><figcaption class="' + labelClass + '">' + escapeHtml(item.label) + '</figcaption>' + media + '</figure>';
       }).join("") + '</div></div></aside>';
   }
 
@@ -2425,6 +2479,10 @@
     ];
   }
 
+  function gnimtiTabMonth(tab) {
+    return String(tab || "").startsWith("september") ? "september" : "august";
+  }
+
   function gnimtiTabsHtml(activeTab) {
     const current = activeTab || "members";
     const tabs = gnimtiTabs();
@@ -2437,33 +2495,41 @@
   function gnimtiPlaceholderHtml(label) {
     return '<div class="cs-gnimti-content"><div class="cs-gnimti-placeholder">' + escapeHtml(label) + '</div></div>';
   }
-  function gnimtiTierlistHtml() {
+  function gnimtiTierlistHtml(month) {
+    if (month === "september") {
+      const url = String(gnimtiMonthData("september").tierlistImageUrl || "").trim();
+      return url ? '<div class="cs-gnimti-content"><div class="cs-gnimti-tierlist"><img src="' + escapeHtml(url) + '" alt="9월 티어리스트" /></div></div>' : gnimtiPlaceholderHtml("9월 티어리스트 준비 중");
+    }
     return '<div class="cs-gnimti-content"><div class="cs-gnimti-tierlist"><img src="' + GNIMTI_TIERLIST_IMAGE_URL + '" alt="8\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" /></div></div>';
   }
 
-  function gnimtiRosterBoardHtml() {
-    return '<div class="cs-gnimti-content"><div class="cs-gnimti-roster-board">' + GNIMTI_ROSTER_IMAGE_URLS.map((src, index) =>
-      '<img src="' + src + '" alt="8\uC6D4 \uB85C\uC2A4\uD130 ' + (index + 1) + '" />'
+  function gnimtiRosterBoardHtml(month) {
+    const urls = month === "september" ? ((gnimtiMonthData("september").rosterImageUrls || []).filter(Boolean)) : GNIMTI_ROSTER_IMAGE_URLS;
+    if (!urls.length) return gnimtiPlaceholderHtml(month === "september" ? "9월 로스터 준비 중" : "8월 로스터 준비 중");
+    return '<div class="cs-gnimti-content"><div class="cs-gnimti-roster-board">' + urls.map((src, index) =>
+      '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml((month === "september" ? "9월" : "8월") + ' 로스터 ' + (index + 1)) + '" />'
     ).join("") + '</div></div>';
   }
 
   function gnimtiContentHtml(tab, selectedName) {
-    if (tab === "september-members") return gnimtiPlaceholderHtml("9\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00 \uC900\uBE44 \uC911");
-    if (tab === "september-tier") return gnimtiPlaceholderHtml("9\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8 \uC900\uBE44 \uC911");
-    if (tab === "september-roster") return gnimtiPlaceholderHtml("9\uC6D4 \uB85C\uC2A4\uD130 \uC900\uBE44 \uC911");
-    if (tab === "tier") return gnimtiTierlistHtml();
-    if (tab === "roster") return gnimtiRosterBoardHtml();
-    return gnimtiRosterHtml(selectedName);
+    if (tab === "september-members") return gnimtiSeptemberMembers().length ? gnimtiRosterHtml(selectedName, "september") : gnimtiPlaceholderHtml("9월 그님티 평가 준비 중");
+    if (tab === "september-tier") return gnimtiTierlistHtml("september");
+    if (tab === "september-roster") return gnimtiRosterBoardHtml("september");
+    if (tab === "tier") return gnimtiTierlistHtml("august");
+    if (tab === "roster") return gnimtiRosterBoardHtml("august");
+    return gnimtiRosterHtml(selectedName, "august");
   }
-  function gnimtiRosterHtml(selectedName) {
-    const columns = gnimtiRosterColumns();
-    const activeName = selectedName || (columns[0] && columns[0].members[0]) || "";
+  function gnimtiRosterHtml(selectedName, month) {
+    const currentMonth = month || "august";
+    const columns = gnimtiRosterColumns(currentMonth);
+    const firstColumn = columns.find((column) => column.members && column.members.length);
+    const activeName = selectedName || (firstColumn && firstColumn.members[0]) || "";
     const roster = '<div class="cs-gnimti-roster">' + columns.map((column) =>
       '<section class="cs-gnimti-column">' +
       '<div class="cs-gnimti-position">' + escapeHtml(column.position) + '</div>' +
-      '<div class="cs-gnimti-members">' + column.members.map((name) => gnimtiMemberHtml(name, activeName)).join("") + '</div></section>'
+      '<div class="cs-gnimti-members">' + column.members.map((name) => gnimtiMemberHtml(name, activeName, currentMonth)).join("") + '</div></section>'
     ).join("") + '</div>';
-    return '<div class="cs-gnimti-content">' + roster + gnimtiMemberDetailHtml(activeName) + '</div>';
+    return '<div class="cs-gnimti-content">' + roster + gnimtiMemberDetailHtml(activeName, currentMonth) + '</div>';
   }
 
   function renderGnimtiTab(pop, tab) {
@@ -2482,8 +2548,10 @@
     if (dialog) dialog.scrollTop = 0;
   }
   function updateGnimtiDetail(pop, name) {
+    const activeTab = pop && pop.getAttribute("data-gnimti-tab") || "members";
+    const month = gnimtiTabMonth(activeTab);
     const current = pop && pop.querySelector(".cs-gnimti-detail");
-    if (current) current.outerHTML = gnimtiMemberDetailHtml(name);
+    if (current) current.outerHTML = gnimtiMemberDetailHtml(name, month);
     if (pop) pop.querySelectorAll(".cs-gnimti-member").forEach((button) => {
       button.classList.toggle("cs-selected", button.getAttribute("data-gnimti-member") === name);
     });

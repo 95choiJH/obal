@@ -345,6 +345,52 @@ async function fetchTable(tableName, order) {
   return res.json();
 }
 
+async function fetchAdminSettingsByKey(key) {
+  const c = CHZZK_SCHEDULE_CONFIG;
+  const base = c.supabaseUrl.replace(/\/+$/, "");
+  const table = c.adminSettingsTableName || "admin_settings";
+  const url = base + "/rest/v1/" + encodeURIComponent(table) + "?select=channel_id,value&key=eq." + encodeURIComponent(key);
+  const res = await fetch(url, {
+    headers: {
+      apikey: c.supabaseKey,
+      Authorization: "Bearer " + c.supabaseKey,
+    },
+    cache: "no-cache",
+  });
+  if (!res.ok) throw new Error("Supabase HTTP " + res.status + " " + (await res.text()).slice(0, 120));
+  return res.json();
+}
+
+function normalizeGnimtiContent(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const september = source.september && typeof source.september === "object" ? source.september : {};
+  return {
+    version: 1,
+    september: {
+      members: Array.isArray(september.members) ? september.members.map((member) => ({
+        name: String((member && member.name) || "").trim(),
+        position: String((member && member.position) || "").trim(),
+        tier: String((member && member.tier) || "").trim().toUpperCase(),
+        selfImageUrl: String((member && (member.selfImageUrl || member.self_image_url)) || "").trim(),
+        analysisImageUrl: String((member && (member.analysisImageUrl || member.analysis_image_url)) || "").trim(),
+      })).filter((member) => member.name) : [],
+      tierlistImageUrl: String(september.tierlistImageUrl || september.tierlist_image_url || "").trim(),
+      rosterImageUrls: Array.isArray(september.rosterImageUrls || september.roster_image_urls)
+        ? (september.rosterImageUrls || september.roster_image_urls).map((url) => String(url || "").trim()).filter(Boolean)
+        : [],
+    },
+  };
+}
+
+async function fetchGnimtiContentByChannel() {
+  const rows = await fetchAdminSettingsByKey("gnimti_content");
+  const byChannel = {};
+  (rows || []).forEach((row) => {
+    const channelId = String((row && row.channel_id) || "").trim();
+    if (channelId) byChannel[channelId] = normalizeGnimtiContent(row.value);
+  });
+  return byChannel;
+}
 function directiveNames(value) {
   const raw = String(value || "").trim();
   const whole = raw.match(/^:s(?:\[([^\]]+)\]|\s+(.+))$/i);
@@ -458,7 +504,13 @@ async function fetchFromSupabase() {
 
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
+  let gnimtiContentByChannel = {};
+  try {
+    gnimtiContentByChannel = await fetchGnimtiContentByChannel();
+  } catch (e) {
+  }
+  const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -480,7 +532,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 3 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

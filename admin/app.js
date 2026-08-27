@@ -10,6 +10,8 @@
   const STRUCTURED_INFO_PREFIX = "@info-v2:";
   const UPDATE_HISTORY_PREFIX = "@update:";
   const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
+  const GNIMTI_CONTENT_SETTING_KEY = "gnimti_content";
+  const GNIMTI_IMAGE_BUCKET = cfg.gnimtiImageBucketName || "game-images";
 
   // ---- 상태 ----
   let rows = [];         // 현재 편집 중인 일정 (로컬)
@@ -24,7 +26,7 @@
   let deletedIds = [];    // 저장 시 삭제할 기존 일정 행 id
   let deletedInfoIds = []; // 저장 시 삭제할 기존 소식/예정 컨텐츠 행 id
   let canManage = false;
-  let adminSettings = { autoLiveCategorySync: false };
+  let adminSettings = { autoLiveCategorySync: false, gnimtiContent: emptyGnimtiContent() };
   let adminSettingsLoadError = "";
   const gameCategoryCache = new Map();
 
@@ -222,6 +224,31 @@
   }
 
 
+  function emptyGnimtiMember() {
+    return { name: "", position: "탑", tier: "", selfImageUrl: "", analysisImageUrl: "" };
+  }
+
+  function emptyGnimtiContent() {
+    return { version: 1, september: { members: [], tierlistImageUrl: "", rosterImageUrls: [] } };
+  }
+
+  function normalizeGnimtiContent(value) {
+    const base = emptyGnimtiContent();
+    const source = value && typeof value === "object" ? value : {};
+    const september = source.september && typeof source.september === "object" ? source.september : {};
+    base.september.members = Array.isArray(september.members) ? september.members.map((member) => ({
+      name: String((member && member.name) || ""),
+      position: String((member && member.position) || "탑"),
+      tier: String((member && member.tier) || "").toUpperCase(),
+      selfImageUrl: String((member && (member.selfImageUrl || member.self_image_url)) || ""),
+      analysisImageUrl: String((member && (member.analysisImageUrl || member.analysis_image_url)) || ""),
+    })) : [];
+    base.september.tierlistImageUrl = String(september.tierlistImageUrl || september.tierlist_image_url || "");
+    base.september.rosterImageUrls = Array.isArray(september.rosterImageUrls || september.roster_image_urls)
+      ? (september.rosterImageUrls || september.roster_image_urls).map((url) => String(url || ""))
+      : [];
+    return base;
+  }
   function adminSettingsTableName() {
     return cfg.adminSettingsTableName || "admin_settings";
   }
@@ -233,30 +260,41 @@
   }
 
   async function loadAdminSettings() {
-    adminSettings = { autoLiveCategorySync: false };
+    adminSettings = { autoLiveCategorySync: false, gnimtiContent: emptyGnimtiContent() };
     adminSettingsLoadError = "";
     const { data, error } = await sb
       .from(adminSettingsTableName())
-      .select("value")
+      .select("key,value")
       .eq("channel_id", cfg.channelId)
-      .eq("key", AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY)
-      .maybeSingle();
+      .in("key", [AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, GNIMTI_CONTENT_SETTING_KEY]);
     if (error) {
       adminSettingsLoadError = error.message || String(error);
       console.warn("[admin] 설정 로드 실패:", error);
       return;
     }
-    if (data) adminSettings.autoLiveCategorySync = autoLiveCategorySyncEnabledFromValue(data.value);
+    (data || []).forEach((row) => {
+      if (row.key === AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY) adminSettings.autoLiveCategorySync = autoLiveCategorySyncEnabledFromValue(row.value);
+      if (row.key === GNIMTI_CONTENT_SETTING_KEY) adminSettings.gnimtiContent = normalizeGnimtiContent(row.value);
+    });
   }
 
   async function saveAdminSettings() {
     if (adminSettingsLoadError) return;
-    const payload = {
-      channel_id: cfg.channelId,
-      key: AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY,
-      value: { enabled: !!adminSettings.autoLiveCategorySync },
-      updated_at: new Date().toISOString(),
-    };
+    const now = new Date().toISOString();
+    const payload = [
+      {
+        channel_id: cfg.channelId,
+        key: AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY,
+        value: { enabled: !!adminSettings.autoLiveCategorySync },
+        updated_at: now,
+      },
+      {
+        channel_id: cfg.channelId,
+        key: GNIMTI_CONTENT_SETTING_KEY,
+        value: normalizeGnimtiContent(adminSettings.gnimtiContent),
+        updated_at: now,
+      },
+    ];
     const { error } = await sb
       .from(adminSettingsTableName())
       .upsert(payload, { onConflict: "channel_id,key" });
@@ -475,6 +513,7 @@
     renderNotice();
     renderUpdates();
     renderSettings();
+    renderGnimtiAdmin();
     setActiveAdminMenu(activeAdminMenu);
     bindDirectiveAutocompletes();
   }
@@ -510,6 +549,193 @@
       el.onclick = () => {
         adminSettings.autoLiveCategorySync = !adminSettings.autoLiveCategorySync;
         renderSettings();
+        markDirty();
+      };
+    });
+  }
+
+  function gnimtiContent() {
+    adminSettings.gnimtiContent = normalizeGnimtiContent(adminSettings.gnimtiContent);
+    return adminSettings.gnimtiContent;
+  }
+
+  function gnimtiSeptember() {
+    return gnimtiContent().september;
+  }
+
+  function gnimtiPositions() {
+    return ["탑", "정글", "미드", "원딜", "서포터"];
+  }
+
+  function gnimtiTiers() {
+    return ["", "S", "A", "B", "C", "D"];
+  }
+
+  function imageFieldHtml(label, value, target, uploadKind) {
+    const url = String(value || "");
+    return '<div class="gnimti-image-field">' +
+      '<label>' + esc(label) + '</label>' +
+      '<div class="gnimti-image-row">' +
+        '<input type="url" inputmode="url" data-gnimti-url="' + esc(target) + '" value="' + esc(url) + '" placeholder="이미지 URL 또는 업로드" />' +
+        '<button type="button" class="add-btn small" data-gnimti-upload="' + esc(target) + '" data-upload-kind="' + esc(uploadKind || "image") + '">업로드</button>' +
+      '</div>' +
+      (url ? '<div class="gnimti-image-preview"><img src="' + esc(url) + '" alt="" /></div>' : '') +
+    '</div>';
+  }
+
+  function renderGnimtiAdmin() {
+    const list = $("gnimtiList");
+    if (!list) return;
+    const data = gnimtiSeptember();
+    const members = data.members || [];
+    const rosters = data.rosterImageUrls && data.rosterImageUrls.length ? data.rosterImageUrls : [""];
+    list.innerHTML = '<div class="schedule-group-head"><p class="group-label">9월 그님티</p></div>' +
+      '<div class="card gnimti-admin-card">' +
+        '<div class="gnimti-admin-head"><div><div class="settings-title">9월 그님티 평가</div><div class="settings-desc">스트리머별 본인 평가/분석관팀 평가 이미지를 업로드합니다.</div></div><button type="button" class="add-btn schedule-add-btn" data-gnimti-add-member="1">+ 스트리머</button></div>' +
+        '<div class="gnimti-member-list">' + (members.length ? members.map(gnimtiMemberAdminHtml).join("") : '<div class="empty" style="padding:16px 0;">등록된 스트리머가 없습니다.</div>') + '</div>' +
+      '</div>' +
+      '<div class="card gnimti-admin-card">' +
+        '<div class="settings-title">9월 티어리스트</div>' +
+        imageFieldHtml("티어리스트 이미지", data.tierlistImageUrl, "tierlist", "tierlist") +
+      '</div>' +
+      '<div class="card gnimti-admin-card">' +
+        '<div class="gnimti-admin-head"><div><div class="settings-title">9월 로스터</div><div class="settings-desc">여러 장이면 프론트에서 위에서 아래 순서로 표시됩니다.</div></div><button type="button" class="add-btn schedule-add-btn" data-gnimti-add-roster="1">+ 로스터 이미지</button></div>' +
+        '<div class="gnimti-roster-list">' + rosters.map((url, index) => gnimtiRosterAdminHtml(url, index, rosters.length)).join("") + '</div>' +
+      '</div>';
+    bindGnimtiAdmin();
+  }
+
+  function gnimtiMemberAdminHtml(member, index) {
+    const positionOptions = gnimtiPositions().map((position) => '<option value="' + esc(position) + '"' + (member.position === position ? ' selected' : '') + '>' + esc(position) + '</option>').join("");
+    const tierOptions = gnimtiTiers().map((tier) => '<option value="' + esc(tier) + '"' + (member.tier === tier ? ' selected' : '') + '>' + (tier || '티어 없음') + '</option>').join("");
+    return '<div class="gnimti-member-card" data-gnimti-member-card="' + index + '">' +
+      '<div class="gnimti-member-main">' +
+        '<input type="text" data-gnimti-member-field="name" data-mi="' + index + '" value="' + esc(member.name || "") + '" placeholder="스트리머명" />' +
+        '<select data-gnimti-member-field="position" data-mi="' + index + '">' + positionOptions + '</select>' +
+        '<select data-gnimti-member-field="tier" data-mi="' + index + '">' + tierOptions + '</select>' +
+        '<div class="info-card-actions">' +
+          '<button class="move-btn" data-gnimti-member-move="up" data-mi="' + index + '"' + (index === 0 ? ' disabled' : '') + ' aria-label="위로 이동">▲</button>' +
+          '<button class="move-btn" data-gnimti-member-move="down" data-mi="' + index + '"' + (index === gnimtiSeptember().members.length - 1 ? ' disabled' : '') + ' aria-label="아래로 이동">▼</button>' +
+          '<button type="button" class="icon-btn" data-gnimti-member-del="' + index + '" aria-label="삭제">' + trashSvg() + '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="gnimti-member-images">' +
+        imageFieldHtml("본인 평가", member.selfImageUrl, "member:" + index + ":selfImageUrl", "self") +
+        imageFieldHtml("분석관팀 평가", member.analysisImageUrl, "member:" + index + ":analysisImageUrl", "analysis") +
+      '</div>' +
+    '</div>';
+  }
+
+  function gnimtiRosterAdminHtml(url, index, total) {
+    return '<div class="gnimti-roster-item">' +
+      imageFieldHtml("로스터 이미지 " + (index + 1), url, "roster:" + index, "roster") +
+      '<button type="button" class="icon-btn" data-gnimti-roster-del="' + index + '" aria-label="로스터 이미지 삭제"' + (total <= 1 && !url ? ' disabled' : '') + '>' + trashSvg() + '</button>' +
+    '</div>';
+  }
+
+  function setGnimtiImageValue(target, value) {
+    const data = gnimtiSeptember();
+    if (target === "tierlist") data.tierlistImageUrl = value;
+    else if (target.startsWith("roster:")) {
+      const index = Number(target.split(":")[1]);
+      data.rosterImageUrls[index] = value;
+    } else if (target.startsWith("member:")) {
+      const parts = target.split(":");
+      const index = Number(parts[1]);
+      const field = parts[2];
+      data.members[index] = data.members[index] || emptyGnimtiMember();
+      data.members[index][field] = value;
+    }
+  }
+
+  function sanitizeUploadName(name) {
+    return String(name || "image").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "image";
+  }
+
+  async function uploadGnimtiImage(file, kind) {
+    if (!file) return "";
+    if (!/^image\//i.test(file.type || "")) throw new Error("이미지 파일만 업로드할 수 있습니다.");
+    const ext = (file.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
+    const filePath = "gnimti/" + cfg.channelId + "/september/" + (kind || "image") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8) + ext;
+    const { error } = await sb.storage.from(GNIMTI_IMAGE_BUCKET).upload(filePath, file, { contentType: file.type || "image/png", upsert: false });
+    if (error) throw error;
+    const { data } = sb.storage.from(GNIMTI_IMAGE_BUCKET).getPublicUrl(filePath);
+    return data && data.publicUrl ? data.publicUrl : "";
+  }
+
+  function chooseGnimtiImage(target, kind, button) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      if (button) { button.disabled = true; button.textContent = "업로드 중"; }
+      try {
+        const url = await uploadGnimtiImage(file, kind);
+        setGnimtiImageValue(target, url);
+        renderGnimtiAdmin();
+        markDirty();
+        toast("이미지를 업로드했습니다.");
+      } catch (error) {
+        console.error("[admin] 그님티 이미지 업로드 실패", error);
+        const message = (error && (error.message || error.error_description || error.error)) || String(error || "알 수 없는 오류");
+        toast("이미지 업로드 실패: " + message);
+        if (button) { button.disabled = false; button.textContent = "업로드"; }
+      }
+    };
+    input.click();
+  }
+
+  function bindGnimtiAdmin() {
+    document.querySelectorAll("[data-gnimti-member-field]").forEach((el) => {
+      const index = Number(el.getAttribute("data-mi"));
+      const field = el.getAttribute("data-gnimti-member-field");
+      el.oninput = el.onchange = () => {
+        const data = gnimtiSeptember();
+        data.members[index] = data.members[index] || emptyGnimtiMember();
+        data.members[index][field] = field === "tier" ? String(el.value || "").toUpperCase() : el.value;
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-gnimti-url]").forEach((el) => {
+      const target = el.getAttribute("data-gnimti-url") || "";
+      el.oninput = () => {
+        setGnimtiImageValue(target, el.value);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-gnimti-upload]").forEach((el) => {
+      el.onclick = () => chooseGnimtiImage(el.getAttribute("data-gnimti-upload") || "", el.getAttribute("data-upload-kind") || "image", el);
+    });
+    document.querySelectorAll("[data-gnimti-add-member]").forEach((el) => {
+      el.onclick = () => { gnimtiSeptember().members.unshift(emptyGnimtiMember()); renderGnimtiAdmin(); markDirty(); };
+    });
+    document.querySelectorAll("[data-gnimti-member-del]").forEach((el) => {
+      el.onclick = () => { gnimtiSeptember().members.splice(Number(el.getAttribute("data-gnimti-member-del")), 1); renderGnimtiAdmin(); markDirty(); };
+    });
+    document.querySelectorAll("[data-gnimti-member-move]").forEach((el) => {
+      el.onclick = () => {
+        const members = gnimtiSeptember().members;
+        const index = Number(el.getAttribute("data-mi"));
+        const target = el.getAttribute("data-gnimti-member-move") === "up" ? index - 1 : index + 1;
+        if (target < 0 || target >= members.length) return;
+        [members[index], members[target]] = [members[target], members[index]];
+        renderGnimtiAdmin();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-gnimti-add-roster]").forEach((el) => {
+      el.onclick = () => { gnimtiSeptember().rosterImageUrls.push(""); renderGnimtiAdmin(); markDirty(); };
+    });
+    document.querySelectorAll("[data-gnimti-roster-del]").forEach((el) => {
+      el.onclick = () => {
+        const index = Number(el.getAttribute("data-gnimti-roster-del"));
+        const list = gnimtiSeptember().rosterImageUrls;
+        if (list.length <= 1 && !list[index]) return;
+        list.splice(index, 1);
+        if (!list.length) list.push("");
+        renderGnimtiAdmin();
         markDirty();
       };
     });
@@ -970,7 +1196,8 @@
         renderInfo();
         markDirty();
       };
-    });    document.querySelectorAll("[data-imove]").forEach((el) => {
+    });
+    document.querySelectorAll("[data-imove]").forEach((el) => {
       el.onclick = () => {
         const i = +el.getAttribute("data-ii");
         const dir = el.getAttribute("data-imove");

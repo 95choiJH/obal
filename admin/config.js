@@ -27,6 +27,9 @@ const ADMIN_CONFIG = {
 
   // 관리자 설정 테이블 이름
   adminSettingsTableName: "admin_settings",
+
+  // 그님티 이미지 업로드용 공개 Storage 버킷
+  gnimtiImageBucketName: "game-images",
 };
 
 

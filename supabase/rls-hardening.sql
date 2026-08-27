@@ -28,6 +28,7 @@ alter table public.feedback enable row level security;
 alter table public.admin_users enable row level security;
 alter table public.admin_settings enable row level security;
 revoke all on public.admin_settings from anon;
+grant select on public.admin_settings to anon;
 grant select, insert, update, delete on public.admin_settings to authenticated;
 grant all on public.admin_settings to service_role;
 
@@ -196,6 +197,12 @@ create policy "admin users can read admin_users"
   to authenticated
   using (user_id = auth.uid());
 
+drop policy if exists "anon can read public gnimti settings" on public.admin_settings;
+
+create policy "anon can read public gnimti settings"
+  on public.admin_settings for select
+  to anon
+  using (key = 'gnimti_content');
 create policy "admin users can manage admin_settings"
   on public.admin_settings for all
   to authenticated
