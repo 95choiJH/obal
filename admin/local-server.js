@@ -17,6 +17,33 @@ function readAdminConfig() {
   };
 }
 
+function proxySupabaseFunction(functionName, url, req, res) {
+  const cfg = readAdminConfig();
+  const target = new URL(cfg.supabaseUrl + "/functions/v1/" + functionName);
+  for (const [key, value] of url.searchParams.entries()) target.searchParams.set(key, value);
+  const upstream = https.request(target, {
+    method: "GET",
+    headers: {
+      apikey: cfg.supabaseKey,
+      Authorization: "Bearer " + cfg.supabaseKey,
+    },
+  }, (upstreamRes) => {
+    const chunks = [];
+    upstreamRes.on("data", (chunk) => chunks.push(chunk));
+    upstreamRes.on("end", () => {
+      res.writeHead(upstreamRes.statusCode || 502, {
+        "Content-Type": upstreamRes.headers["content-type"] || "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(Buffer.concat(chunks));
+    });
+  });
+  upstream.on("error", (err) => {
+    res.writeHead(502, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ error: String((err && err.message) || err) }));
+  });
+  upstream.end();
+}
 function proxyChzzkSearch(url, res) {
   const cfg = readAdminConfig();
   const keyword = (url.searchParams.get("keyword") || "").trim();
@@ -60,6 +87,14 @@ http
       const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
       if (url.pathname === "/functions/v1/chzzk-search") {
         proxyChzzkSearch(url, res);
+        return;
+      }
+      if (url.pathname === "/functions/v1/chzzk-category-search") {
+        proxySupabaseFunction("chzzk-category-search", url, req, res);
+        return;
+      }
+      if (url.pathname === "/functions/v1/sync-live-category") {
+        proxySupabaseFunction("sync-live-category", url, req, res);
         return;
       }
 

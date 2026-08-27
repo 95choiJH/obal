@@ -1,4 +1,4 @@
-﻿# 오뱅알
+# 오뱅알
 
 치지직 채널 페이지에 방송 일정, 예정 컨텐츠, 메모, 다시보기 링크를 표시하는 브라우저 확장 프로그램과 일정 관리자 페이지입니다.
 
@@ -8,6 +8,8 @@
 - `admin/`: Supabase Auth로 로그인해 일정을 편집하는 관리자 페이지
 - `supabase/rls-hardening.sql`: 운영용 RLS 정책
 - `supabase/functions/chzzk-search`: 치지직 채널 검색 프록시
+- `supabase/functions/chzzk-category-search`: 치지직 카테고리 검색 프록시
+- `supabase/functions/sync-live-category`: 현재 방송 카테고리를 방송 시작 날짜 일정의 게임 목록과 부에 동기화
 - `supabase/functions/submit-feedback`: 공개 문의/제보 접수 API
 - `supabase/functions/telegram-obal-alert`: 일정 제보 텔레그램 알림
 
@@ -21,6 +23,7 @@ supabaseKey: "anon 또는 publishable key",
 tableName: "schedule",
 upcomingContentTableName: "upcoming_content",
 feedbackTableName: "feedback",
+adminSettingsTableName: "admin_settings",
 ```
 
 ## 보안 정책
@@ -104,9 +107,13 @@ python -m http.server 8000
 
 - `supabase/rls-hardening.sql` 실행
 - `public.admin_users`에 관리자 UID 추가
-- `chzzk-search`, `submit-feedback`, `telegram-obal-alert` 배포
-- Edge Function secrets 설정 (`SUPABASE_SERVICE_ROLE_KEY`, `FEEDBACK_ALLOWED_ORIGINS`, `CHZZK_SEARCH_ALLOWED_ORIGINS`, Telegram secrets)
+- `chzzk-search`, `chzzk-category-search`, `sync-live-category`, `submit-feedback`, `telegram-obal-alert` 배포
+- Edge Function secrets 설정 (`SUPABASE_SERVICE_ROLE_KEY`, `FEEDBACK_ALLOWED_ORIGINS`, `CHZZK_SEARCH_ALLOWED_ORIGINS`, `CHZZK_CATEGORY_SEARCH_ALLOWED_ORIGINS`, `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`, `LIVE_CATEGORY_SYNC_SECRET`, `LIVE_CATEGORY_SYNC_TYPES`, Telegram secrets)
 - 관리자 페이지 배포 시 `admin/vendor/` 포함
 - 확장 프로그램 재패키징 후 설치/배포
 
 
+
+## 자동 카테고리/부 생성 설정
+
+어드민의 설정 메뉴에서 자동 카테고리/부 생성을 ON/OFF 할 수 있습니다. 이 값은 public.admin_settings의 auto_live_category_sync 키에 저장됩니다. 운영 DB에는 supabase/rls-hardening.sql의 admin_settings 테이블/정책 구간을 한 번 적용해야 합니다. 테이블이 없거나 설정값이 없으면 기존 운영 보호를 위해 기본 OFF로 동작합니다.

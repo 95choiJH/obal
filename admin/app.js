@@ -8,6 +8,7 @@
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const INFO_SECTION_PREFIX = "@section:";
   const STRUCTURED_INFO_PREFIX = "@info-v2:";
+  const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
 
   // ---- 상태 ----
   let rows = [];         // 현재 편집 중인 일정 (로컬)
@@ -22,6 +23,9 @@
   let deletedIds = [];    // 저장 시 삭제할 기존 일정 행 id
   let deletedInfoIds = []; // 저장 시 삭제할 기존 소식/예정 컨텐츠 행 id
   let canManage = false;
+  let adminSettings = { autoLiveCategorySync: false };
+  let adminSettingsLoadError = "";
+  const gameCategoryCache = new Map();
 
   // ---- DOM ----
   const $ = (id) => document.getElementById(id);
@@ -59,7 +63,7 @@
         hostChannel: (p.hostChannel && p.hostChannel.channelId) || "",
         notes: normalizeNotes(p.notes),
       })),
-      gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "" })),
+      gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "", categoryId: g.categoryId || "", categoryType: g.categoryType || "", posterImageUrl: g.posterImageUrl || "" })),
       vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "" })),
       status: r.status || "", cafe_time: !!r.cafe_time, video_time: !!r.video_time, notes: r.notes || normalizeNotes(r.note),
     })).sort(compareScheduleDate);
@@ -67,7 +71,8 @@
     const infoSnap = info.map((u) => ({ id: u.id || 0, content: u.content || "", hidden: !!u.hidden }));
     return (
       JSON.stringify(scheduleSnap) + "|" + deletedIds.join(",") +
-      "||" + JSON.stringify(infoSnap) + "|" + deletedInfoIds.join(",")
+      "||" + JSON.stringify(infoSnap) + "|" + deletedInfoIds.join(",") +
+      "||" + JSON.stringify(adminSettings)
     );
   }
   function markDirty() {
@@ -205,6 +210,7 @@
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true });
     info = infoError ? [] : (infoData || []).map((u) => ({ id: u.id, content: u.content || "", hidden: !!u.hidden }));
+    await loadAdminSettings();
 
     deletedIds = [];
     deletedInfoIds = [];
@@ -214,6 +220,47 @@
     loadFeedback();
   }
 
+
+  function adminSettingsTableName() {
+    return cfg.adminSettingsTableName || "admin_settings";
+  }
+
+  function autoLiveCategorySyncEnabledFromValue(value) {
+    if (typeof value === "boolean") return value;
+    if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "enabled")) return value.enabled === true;
+    return false;
+  }
+
+  async function loadAdminSettings() {
+    adminSettings = { autoLiveCategorySync: false };
+    adminSettingsLoadError = "";
+    const { data, error } = await sb
+      .from(adminSettingsTableName())
+      .select("value")
+      .eq("channel_id", cfg.channelId)
+      .eq("key", AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY)
+      .maybeSingle();
+    if (error) {
+      adminSettingsLoadError = error.message || String(error);
+      console.warn("[admin] 설정 로드 실패:", error);
+      return;
+    }
+    if (data) adminSettings.autoLiveCategorySync = autoLiveCategorySyncEnabledFromValue(data.value);
+  }
+
+  async function saveAdminSettings() {
+    if (adminSettingsLoadError) return;
+    const payload = {
+      channel_id: cfg.channelId,
+      key: AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY,
+      value: { enabled: !!adminSettings.autoLiveCategorySync },
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb
+      .from(adminSettingsTableName())
+      .upsert(payload, { onConflict: "channel_id,key" });
+    if (error) throw error;
+  }
   async function loadFeedback() {
     const list = $("feedbackList");
     const count = $("feedbackCount");
@@ -425,10 +472,46 @@
 
     renderInfo();
     renderNotice();
+    renderSettings();
     setActiveAdminMenu(activeAdminMenu);
     bindDirectiveAutocompletes();
   }
 
+
+  function renderSettings() {
+    const list = $("settingsList");
+    if (!list) return;
+    const enabled = !!adminSettings.autoLiveCategorySync;
+    const warning = adminSettingsLoadError
+      ? '<div class="settings-warning">설정 테이블을 확인할 수 없습니다. SQL 설정 전까지 자동 동기화는 기본 OFF로 동작합니다.</div>'
+      : '';
+    list.innerHTML =
+      '<div class="schedule-group-head"><p class="group-label">설정</p></div>' +
+      '<div class="card settings-card">' +
+        '<div class="settings-row">' +
+          '<div class="settings-copy">' +
+            '<div class="settings-title">자동 카테고리/부 생성</div>' +
+            '<div class="settings-desc">방송 카테고리를 감지해 게임 목록과 부 제목을 자동으로 반영합니다.</div>' +
+          '</div>' +
+          '<button type="button" class="settings-toggle" data-setting-auto-live-sync="1" aria-pressed="' + (enabled ? 'true' : 'false') + '">' +
+            '<span class="toggle-label">' + (enabled ? 'ON' : 'OFF') + '</span>' +
+            '<span class="toggle' + (enabled ? ' on' : '') + '"><span class="knob"></span></span>' +
+          '</button>' +
+        '</div>' +
+        warning +
+      '</div>';
+    bindSettingsCards();
+  }
+
+  function bindSettingsCards() {
+    document.querySelectorAll("[data-setting-auto-live-sync]").forEach((el) => {
+      el.onclick = () => {
+        adminSettings.autoLiveCategorySync = !adminSettings.autoLiveCategorySync;
+        renderSettings();
+        markDirty();
+      };
+    });
+  }
   function sortInfoForVisibility() {
     info.sort((a, b) => Number(!!a.hidden) - Number(!!b.hidden));
   }
@@ -908,7 +991,7 @@
           '<div class="game-autocomplete-wrap"><input type="text" data-gif="label" data-i="' + i + '" data-gi="' + gi + '" value="' + esc(g.label || "") + '" placeholder="\uAC8C\uC784\uBA85 (\uC608: \uBC1C\uB85C\uB780\uD2B8)" autocomplete="off" /><div class="member-results game-results" data-game-results="' + i + '-' + gi + '"></div></div>' +
           '<button class="icon-btn" data-delgameimg="' + i + "-" + gi + '" aria-label="\uAC8C\uC784 \uC0AD\uC81C">' + trashSvg() + "</button>" +
         '</div>' +
-        '<div class="game-meta-hint">\uD504\uB860\uD2B8 \uAC8C\uC784\uB9CC\uBCF4\uAE30\uB294 \uAC8C\uC784\uBA85\uC73C\uB85C \uC9D1\uACC4\uB429\uB2C8\uB2E4.</div>' +
+        '<div class="game-meta-hint">\uCE58\uC9C0\uC9C1 \uCE74\uD14C\uACE0\uB9AC \uAC80\uC0C9 \uACB0\uACFC\uB97C \uC120\uD0DD\uD558\uAC70\uB098 \uC9C1\uC811 \uC785\uB825\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uD504\uB860\uD2B8 \uAC8C\uC784\uB9CC\uBCF4\uAE30\uB294 \uAC8C\uC784\uBA85\uC73C\uB85C \uC9D1\uACC4\uB429\uB2C8\uB2E4.</div>' +
       '</div>'
     );
   }
@@ -932,36 +1015,131 @@
     return labels;
   }
 
+  function normalizeGameCategory(item) {
+    if (!item || typeof item !== "object") return null;
+    const label = String(item.categoryValue || item.label || item.title || item.name || "").trim();
+    if (!label) return null;
+    return {
+      label,
+      categoryId: String(item.categoryId || "").trim(),
+      categoryType: String(item.categoryType || "").trim(),
+      posterImageUrl: String(item.posterImageUrl || item.imageUrl || "").trim(),
+    };
+  }
+
+  async function searchChzzkCategories(keyword) {
+    const key = String(keyword || "").trim();
+    if (!key) return { ok: true, error: null, list: [] };
+    const cacheKey = key.toLowerCase();
+    if (gameCategoryCache.has(cacheKey)) return { ok: true, error: null, list: gameCategoryCache.get(cacheKey) };
+    const isLocalAdmin = location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+    const url = (isLocalAdmin ? "" : cfg.supabaseUrl.replace(/\/+$/, "")) +
+      "/functions/v1/chzzk-category-search?keyword=" + encodeURIComponent(key) + "&size=8";
+    try {
+      const res = await fetch(url, {
+        headers: { apikey: cfg.supabaseKey, Authorization: "Bearer " + cfg.supabaseKey },
+      });
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => "");
+        console.warn("[admin] 치지직 카테고리 검색 HTTP 오류:", res.status, bodyText.slice(0, 200));
+        return { ok: false, error: "HTTP " + res.status, list: [] };
+      }
+      const json = await res.json();
+      const rawItems = (json && json.content && Array.isArray(json.content.data) ? json.content.data : (Array.isArray(json.data) ? json.data : []));
+      const list = rawItems.map(normalizeGameCategory).filter(Boolean).slice(0, 8);
+      gameCategoryCache.set(cacheKey, list);
+      return { ok: true, error: null, list };
+    } catch (e) {
+      console.warn("[admin] 치지직 카테고리 검색 실패:", e);
+      return { ok: false, error: String((e && e.message) || e), list: [] };
+    }
+  }
+
   function bindGameAutocomplete(input) {
     if (input.dataset.gameAutocompleteBound) return;
     input.dataset.gameAutocompleteBound = "1";
     const results = document.querySelector('[data-game-results="' + input.getAttribute("data-i") + '-' + input.getAttribute("data-gi") + '"]');
     if (!results) return;
+    let timer = null;
+    let requestSeq = 0;
+    let latestOptions = [];
     const close = () => { results.innerHTML = ""; };
-    const apply = (label) => {
-      input.value = label;
+    const currentGame = () => {
+      const i = +input.getAttribute("data-i");
+      const gi = +input.getAttribute("data-gi");
+      rows[i].gameImages = rows[i].gameImages || [];
+      rows[i].gameImages[gi] = rows[i].gameImages[gi] || { url: "", label: "" };
+      return rows[i].gameImages[gi];
+    };
+    const apply = (item) => {
+      const category = typeof item === "string" ? { label: item } : item;
+      input.dataset.applyingGameCategory = "1";
+      input.value = category.label || "";
       input.dispatchEvent(new Event("input", { bubbles: true }));
+      delete input.dataset.applyingGameCategory;
+      const game = currentGame();
+      game.label = category.label || "";
+      game.categoryId = category.categoryId || "";
+      game.categoryType = category.categoryType || "";
+      game.posterImageUrl = category.posterImageUrl || "";
       close();
+      markDirty();
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
     };
-    const render = () => {
-      const query = input.value.trim().toLowerCase();
-      const matches = knownGameLabels(input)
-        .filter((label) => !query || label.toLowerCase().includes(query))
-        .slice(0, 8);
-      if (!matches.length) { close(); return; }
-      results.innerHTML = matches.map((label, index) =>
-        '<button type="button" class="member-result game-result" data-game-pick="' + index + '"><span>' + esc(label) + '</span></button>'
-      ).join("");
-      results.querySelectorAll("[data-game-pick]").forEach((button) => {
-        bindInstantMemberResult(button, () => apply(matches[+button.getAttribute("data-game-pick")]));
+    const mergeOptions = (localLabels, apiItems) => {
+      const seen = new Set();
+      const options = [];
+      localLabels.forEach((label) => {
+        const key = label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push({ source: "local", label });
       });
+      apiItems.forEach((item) => {
+        const key = item.label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push({ source: "chzzk", ...item });
+      });
+      return options.slice(0, 10);
+    };
+    const renderOptions = (options, statusText) => {
+      latestOptions = options;
+      if (!options.length && !statusText) { close(); return; }
+      const optionHtml = options.map((item, index) => {
+        const image = item.posterImageUrl ? '<img class="game-result-poster" src="' + esc(item.posterImageUrl) + '" alt="" />' : '<span class="game-result-poster game-result-poster-empty">' + esc((item.label || "?").charAt(0) || "?") + '</span>';
+        const badge = item.source === "chzzk" ? '<span class="game-result-badge">' + esc(item.categoryType || "CHZZK") + '</span>' : '<span class="game-result-badge local">기존</span>';
+        return '<button type="button" class="member-result game-result" data-game-pick="' + index + '">' + image + '<span class="game-result-main"><span class="game-result-label">' + esc(item.label) + '</span>' + badge + '</span></button>';
+      }).join("");
+      results.innerHTML = optionHtml + (statusText ? '<div class="member-result-empty">' + esc(statusText) + '</div>' : "");
+      results.querySelectorAll("[data-game-pick]").forEach((button) => {
+        bindInstantMemberResult(button, () => apply(latestOptions[+button.getAttribute("data-game-pick")]));
+      });
+    };
+    const localMatches = () => {
+      const query = input.value.trim().toLowerCase();
+      return knownGameLabels(input)
+        .filter((label) => !query || label.toLowerCase().includes(query))
+        .slice(0, 5);
+    };
+    const render = () => {
+      const keyword = input.value.trim();
+      renderOptions(mergeOptions(localMatches(), []), keyword ? "치지직 카테고리 검색 중..." : "");
+      clearTimeout(timer);
+      if (!keyword) return;
+      const seq = ++requestSeq;
+      timer = setTimeout(async () => {
+        const result = await searchChzzkCategories(keyword);
+        if (seq !== requestSeq) return;
+        const options = mergeOptions(localMatches(), result.list);
+        renderOptions(options, result.ok ? "" : "카테고리 검색 실패: " + result.error);
+      }, 220);
     };
     input.addEventListener("input", render);
     input.addEventListener("focus", render);
     input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
-    input.addEventListener("blur", () => setTimeout(close, 120));
+    input.addEventListener("blur", () => setTimeout(close, 160));
   }
   function vodsListHtml(r, i) {
     const vods = r.vods || [];
@@ -2631,6 +2809,9 @@
         members: Array.isArray(p.members) ? p.members.map(normalizeChannelRef).filter(Boolean) : [],
         hostChannel: normalizeChannelRef(p.hostChannel),
         notes: normalizeNotes(p.notes || p.note),
+        autoCategory: !!p.autoCategory,
+        categoryId: String(p.categoryId || "").trim(),
+        categoryType: String(p.categoryType || "").trim(),
       };
     }
     return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
@@ -2689,8 +2870,11 @@
     }
     if (!item || typeof item !== "object") return null;
     const url = String(item.url || item.imageUrl || item.src || "").trim();
-    const label = String(item.label || item.title || item.name || item.game || "").trim();
-    return (label || url) ? { url, label } : null;
+    const label = String(item.label || item.categoryValue || item.title || item.name || item.game || "").trim();
+    const categoryId = String(item.categoryId || "").trim();
+    const categoryType = String(item.categoryType || "").trim();
+    const posterImageUrl = String(item.posterImageUrl || item.imageUrl || "").trim();
+    return (label || url) ? { url, label, categoryId, categoryType, posterImageUrl } : null;
   }
   function normalizeVod(v) {
     if (!v || typeof v !== "object") return null;
@@ -2927,7 +3111,13 @@
       el.oninput = () => {
         rows[i].gameImages = rows[i].gameImages || [];
         rows[i].gameImages[gi] = rows[i].gameImages[gi] || { url: "", label: "" };
-        rows[i].gameImages[gi][f] = el.value;
+        const game = rows[i].gameImages[gi];
+        game[f] = el.value;
+        if (f === "label" && el.dataset.applyingGameCategory !== "1") {
+          game.categoryId = "";
+          game.categoryType = "";
+          game.posterImageUrl = "";
+        }
         markDirty();
       };
       if (f === "label") bindGameAutocomplete(el);
@@ -2937,7 +3127,7 @@
       el.onclick = () => {
         const i = +el.getAttribute("data-addgameimg");
         rows[i].gameImages = rows[i].gameImages || [];
-        rows[i].gameImages.push({ url: "", label: "" });
+        rows[i].gameImages.push({ url: "", label: "", categoryId: "", categoryType: "", posterImageUrl: "" });
         render();
         markDirty();
       };
@@ -3143,12 +3333,18 @@
             members: p.members || [],
             hostChannel: p.hostChannel || null,
             notes: serializeNotes(p.notes),
+            autoCategory: !!p.autoCategory,
+            categoryId: (p.categoryId || "").trim(),
+            categoryType: (p.categoryType || "").trim(),
           }))
           .filter((p) => p.content);
         const cleanGameImages = (r.gameImages || [])
           .map((g) => ({
             url: (g.url || "").trim(),
             label: (g.label || "").trim(),
+            categoryId: (g.categoryId || "").trim(),
+            categoryType: (g.categoryType || "").trim(),
+            posterImageUrl: (g.posterImageUrl || "").trim(),
           }))
           .filter((g) => g.label || g.url);
         const cleanVods = (r.vods || [])
@@ -3214,6 +3410,8 @@
         const { error } = await sb.from(infoTable).insert(infoToInsert);
         if (error) throw error;
       }
+
+      await saveAdminSettings();
 
       toast(backupWarning ? "\uc800\uc7a5\ub418\uc5c8\uc9c0\ub9cc \ubc31\uc5c5\uc740 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4" : "\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4");
       rows.forEach((row) => { delete row._newlyAdded; });

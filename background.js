@@ -171,6 +171,9 @@ function normalizePart(p) {
       members: Array.isArray(p.members) ? p.members.map(normalizeChannelRef).filter(Boolean) : [],
       hostChannel: normalizeChannelRef(p.hostChannel),
       notes: normalizeNotes(p.notes || p.note),
+      autoCategory: !!p.autoCategory,
+      categoryId: String(p.categoryId || "").trim(),
+      categoryType: String(p.categoryType || "").trim(),
     };
   }
   return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
