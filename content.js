@@ -2838,13 +2838,21 @@
     const rect = trigger.getBoundingClientRect();
     const popRect = pop.getBoundingClientRect();
     const maxLeft = Math.max(8, rootRect.width - popRect.width - 8);
-    const rightLeft = rect.right - rootRect.left + 8;
-    const leftFallback = rect.left - rootRect.left - popRect.width - 8;
-    const left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
     const maxTop = Math.max(8, rootRect.height - popRect.height - 8);
-    const top = Math.max(8, Math.min(rect.top - rootRect.top, maxTop));
-    pop.style.left = left + "px";
-    pop.style.top = top + "px";
+    let left;
+    let top;
+    if (trigger.classList.contains("cs-update-history-card")) {
+      left = rect.left - rootRect.left + rect.width / 2 - popRect.width / 2;
+      top = rect.bottom - rootRect.top + 8;
+    } else {
+      const rightLeft = rect.right - rootRect.left + 8;
+      const leftFallback = rect.left - rootRect.left - popRect.width - 8;
+      left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
+      top = rect.top - rootRect.top;
+    }
+    const isUpdateHistoryPopup = trigger.classList.contains("cs-update-history-card");
+    pop.style.left = Math.max(8, Math.min(left, maxLeft)) + "px";
+    pop.style.top = (isUpdateHistoryPopup ? top : Math.max(8, Math.min(top, maxTop))) + "px";
   }
   function installGuideSectionHtml(platform) {
     const isAndroid = platform === "android";
