@@ -1,31 +1,31 @@
 {
-    "name":  "오뱅알 모바일",
-    "short_name":  "오뱅알",
-    "description":  "치지직 방송 일정과 예정 콘텐츠를 모바일에서 확인합니다.",
-    "start_url":  "./index.html",
-    "scope":  "./",
-    "display":  "standalone",
-    "orientation":  "portrait",
-    "background_color":  "#0f1012",
-    "theme_color":  "#1b1c1f",
-    "icons":  [
-                  {
-                      "src":  "../icons/icon48.png",
-                      "sizes":  "48x48",
-                      "type":  "image/png",
-                      "purpose":  "any"
-                  },
-                  {
-                      "src":  "../icons/icon128.png",
-                      "sizes":  "128x128",
-                      "type":  "image/png",
-                      "purpose":  "any"
-                  },
-                  {
-                      "src":  "../icons/오뱅알.png",
-                      "sizes":  "512x512",
-                      "type":  "image/png",
-                      "purpose":  "any maskable"
-                  }
-              ]
+  "name": "\uc624\ubc45\uc54c \ubaa8\ubc14\uc77c",
+  "short_name": "\uc624\ubc45\uc54c",
+  "description": "\uce58\uc9c0\uc9c1 \ubc29\uc1a1 \uc77c\uc815\uacfc \uc608\uc815 \ucf58\ud150\uce20\ub97c \ubaa8\ubc14\uc77c\uc5d0\uc11c \ud655\uc778\ud569\ub2c8\ub2e4.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1012",
+  "theme_color": "#1b1c1f",
+  "icons": [
+    {
+      "src": "../icons/icon48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "../icons/icon128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "../icons/\uc624\ubc45\uc54c.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }

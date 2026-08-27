@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "오뱅알",
+  "name": "\uc624\ubc45\uc54c",
   "version": "1.5.0",
-  "description": "치지직 스트리머 '따효니'님의 방송 일정을 채널 페이지에 표시하는 확장 프로그램입니다.",
+  "description": "\uce58\uc9c0\uc9c1 \uc2a4\ud2b8\ub9ac\uba38 '\ub530\ud6a8\ub2c8'\ub2d8\uc758 \ubc29\uc1a1 \uc77c\uc815\uc744 \ucc44\ub110 \ud398\uc774\uc9c0\uc5d0 \ud45c\uc2dc\ud558\ub294 \ud655\uc7a5 \ud504\ub85c\uadf8\ub7a8\uc785\ub2c8\ub2e4.",
   "minimum_chrome_version": "121",
   "permissions": [
     "storage"
@@ -12,7 +12,7 @@
     "https://api.chzzk.naver.com/*"
   ],
   "action": {
-    "default_title": "오뱅알",
+    "default_title": "\uc624\ubc45\uc54c",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
