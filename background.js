@@ -14,6 +14,7 @@ const PENDING_UPDATE_TAB_KEY = "pendingUpdateTabId";
 const AVAILABLE_UPDATE_VERSION_KEY = "availableUpdateVersion";
 const READY_UPDATE_VERSION_KEY = "readyUpdateVersion";
 const APPLY_UPDATE_TAB_KEY = "applyUpdateTabId";
+const OPEN_SCHEDULE_REQUEST_KEY = "openScheduleRequest";
 let updateReloadScheduled = false;
 
 function storageGet(keys) {
@@ -40,6 +41,46 @@ async function reloadPendingUpdateTab() {
 }
 
 reloadPendingUpdateTab().catch(() => {});
+
+function defaultChannelId() {
+  const c = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
+  return String(c.channelId || "0dad8baf12a436f722faa8e5001c5011").trim();
+}
+
+function defaultChannelUrl() {
+  return "https://chzzk.naver.com/" + encodeURIComponent(defaultChannelId());
+}
+
+async function openDefaultChannelWithSchedule() {
+  const channelId = defaultChannelId();
+  await storageSet({
+    [OPEN_SCHEDULE_REQUEST_KEY]: {
+      channelId,
+      createdAt: Date.now(),
+    },
+  });
+  await api.tabs.create({ url: defaultChannelUrl() });
+}
+
+async function consumeOpenScheduleRequest(channelId) {
+  const saved = await storageGet([OPEN_SCHEDULE_REQUEST_KEY]);
+  const request = saved[OPEN_SCHEDULE_REQUEST_KEY];
+  if (!request || typeof request !== "object") return { ok: true, open: false };
+  const requestChannelId = String(request.channelId || "").trim();
+  const createdAt = Number(request.createdAt || 0);
+  const fresh = createdAt && Date.now() - createdAt < 120000;
+  const matches = requestChannelId && requestChannelId === String(channelId || "").trim();
+  if (!fresh) await storageRemove(OPEN_SCHEDULE_REQUEST_KEY);
+  if (!fresh || !matches) return { ok: true, open: false };
+  await storageRemove(OPEN_SCHEDULE_REQUEST_KEY);
+  return { ok: true, open: true };
+}
+
+if (api.action && api.action.onClicked) {
+  api.action.onClicked.addListener(() => {
+    openDefaultChannelWithSchedule().catch((error) => console.warn("[오뱅알] 채널 열기 실패", error));
+  });
+}
 
 async function applyReadyUpdate(tabId) {
   if (updateReloadScheduled) return;
@@ -268,11 +309,19 @@ function noticesFromInfoItems(rows) {
     .filter(Boolean);
 }
 
+function updateHistoriesFromInfoItems(rows) {
+  return (rows || [])
+    .map((r) => String((r && r.content) || "").trim().match(/^@update\s*:\s*([\s\S]+)$/i))
+    .filter(Boolean)
+    .map((match) => match[1].trim())
+    .filter(Boolean);
+}
+
 function mergeInfoItems(channels, rows) {
   for (const r of rows) {
     const cid = r.channel_id;
     const content = String(r.content || "").trim();
-    if (!cid || !content || r.hidden || /^@notice\s*:/i.test(content) || /^@extension-version\s*:/i.test(content)) continue;
+    if (!cid || !content || r.hidden || /^@notice\s*:/i.test(content) || /^@update\s*:/i.test(content) || /^@extension-version\s*:/i.test(content)) continue;
     if (!channels[cid]) {
       channels[cid] = { name: r.channel_name || "", timezone: "Asia/Seoul", schedule: [], info: [] };
     }
@@ -397,17 +446,19 @@ async function fetchFromSupabase() {
   // 소식 테이블은 아직 없을 수 있으므로(선택 기능), 실패해도 일정 기능에는 영향 없게 함
   let latestExtensionVersion = "";
   let notices = [];
+  let updateHistories = [];
   try {
     const infoRows = await fetchTable(c.upcomingContentTableName || "upcoming_content", "sort_order.asc,id.asc");
     latestExtensionVersion = extensionVersionFromInfoItems(infoRows);
     notices = noticesFromInfoItems(infoRows);
+    updateHistories = updateHistoriesFromInfoItems(infoRows);
     mergeInfoItems(channels, infoRows);
   } catch (e) {
   }
 
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 3, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles };
 }
 
 async function attachCachedProfiles(data) {
@@ -516,6 +567,12 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg && msg.type === "checkDeployedUpdate") {
     checkDeployedUpdate().then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "consumeOpenScheduleRequest") {
+    consumeOpenScheduleRequest(msg.channelId).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, error: String((error && error.message) || error) });
+    });
     return true;
   }
   if (msg && msg.type === "getDeployedUpdate") {

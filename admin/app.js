@@ -8,6 +8,7 @@
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const INFO_SECTION_PREFIX = "@section:";
   const STRUCTURED_INFO_PREFIX = "@info-v2:";
+  const UPDATE_HISTORY_PREFIX = "@update:";
   const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
 
   // ---- 상태 ----
@@ -472,6 +473,7 @@
 
     renderInfo();
     renderNotice();
+    renderUpdates();
     renderSettings();
     setActiveAdminMenu(activeAdminMenu);
     bindDirectiveAutocompletes();
@@ -588,11 +590,46 @@
     return "@notice:" + String(value || "").trim();
   }
 
+  function isUpdateInfoItem(item) {
+    return /^@update\s*:/i.test(String((item && item.content) || "").trim());
+  }
+
+  function updateHistoryPayload(item) {
+    return String((item && item.content) || "").trim().replace(/^@update\s*:\s*/i, "");
+  }
+
+  function parseUpdateHistoryData(item) {
+    const payload = updateHistoryPayload(item);
+    if (!payload) return { title: "", body: "" };
+    try {
+      const parsed = JSON.parse(payload);
+      return {
+        title: String((parsed && parsed.title) || ""),
+        body: String((parsed && parsed.body) || ""),
+      };
+    } catch (_e) {}
+    const legacy = parseEditorPopupToken(payload, 0);
+    if (legacy && legacy.end === payload.length) return { title: legacy.label || "", body: legacy.body || "" };
+    return { title: payload.split(/\r?\n/)[0] || "", body: payload };
+  }
+
+  function updateHistoryContent(data) {
+    const clean = {
+      title: String((data && data.title) || "").trim(),
+      body: String((data && data.body) || "").trim(),
+    };
+    return UPDATE_HISTORY_PREFIX + JSON.stringify(clean);
+  }
+
+  function updateHistoryKeepContent(data) {
+    return !!(data && (String(data.title || "").trim() || String(data.body || "").trim()));
+  }
+
   function renderInfo() {
     sortInfoForVisibility();
     const list = $("infoList");
     if (!list) return;
-    const visibleItems = info.map((u, i) => ({ u, i })).filter((item) => !isNoticeInfoItem(item.u));
+    const visibleItems = info.map((u, i) => ({ u, i })).filter((item) => !isNoticeInfoItem(item.u) && !isUpdateInfoItem(item.u));
     list.innerHTML = visibleItems.length
       ? visibleItems.map((item) => infoItemHtml(item.u, item.i)).join("")
       : '<div class="empty" style="padding:16px 0;">\ub4f1\ub85d\ub41c \uc18c\uc2dd\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.</div>';
@@ -660,6 +697,78 @@
         if (info[i].id) deletedInfoIds.push(info[i].id);
         info.splice(i, 1);
         renderNotice();
+        markDirty();
+      };
+    });
+  }
+
+  function updateHistoryListHtml() {
+    const updates = info.map((u, i) => ({ u, i })).filter((item) => isUpdateInfoItem(item.u)).reverse();
+    return updates.length ? updates.map((item) => {
+      const data = parseUpdateHistoryData(item.u);
+      const titleId = "update-title-" + item.i;
+      const bodyId = "update-body-" + item.i;
+      return '<div class="card notice-card update-card" data-update-card="' + item.i + '">' +
+        '<div class="notice-field">' +
+          '<div class="notice-editor-shell update-editor-shell">' +
+            '<div class="notice-card-head">' +
+              '<div class="notice-card-toolbar"></div>' +
+              '<div class="notice-card-actions">' + deleteUpdateHistoryBtn(item.i) + '</div>' +
+            '</div>' +
+            '<div class="update-title-row"><label for="' + titleId + '">제목</label><input id="' + titleId + '" class="update-title-input" data-update-title="' + item.i + '" value="' + esc(data.title || "") + '" placeholder="프론트에 노출될 업데이트 제목" /></div>' +
+            '<textarea id="' + bodyId + '" class="notice-textarea update-body-textarea" data-update-body="' + item.i + '" placeholder="클릭 팝업에 표시될 업데이트 내용을 입력하세요">' + esc(data.body || "") + '</textarea>' +
+          '</div>' +
+        '</div>' +
+      "</div>";
+    }).join("") : '<div class="empty" style="padding:16px 0;">등록된 업데이트 내역이 없습니다.</div>';
+  }
+
+  function renderUpdates() {
+    const list = $("updateList");
+    if (!list) return;
+    list.innerHTML = '<div class="schedule-group-head"><p class="group-label">\uc5c5\ub370\uc774\ud2b8 \ub0b4\uc5ed</p><button type="button" class="add-btn schedule-add-btn" data-add-update="1">+ \uc5c5\ub370\uc774\ud2b8</button></div>' + updateHistoryListHtml();
+    bindUpdateHistoryCards();
+    bindDirectiveAutocompletes();
+  }
+
+  function deleteUpdateHistoryBtn(i) {
+    return '<button class="icon-btn" data-update-del="' + i + '" aria-label="\uc0ad\uc81c">' + trashSvg() + "</button>";
+  }
+
+  function bindUpdateHistoryCards() {
+    document.querySelectorAll("[data-add-update]").forEach((el) => {
+      el.onclick = () => {
+        info.push({ id: null, content: updateHistoryContent({ title: "", body: "" }), hidden: true });
+        renderUpdates();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-update-title]").forEach((el) => {
+      const i = +el.getAttribute("data-update-title");
+      el.oninput = () => {
+        const data = parseUpdateHistoryData(info[i]);
+        data.title = el.value;
+        info[i].content = updateHistoryContent(data);
+        info[i].hidden = true;
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-update-body]").forEach((el) => {
+      const i = +el.getAttribute("data-update-body");
+      el.oninput = () => {
+        const data = parseUpdateHistoryData(info[i]);
+        data.body = el.value;
+        info[i].content = updateHistoryContent(data);
+        info[i].hidden = true;
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-update-del]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-update-del");
+        if (info[i].id) deletedInfoIds.push(info[i].id);
+        info.splice(i, 1);
+        renderUpdates();
         markDirty();
       };
     });
@@ -1237,14 +1346,16 @@
     const whole = value.match(/^:(s|t)(?:\[([^\]]+)\]|\s+(.+))$/i);
     const hasFeedback = !whole && value.includes("[문의]");
     const mediaMatches = Array.from(value.matchAll(/:m\[([^{}\]]+)\{([^}\]]+)\}\]/gi));
+    const popupMatches = Array.from(value.matchAll(/:p\[([^{}]+)\{([\s\S]*?)\}\]/gi));
     const installMatches = Array.from(value.matchAll(/:install\[([^\]]+)\]/gi));
-    if (!/:(s|t)\b/i.test(value) && !mediaMatches.length && !installMatches.length && !hasFeedback) return "";
+    if (!/:(s|t)\b/i.test(value) && !mediaMatches.length && !popupMatches.length && !installMatches.length && !hasFeedback) return "";
     const matches = whole
       ? [{ 1: whole[1], 2: whole[2] || whole[3] }]
       : Array.from(value.matchAll(/:(s|t)(?:\[([^\]]+)\]|\s+([^\s:]+))/gi), (m) => ({ 1: m[1], 2: m[2] || m[3] }));
-    if (!matches.length && !mediaMatches.length && !installMatches.length && !hasFeedback) return '<span class="directive-help">명령어를 완성하세요. 예: :s 닉네임 · :m[텍스트{URL}]</span>';
+    if (!matches.length && !mediaMatches.length && !popupMatches.length && !installMatches.length && !hasFeedback) return '<span class="directive-help">명령어를 완성하세요. 예: :s 닉네임 · :m[텍스트{URL}]</span>';
     const previews = matches.map((match) => '<span class="directive-applied">' + esc(match[2].trim()) + '</span>');
     mediaMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
+    popupMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
     installMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
     if (hasFeedback) previews.push('<span class="directive-feedback">문의·제보</span>');
     return previews.join('<span style="width:6px"></span>') + '<span class="directive-ok">적용 미리보기</span>';
@@ -1367,9 +1478,27 @@
     };
   }
 
+  function parseEditorPopupToken(raw, start) {
+    if (raw.slice(start, start + 3).toLowerCase() !== ":p[") return null;
+    const labelStart = start + 3;
+    const braceOpen = raw.indexOf("{", labelStart);
+    if (braceOpen < 0) return null;
+    const close = raw.indexOf("}]", braceOpen + 1);
+    if (close < 0) return null;
+    return {
+      raw: raw.slice(start, close + 2),
+      kind: "p",
+      label: raw.slice(labelStart, braceOpen).trim() || "팝업",
+      body: raw.slice(braceOpen + 1, close).trim(),
+      end: close + 2,
+    };
+  }
+
   function parseEditorDirectiveToken(raw, start) {
     const media = parseEditorMediaToken(raw, start);
     if (media) return media;
+    const popup = parseEditorPopupToken(raw, start);
+    if (popup) return popup;
     const head = raw.slice(start).match(/^:(s|t)\[/i);
     if (head) {
       const close = findDirectiveTokenBracketEnd(raw, start + 2);
@@ -1446,6 +1575,7 @@
     if (kind === "t") return "\uD0DC\uADF8";
     if (kind === "s") return "\uC2A4\uD2B8\uB9AC\uBA38";
     if (kind === "m") return "\uBBF8\uB514\uC5B4";
+    if (kind === "p") return "\uD14D\uC2A4\uD2B8\uD31D\uC5C5";
     return "\uD56D\uBAA9";
   }
   function cleanInlineDirectiveInput(value, chars) {
@@ -1464,6 +1594,11 @@
     const labelInput = directChildByClass(token, "directive-token-label") || token.querySelector('[data-token-label="1"]');
     const urlInput = directChildByClass(token, "directive-token-url") || token.querySelector('[data-token-url="1"]');
     const rawLabel = labelEditor ? serializeDirectiveEditor(labelEditor) : (labelInput ? labelInput.value : "");
+    if (kind === "p") {
+      const label = cleanInlineDirectiveInput(rawLabel || "\uD31D\uC5C5", ["{"]) || "\uD31D\uC5C5";
+      const body = cleanInlineDirectiveInput(token.dataset.popupBody || "", ["}"]);
+      return ":p[" + label + "{" + body + "}]";
+    }
     if (kind === "m") {
       const label = cleanInlineDirectiveInput(rawLabel || "media", ["{"]) || "media";
       const url = cleanInlineDirectiveInput(urlInput ? urlInput.value : "", ["]", "}"]);
@@ -1524,8 +1659,8 @@
     const value = serializeDirectiveEditor(labelEditor);
     const offsets = editorSelectionOffsets(labelEditor);
     const selected = value.slice(offsets.start, offsets.end);
-    const baseLabel = selected || (kind === "m" ? "media" : "");
-    const insertText = kind === "m" ? ":m[" + cleanInlineDirectiveInput(baseLabel, ["{"]) + "{}]" : ":" + kind + "[" + cleanInlineDirectiveInput(baseLabel, ["]"]) + "]";
+    const baseLabel = selected || (kind === "m" ? "media" : (kind === "p" ? "\uD31D\uC5C5" : ""));
+    const insertText = kind === "m" ? ":m[" + cleanInlineDirectiveInput(baseLabel, ["{"]) + "{}]" : (kind === "p" ? ":p[" + cleanInlineDirectiveInput(baseLabel, ["{"]) + "{}]" : ":" + kind + "[" + cleanInlineDirectiveInput(baseLabel, ["]"]) + "]");
     renderDirectiveLabelEditor(labelEditor, value.slice(0, offsets.start) + insertText + value.slice(offsets.end), source, editor);
     syncEditorToSource(source, editor, false);
     focusInsertedNestedToken(labelEditor, offsets.start);
@@ -1553,11 +1688,11 @@
     token.appendChild(name);
 
     const label = document.createElement("span");
-    label.className = "directive-token-label-editor" + (item.kind === "m" ? " directive-token-label" : "");
+    label.className = "directive-token-label-editor" + (item.kind === "m" || item.kind === "p" ? " directive-token-label" : "");
     label.contentEditable = "false";
     label.spellcheck = false;
     label.dataset.tokenLabel = "1";
-    label.dataset.placeholder = item.kind === "m" ? "\uD45C\uC2DC \uD14D\uC2A4\uD2B8" : "\uD14D\uC2A4\uD2B8";
+    label.dataset.placeholder = item.kind === "m" || item.kind === "p" ? "\uD45C\uC2DC \uD14D\uC2A4\uD2B8" : "\uD14D\uC2A4\uD2B8";
     renderDirectiveLabelEditor(label, item.label || "", source, editor);
     label.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openDirectiveTokenEditPopup(source, editor, token); });
     token.appendChild(label);
@@ -1568,6 +1703,9 @@
       url.readOnly = true;
       url.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openDirectiveTokenEditPopup(source, editor, token); });
       token.appendChild(url);
+    }
+    if (item.kind === "p") {
+      token.dataset.popupBody = item.body || "";
     }
     token.dataset.raw = inlineDirectiveRaw(token);
     token.title = "\uD074\uB9AD\uD574\uC11C \uD3B8\uC9D1";
@@ -1907,8 +2045,8 @@
     editor._toolbarSelectionOffsets = null;
     const value = source.value || "";
     const selected = value.slice(offsets.start, offsets.end);
-    const baseLabel = selected || (kind === "m" ? "media" : "");
-    const insertText = kind === "m" ? ":m[" + cleanInlineDirectiveInput(baseLabel, ["{"]) + "{}]" : ":" + kind + "[" + cleanInlineDirectiveInput(baseLabel, ["]"]) + "]";
+    const baseLabel = selected || (kind === "m" ? "media" : (kind === "p" ? "\uD31D\uC5C5" : ""));
+    const insertText = kind === "m" ? ":m[" + cleanInlineDirectiveInput(baseLabel, ["{"]) + "{}]" : (kind === "p" ? ":p[" + cleanInlineDirectiveInput(baseLabel, ["{"]) + "{}]" : ":" + kind + "[" + cleanInlineDirectiveInput(baseLabel, ["]"]) + "]");
     pushEditorUndo(source);
     source.value = value.slice(0, offsets.start) + insertText + value.slice(offsets.end);
     source.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2026,6 +2164,7 @@
     if (kind === "t") return openTagInsertPopup(source, editor, context);
     if (kind === "s") return openStreamerInsertPopup(source, editor, context);
     if (kind === "m") return openMediaInsertPopup(source, editor, context);
+    if (kind === "p") return openTextPopupInsertPopup(source, editor, context);
   }
   function popupStyleToolbar(source, editor, options) {
     const toolbar = document.createElement("div");
@@ -2073,6 +2212,7 @@
         { label: "\uD0DC\uADF8", title: "\uD0DC\uADF8 \uC785\uB825", kind: "t" },
         { label: "\uC2A4\uD2B8\uB9AC\uBA38", title: "\uC2A4\uD2B8\uB9AC\uBA38 \uC785\uB825", kind: "s" },
         { label: "\uBBF8\uB514\uC5B4", title: "\uBBF8\uB514\uC5B4 \uC785\uB825", kind: "m" },
+        { label: "\uD31D\uC5C5", title: "\uD14D\uC2A4\uD2B8 \uD31D\uC5C5 \uC785\uB825", kind: "p" },
       ].forEach((item) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -2130,6 +2270,7 @@
     const kind = token.dataset.kind || "t";
     const labelEditor = directChildByClass(token, "directive-token-label-editor");
     const urlInput = directChildByClass(token, "directive-token-url") || token.querySelector('[data-token-url="1"]');
+    const bodyInput = directChildByClass(token, "directive-token-body") || token.querySelector('[data-token-body="1"]');
     return {
       source,
       editor,
@@ -2137,6 +2278,7 @@
       kind,
       label: labelEditor ? serializeDirectiveEditor(labelEditor) : "",
       url: urlInput ? (urlInput.value != null ? urlInput.value : urlInput.textContent || "") : "",
+      body: token.dataset.popupBody || (bodyInput ? (bodyInput.value != null ? bodyInput.value : bodyInput.textContent || "") : ""),
     };
   }
 
@@ -2156,12 +2298,14 @@
     if (context.kind === "t") return openTagInsertPopup(source, editor, context);
     if (context.kind === "s") return openStreamerInsertPopup(source, editor, context);
     if (context.kind === "m") return openMediaInsertPopup(source, editor, context);
+    if (context.kind === "p") return openTextPopupInsertPopup(source, editor, context);
   }
 
   function openDirectiveInsertModal(source, editor, kind) {
     if (kind === "t") return openTagInsertPopup(source, editor, null);
     if (kind === "s") return openStreamerInsertPopup(source, editor, null);
     if (kind === "m") return openMediaInsertPopup(source, editor, null);
+    if (kind === "p") return openTextPopupInsertPopup(source, editor, null);
   }
 
   function openTagInsertPopup(source, editor, context) {
@@ -2210,6 +2354,33 @@
         url.onkeydown = (event) => { if (event.key === "Enter") apply.click(); };
         draft.editor.focus();
         setEditorSelectionByOffsets(draft.editor, 0, serializeDirectiveEditor(draft.editor).length);
+      });
+  }
+
+  function openTextPopupInsertPopup(source, editor, context) {
+    const selected = context && context.token ? context.label : selectedEditorText(source, editor);
+    const bodyValue = context && context.token ? context.body : "";
+    openDirectiveInsertPopup("\uD14D\uC2A4\uD2B8 \uD31D\uC5C5 \uC785\uB825",
+      '<div class="directive-popup-field"><label>\uD45C\uC2DC \uD14D\uC2A4\uD2B8</label><div data-text-popup-label-editor="1"></div></div>' +
+      '<div class="directive-popup-field"><label>\uD31D\uC5C5 \uBCF8\uBB38</label><div data-text-popup-body-editor="1"></div></div>' +
+      popupActionsHtml("\uD655\uC778", { allowDelete: !!(context && context.token) }),
+      (popup) => {
+        bindPopupCancel(popup);
+        bindPopupDelete(popup, context);
+        const labelDraft = setupPopupDirectiveEditor(popup, '[data-text-popup-label-editor="1"]', selected, "\uD45C\uC2DC \uD14D\uC2A4\uD2B8", { allowInserts: true });
+        const bodyDraft = setupPopupDirectiveEditor(popup, '[data-text-popup-body-editor="1"]', bodyValue, "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC6A9 \uB610\uB294 \uC0C1\uC138 \uB0B4\uC6A9\uC744 \uC785\uB825\uD558\uC138\uC694", { allowInserts: true });
+        const apply = popup.querySelector('[data-popup-apply="1"]');
+        apply.onclick = () => {
+          const label = cleanDirectiveValue(popupEditorValue(labelDraft), ["{"], { preserveWhitespace: true }).trim() || "\uD31D\uC5C5";
+          const body = cleanDirectiveValue(popupEditorValue(bodyDraft), ["}"], { preserveWhitespace: true });
+          if (!body.trim()) { bodyDraft.editor.focus(); return; }
+          const raw = ":p[" + label + "{" + body + "}]";
+          if (context && context.token) applyDirectiveTokenEdit(context, raw);
+          else replaceEditorSelection(source, editor, raw);
+          closeDirectiveInsertPopup();
+        };
+        labelDraft.editor.focus();
+        setEditorSelectionByOffsets(labelDraft.editor, 0, serializeDirectiveEditor(labelDraft.editor).length);
       });
   }
 
@@ -2333,6 +2504,7 @@
       { label: "\uD0DC\uADF8", title: "\uD0DC\uADF8 \uC785\uB825", kind: "t" },
       { label: "\uC2A4\uD2B8\uB9AC\uBA38", title: "\uC2A4\uD2B8\uB9AC\uBA38 \uC785\uB825", kind: "s" },
       { label: "\uBBF8\uB514\uC5B4", title: "\uBBF8\uB514\uC5B4 \uC785\uB825", kind: "m" },
+        { label: "\uD31D\uC5C5", title: "\uD14D\uC2A4\uD2B8 \uD31D\uC5C5 \uC785\uB825", kind: "p" },
     ];
     inserts.forEach((item) => {
       const button = document.createElement("button");
@@ -2351,7 +2523,7 @@
     return toolbar;
   }
   function bindDirectiveEditors() {
-    const selector = '[data-pf="content"], [data-if="content"], [data-isub-title], [data-isub-body], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-isub-title], [data-isub-body], [data-notice-content], [data-update-body], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((source) => {
       if (source.dataset.directiveEditorBound) return;
       source.dataset.directiveEditorBound = "1";
@@ -2599,7 +2771,7 @@
   }
   function bindDirectiveAutocompletes() {
     bindDirectiveEditors();
-    const selector = '[data-pf="content"], [data-if="content"], [data-isub-title], [data-isub-body], [data-notice-content], [data-note], [data-part-note], [data-vf="label"]';
+    const selector = '[data-pf="content"], [data-if="content"], [data-isub-title], [data-isub-body], [data-notice-content], [data-update-body], [data-note], [data-part-note], [data-vf="label"]';
     document.querySelectorAll(selector).forEach((el) => {
       if (el.dataset.directiveAutocompleteBound) return;
       el.dataset.directiveAutocompleteBound = "1";
@@ -3386,14 +3558,16 @@
       for (const u of info) {
         const content = (u.content || "").trim();
         const noticeMatch = content.match(/^@notice\s*:\s*([\s\S]*)$/i);
+        const updateMatch = content.match(/^@update\s*:\s*([\s\S]*)$/i);
         const sectionMatch = content.match(/^@section\s*:\s*([\s\S]*)$/i);
         const structuredMatch = isStructuredInfoItem(u) ? structuredInfoData(u) : null;
-        const keepContent = content && (!noticeMatch || noticeMatch[1].trim()) && (!sectionMatch || sectionMatch[1].trim()) && (!structuredMatch || infoStructuredKeepContent(structuredMatch));
+        const updateData = updateMatch ? parseUpdateHistoryData(u) : null;
+        const keepContent = content && (!noticeMatch || noticeMatch[1].trim()) && (!updateMatch || updateHistoryKeepContent(updateData)) && (!sectionMatch || sectionMatch[1].trim()) && (!structuredMatch || infoStructuredKeepContent(structuredMatch));
         if (u.id) {
-          if (keepContent) infoToUpdate.push({ id: u.id, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
+          if (keepContent) infoToUpdate.push({ id: u.id, content, hidden: (noticeMatch || updateMatch) ? true : !!u.hidden, sort_order: order++ });
           else infoDeleteIds.push(u.id);
         } else if (keepContent) {
-          infoToInsert.push({ channel_id: cfg.channelId, content, hidden: noticeMatch ? true : !!u.hidden, sort_order: order++ });
+          infoToInsert.push({ channel_id: cfg.channelId, content, hidden: (noticeMatch || updateMatch) ? true : !!u.hidden, sort_order: order++ });
         }
       }
       if (infoDeleteIds.length) {

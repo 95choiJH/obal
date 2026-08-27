@@ -173,6 +173,7 @@
   .directive-token-t { --token-color: rgba(0,255,163,0.42); --token-bg: rgba(0,255,163,0.07); }
   .directive-token-s { --token-color: rgba(232,194,104,0.52); --token-bg: rgba(232,194,104,0.08); }
   .directive-token-m { --token-color: rgba(251,113,133,0.46); --token-bg: rgba(251,113,133,0.07); }
+  .directive-token-p { --token-color: rgba(0,255,163,0.42); --token-bg: rgba(0,255,163,0.07); }
   .directive-input-token { gap: 6px; margin: 2px; min-width: 0; }
   .directive-token-name { display: none; }
   .directive-popup-editor .directive-token, .directive-popup-editor .directive-token-label-editor, .directive-popup-editor .directive-input-token input { cursor: pointer; }
@@ -516,8 +517,8 @@
   @media (max-width: 560px) { .settings-row { align-items: flex-start; } }
   .topbar { position: sticky; top: 0; }
   .editor-columns { min-width: 0; }
-  #infoList, #noticeList { display: flex; flex-direction: column; gap: 8px; }
-  #noticeList > .card { min-width: 0; margin-bottom: 0; }
+  #infoList, #noticeList, #updateList { display: flex; flex-direction: column; gap: 8px; }
+  #noticeList > .card, #updateList > .card { min-width: 0; margin-bottom: 0; }
 
   .info-section-card { display: grid; grid-template-columns: minmax(52px, 0.24fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px 13px; background: rgba(0,255,163,0.035); }
   .info-section-card-line { height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.65), rgba(0,255,163,0.06)); }
@@ -577,6 +578,11 @@
   .notice-textarea { display: block; width: 100%; min-width: 0; min-height: 148px; resize: vertical; padding: 12px 13px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1.65; outline: none; scrollbar-gutter: stable; }
   .notice-textarea::placeholder { color: var(--text-mute); }
   .notice-textarea:focus { box-shadow: none; }
+  .update-title-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgba(127,127,127,0.14); }
+  .update-title-row label { color: var(--text-dim); font-size: 12px; font-weight: 900; }
+  .update-title-input { width: 100%; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 800; outline: none; }
+  .update-title-input:focus { border-color: #00c878; box-shadow: 0 0 0 3px rgba(0,255,163,0.1); }
+  .update-body-textarea { min-height: 168px; }
   @media (prefers-color-scheme: light) {
     .notice-editor-shell { background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72)), var(--surface2); }
     .notice-card-head { background: rgba(0,0,0,0.025); }
@@ -639,6 +645,7 @@
         <button type="button" class="admin-menu-item active" data-admin-menu="schedule">&#51068;&#51221;</button>
         <button type="button" class="admin-menu-item" data-admin-menu="info">&#49548;&#49885;</button>
         <button type="button" class="admin-menu-item" data-admin-menu="notice">&#44277;&#51648;</button>
+        <button type="button" class="admin-menu-item" data-admin-menu="updates">&#50629;&#45936;&#51060;&#53944;</button>
         <button type="button" class="admin-menu-item" data-admin-menu="feedback">&#47928;&#51032;&#54632;<span id="feedbackToggleCount" class="feedback-toggle-count">0</span></button>
         <button type="button" class="admin-menu-item" data-admin-menu="settings">&#49444;&#51221;</button>
       </nav>
@@ -651,6 +658,7 @@
       <section id="schedulePanel" class="admin-panel" data-admin-panel="schedule"><section id="list" class="list"></section></section>
       <section id="infoPanel" class="admin-panel" data-admin-panel="info" hidden><section class="list info-section"><div class="schedule-group-head"><p class="group-label">&#49548;&#49885;/&#50696;&#51221; &#53080;&#53584;&#52768;</p></div><div id="infoList"></div></section></section>
       <section id="noticePanel" class="admin-panel" data-admin-panel="notice" hidden><section class="list info-section"><div id="noticeList"></div></section></section>
+      <section id="updatePanel" class="admin-panel" data-admin-panel="updates" hidden><section class="list info-section"><div id="updateList"></div></section></section>
       <section id="settingsPanel" class="admin-panel" data-admin-panel="settings" hidden><section class="list settings-section"><div id="settingsList"></div></section></section>
       <section id="feedbackPanel" class="admin-panel" data-admin-panel="feedback" hidden>
         <aside class="feedback-drawer" aria-label="&#47928;&#51032; &#48143; &#51228;&#48372; &#44288;&#47532;">
