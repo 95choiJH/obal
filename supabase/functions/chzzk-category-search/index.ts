@@ -1,12 +1,13 @@
-// Chzzk channel search proxy for admin autocomplete and directive profile lookup.
-// Deploy: supabase functions deploy chzzk-search
+// Chzzk category search proxy for admin game/category autocomplete.
+// Deploy: supabase functions deploy chzzk-category-search
+// Required env: CHZZK_CLIENT_ID, CHZZK_CLIENT_SECRET
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 30;
 const MAX_KEYWORD_LENGTH = 40;
 
 function allowedOrigins() {
-  return (Deno.env.get("CHZZK_SEARCH_ALLOWED_ORIGINS") || "")
+  return (Deno.env.get("CHZZK_CATEGORY_SEARCH_ALLOWED_ORIGINS") || Deno.env.get("CHZZK_SEARCH_ALLOWED_ORIGINS") || "")
     .split(",")
     .map((item) => {
       const origin = item.trim();
@@ -63,7 +64,7 @@ async function checkRateLimit(request: Request, supabaseUrl: string, serviceRole
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      p_scope: "chzzk-search",
+      p_scope: "chzzk-category-search",
       p_client_key: await clientKey(request),
       p_window_seconds: Math.floor(WINDOW_MS / 1000),
       p_max_requests: MAX_REQUESTS_PER_WINDOW,
@@ -87,7 +88,9 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) {
+  const clientId = Deno.env.get("CHZZK_CLIENT_ID");
+  const clientSecret = Deno.env.get("CHZZK_CLIENT_SECRET");
+  if (!supabaseUrl || !serviceRoleKey || !clientId || !clientSecret) {
     return jsonResponse(req, { error: "Missing server configuration" }, 500);
   }
 
@@ -101,22 +104,24 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const channelId = (url.searchParams.get("channelId") || "").trim();
-  const keyword = (url.searchParams.get("keyword") || "").trim().slice(0, MAX_KEYWORD_LENGTH);
+  const keyword = (url.searchParams.get("keyword") || url.searchParams.get("query") || "").trim().slice(0, MAX_KEYWORD_LENGTH);
+  const requestedSize = Number(url.searchParams.get("size") || 8);
+  const size = Math.max(1, Math.min(Number.isFinite(requestedSize) ? requestedSize : 8, 50));
+  if (!keyword) return jsonResponse(req, { content: { data: [] } });
 
-  if (channelId && !/^[0-9a-f]{32}$/i.test(channelId)) {
-    return jsonResponse(req, { error: "Invalid channel ID" }, 400);
-  }
-  if (!channelId && !keyword) return jsonResponse(req, { content: { data: [] } });
-
-  const upstream = channelId
-    ? "https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(channelId)
-    : "https://api.chzzk.naver.com/service/v1/search/channels?keyword=" +
-      encodeURIComponent(keyword) +
-      "&offset=0&size=8&withFirstChannelContent=false";
+  const upstream = "https://openapi.chzzk.naver.com/open/v1/categories/search?query=" +
+    encodeURIComponent(keyword) +
+    "&size=" + encodeURIComponent(String(size));
 
   try {
-    const res = await fetch(upstream, { headers: { Accept: "application/json" } });
+    const res = await fetch(upstream, {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Client-Id": clientId,
+        "Client-Secret": clientSecret,
+      },
+    });
     const body = await res.text();
     return new Response(body, {
       status: res.status,
@@ -126,4 +131,3 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { error: String(e) }, 502);
   }
 });
-

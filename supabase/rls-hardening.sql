@@ -7,6 +7,13 @@ create table if not exists public.admin_users (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.admin_settings (
+  channel_id text not null,
+  key text not null,
+  value jsonb not null default 'null'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (channel_id, key)
+);
 
 -- Ensure optional columns used by current extension/admin code exist before policies reference them.
 alter table public.schedule add column if not exists game_images jsonb;
@@ -19,6 +26,11 @@ alter table public.schedule enable row level security;
 alter table public.upcoming_content enable row level security;
 alter table public.feedback enable row level security;
 alter table public.admin_users enable row level security;
+alter table public.admin_settings enable row level security;
+revoke all on public.admin_settings from anon;
+grant select on public.admin_settings to anon;
+grant select, insert, update, delete on public.admin_settings to authenticated;
+grant all on public.admin_settings to service_role;
 
 
 -- Game image uploads used by the admin page.
@@ -125,6 +137,7 @@ drop policy if exists "admin users can read feedback" on public.feedback;
 drop policy if exists "admin users can update feedback status" on public.feedback;
 drop policy if exists "admin users can delete feedback" on public.feedback;
 drop policy if exists "admin users can read admin_users" on public.admin_users;
+drop policy if exists "admin users can manage admin_settings" on public.admin_settings;
 
 create policy "anon can read schedule"
   on public.schedule for select
@@ -184,6 +197,17 @@ create policy "admin users can read admin_users"
   to authenticated
   using (user_id = auth.uid());
 
+drop policy if exists "anon can read public gnimti settings" on public.admin_settings;
+
+create policy "anon can read public gnimti settings"
+  on public.admin_settings for select
+  to anon
+  using (key = 'gnimti_content');
+create policy "admin users can manage admin_settings"
+  on public.admin_settings for all
+  to authenticated
+  using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()))
+  with check (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
 -- Durable rate-limit counters for public Edge Functions. The table is not
 -- directly accessible to browser clients; only the service-role-only RPC below
 -- can update it.

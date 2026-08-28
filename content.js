@@ -1,4 +1,4 @@
-﻿// content.js — 치지직 페이지에 일정 그리드를 주입
+// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -25,6 +25,7 @@
   const GNIMTI_ICON_IMAGE_URL = api.runtime.getURL("images/gnimti-logo2.png");
   const OBAL_IOS_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal_ios.png");
   const OBAL_ANDROID_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal-android.png");
+  const OBAL_MOBILE_LINK_URL = "https://obaengal.netlify.app/";
   const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
   const GNIMTI_TIER_BACK_IMAGE_URLS = {
     S: api.runtime.getURL("images/gnimti/tier-s-back.png"),
@@ -74,14 +75,22 @@
     todayKey: null,
     popoverTimer: null,
     popoverCloseTimer: null,
+    activePopoverDate: "",
     pageTheme: null,
     feedbackOpen: false,
-    feedbackDraft: { type: "일정", message: "", relatedLink: "", contact: "" },
+    infoExpanded: new Set(),
+    updateHistoryExpanded: false,
+    feedbackDraft: { type: "일정", message: "", relatedLink: "", contact: "", contactOpen: false },
     feedbackOutsideHandler: null,
+    scheduleOutsideHandler: null,
+    schedulePopoverPinned: false,
+    openScheduleRequestConsumed: false,
+    schedulePanelForcedOpen: false,
   };
 
   const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
   const PAGE_SIZE = 5;
+  const INFO_V2_PREFIX = "@info-v2:";
 
   // 치지직 DOM 앵커 후보 (실제 확장프로그램들이 사용하는 클래스 접두어 기반)
   // 위에서부터 순서대로 시도하고, 모두 실패하면 플로팅 모드로 폴백
@@ -352,7 +361,7 @@
     .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
     .cs-month-weekday { color: #6b6d73; font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0 4px; }
     .cs-month-blank { min-height: 88px; border-radius: 8px; background: rgba(255,255,255,0.02); }
-    .cs-month-grid .cs-month-cell { min-height: 88px; padding: 9px 8px 35px; text-align: left; }
+    .cs-month-grid .cs-month-cell { min-height: 130px; padding: 9px 8px 35px; text-align: left; }
     .cs-month-grid .cs-month-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
     .cs-month-cell .cs-cell-date { font-size: 12px; font-weight: 700; }
     .cs-month-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 7px; z-index: 2; text-align: center; }
@@ -436,12 +445,20 @@
     .cs-inline-media-trigger::before { content: "✦"; flex: 0 0 auto; color: #93c5fd; font-size: 0.9em; line-height: 1; }
     .cs-inline-media-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-inline-media-trigger:hover, .cs-inline-media-trigger.cs-open { border-color: rgba(147,197,253,0.62); background: rgba(147,197,253,0.18); color: #dbeafe; }
+    .cs-inline-text-popup-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
+      min-height: 20px; padding: 1px 7px 1px 6px; border: 1px solid rgba(0,255,163,0.34); border-radius: 999px;
+      background: rgba(0,255,163,0.1); color: #8fffd5; font: inherit; font-size: 12px; font-weight: 800;
+      line-height: 18px; vertical-align: middle; text-decoration: none; cursor: pointer; overflow: hidden; }
+    .cs-inline-text-popup-trigger::before { content: "i"; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; background: rgba(0,255,163,0.18); color: #8fffd5; font-size: 9px; font-weight: 900; line-height: 1; }
+    .cs-inline-text-popup-trigger:hover, .cs-inline-text-popup-trigger.cs-open { border-color: rgba(0,255,163,0.58); background: rgba(0,255,163,0.18); color: #d7f7ea; }
+    .cs-text-popup-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-media-popover { position: absolute; z-index: 2147483647; display: none; width: fit-content; max-width: calc(100% - 16px);
       max-height: min(70vh, 460px); margin: 0; padding: 10px; border: 1px solid #3a3c40; border-radius: 10px;
       background: #1b1c1f; box-shadow: 0 12px 34px rgba(0,0,0,0.48); }
     .cs-media-popover.cs-open { display: block; }
     .cs-media-popover.cs-media-expanded { width: min(760px, 100%); max-height: none; }
     .cs-media-popover.cs-install-guide-popover { width: min(634px, calc(100% - 16px)); max-height: min(80vh, 720px); }
+    .cs-media-popover.cs-text-popover { width: auto; min-width: 260px; max-width: min(680px, calc(100% - 16px)); max-height: min(72vh, 520px); }
     .cs-media-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .cs-media-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 12px; font-weight: 700;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -464,6 +481,8 @@
     .cs-media-viewer-close:hover { background: rgba(43,45,49,0.94); border-color: rgba(255,255,255,0.4); }
     .cs-media-body iframe { aspect-ratio: 16 / 9; height: auto; }
     .cs-media-link { color: #93c5fd; font-size: 12px; overflow-wrap: anywhere; }
+    .cs-text-popup-content { width: auto; min-width: 220px; max-width: 100%; max-height: calc(min(72vh, 520px) - 52px); overflow: auto; color: #d7d9de; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .cs-text-popup-content .cs-text-badge { vertical-align: baseline; }
     .cs-install-guide-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
       min-height: 20px; padding: 1px 7px 1px 6px; border: 1px solid rgba(0,255,163,0.34); border-radius: 999px;
       background: rgba(0,255,163,0.1); color: #8fffd5; font: inherit; font-size: 12px; font-weight: 800;
@@ -471,6 +490,8 @@
     .cs-install-guide-trigger::before { content: "↗"; flex: 0 0 auto; color: #00ffa3; font-size: 0.92em; line-height: 1; }
     .cs-install-guide-trigger:hover, .cs-install-guide-trigger.cs-open { border-color: rgba(0,255,163,0.58); background: rgba(0,255,163,0.18); color: #d7f7ea; }
     .cs-install-guide-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-install-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; white-space: normal; overflow: visible; text-overflow: clip; }
+    .cs-install-notice-text { min-width: 0; }
     .cs-install-guide { display: grid; gap: 10px; width: fit-content; max-width: 100%; max-height: min(62vh, 620px); overflow-y: auto; color: #d7d9de; font-size: 12px; line-height: 1.5; }
     .cs-install-guide-popover .cs-install-guide { width: 100%; max-height: calc(min(80vh, 720px) - 48px); }
     .cs-install-guide { scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.58) rgba(15,16,18,0.7); }
@@ -480,6 +501,9 @@
     .cs-install-guide::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,255,163,0.9), rgba(0,200,120,0.64)); }
     .cs-install-guide-section { display: grid; gap: 6px; width: fit-content; max-width: 100%; padding: 9px; border: 1px solid rgba(157,158,163,0.2); border-radius: 8px; background: rgba(255,255,255,0.035); }
     .cs-install-guide-section h4 { margin: 0; color: #8fffd5; font-size: 12px; line-height: 1.2; }
+    .cs-install-guide-section p { margin: 0; color: #b7bac1; font-size: 12px; line-height: 1.5; }
+    .cs-install-guide-link { color: #93c5fd; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+    .cs-install-guide-link:hover { text-decoration: underline; }
     .cs-install-guide-section img { width: auto; max-width: min(720px, calc(100vw - 92px)); max-height: 300px; object-fit: contain; cursor: zoom-in; }
 
     .cs-cell-today { background: rgba(0,255,163,0.08); border-color: rgba(0,255,163,0.45); }
@@ -488,6 +512,7 @@
     .cs-cell-today .cs-cell-title,
     .cs-cell-today .cs-part-text { color: #efeff1; }
 
+    .cs-cell-hoverable { cursor: pointer; }
     .cs-cell-hoverable:hover { background: #2b2d31; border-color: #4a4c52; }
     .cs-cell-today.cs-cell-hoverable:hover { background: rgba(0,255,163,0.14); }
 
@@ -514,11 +539,28 @@
 
     .cs-footer { display: flex; align-items: center; justify-content: space-between;
       gap: 6px; padding: 9px 14px; border-top: 1px solid #2e3033; flex-wrap: wrap;
-      border-radius: 0 0 10px 10px; background: rgba(15,16,18,0.45); }
+      background: rgba(15,16,18,0.45); }
+    .cs-footer:last-child { border-radius: 0 0 10px 10px; }
     .cs-notice { display: flex; flex-direction: column; }
     .cs-schedule-notice { flex: 1 1 auto; min-width: 0; margin-right: 12px; color: #6b6d73;
       font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-schedule-notice + .cs-schedule-notice { margin-top: 5px; }
+    .cs-update-history-section { padding: 10px 14px 13px; border-top: 1px solid #2e3033; border-radius: 0 0 10px 10px; background: #17181b; }
+    .cs-update-history-section.cs-update-history-collapsed { padding-bottom: 10px; }
+    .cs-update-history-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+    .cs-update-history-section.cs-update-history-collapsed .cs-update-history-head { margin-bottom: 0; }
+    .cs-update-history-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 12px; font-weight: 900; line-height: 1.2; }
+    .cs-update-history-controls { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+    .cs-update-history-toggle { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid rgba(143,255,213,0.24); border-radius: 6px; background: rgba(255,255,255,0.05); color: #8fffd5; cursor: pointer; }
+    .cs-update-history-toggle:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
+    .cs-update-history-caret { font-size: 12px; font-weight: 900; line-height: 1; }
+    .cs-update-history-arrow { width: 24px; height: 24px; border: 1px solid rgba(143,255,213,0.24); border-radius: 6px; background: rgba(255,255,255,0.05); color: #d7f7ea; font-size: 16px; font-weight: 900; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .cs-update-history-arrow:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
+    .cs-update-history-viewport { min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; }
+    .cs-update-history-viewport::-webkit-scrollbar { display: none; }
+    .cs-update-history-track { display: flex; align-items: stretch; gap: 8px; min-width: max-content; padding: 0 2px 4px 0; }
+    .cs-update-history-card.cs-inline-text-popup-trigger { flex: 0 0 auto; width: 142px; min-height: 42px; padding: 8px 10px; border-radius: 8px; scroll-snap-align: start; justify-content: flex-start; white-space: normal; text-align: left; line-height: 1.25; }
+    .cs-update-history-card .cs-text-popup-label { display: -webkit-box; white-space: normal; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-overflow: ellipsis; }
     .cs-footer-meta-frame { flex: 0 0 auto; align-self: flex-end; display: inline-flex; align-items: center; gap: 8px; }
     .cs-updated { flex-shrink: 0; color: #6b6d73; font-size: 12px; }
     .cs-refresh { background: none; border: none; cursor: pointer; color: #6b6d73;
@@ -547,6 +589,8 @@
     .cs-feedback-count.cs-near-limit { color: #e8c268; }
     .cs-feedback-input:focus, .cs-feedback-select:focus, .cs-feedback-textarea:focus { border-color: #00c878; }
     .cs-feedback-notice { margin: -1px 0 6px; color: #ff7b7b; font-size: 12px; line-height: 1.45; }
+    .cs-feedback-contact-toggle { display: inline-flex; align-items: center; justify-content: center; width: 100%; margin-top: 10px; border: 1px solid rgba(0,255,163,0.28); border-radius: 7px; background: rgba(0,255,163,0.08); color: #8fffd5; padding: 7px 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .cs-feedback-contact-toggle:hover, .cs-feedback-contact-toggle.cs-open { background: rgba(0,255,163,0.14); color: #d7f7ea; }
     .cs-feedback-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
     .cs-feedback-status { flex: 1 1 auto; min-width: 0; color: #9d9ea3; font-size: 12px; line-height: 1.35; }
     .cs-feedback-status.cs-error { color: #ff7b7b; }
@@ -623,6 +667,23 @@
     .cs-info-frame { min-width: 0; height: 100%; padding: 12px 13px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.025); }
     .cs-info-title { color: #efeff1; font-size: 13px; line-height: 1.2; font-weight: 800; margin-bottom: 8px; }
     .cs-info-list { list-style: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-subhead { display: flex; align-items: center; gap: 10px; padding: 14px 0 7px; color: #f2fff9; font-size: 12px; font-weight: 900; line-height: 1.2; }
+    .cs-info-subhead:first-child { padding-top: 10px; }
+    .cs-info-subhead::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
+    .cs-info-subhead-label { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .cs-info-group { padding: 13px 0 9px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-group:first-child { padding-top: 10px; }
+    .cs-info-group-title { display: flex; align-items: center; gap: 10px; color: #ffffff; font-size: 16px; font-weight: 950; line-height: 1.25; }
+    .cs-info-group-title::before { content: ""; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #00FFA3; box-shadow: 0 0 0 3px rgba(0,255,163,0.12); }
+    .cs-info-group-title::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
+    .cs-info-detail { padding: 9px 0 0; }
+    .cs-info-detail + .cs-info-detail { margin-top: 9px; border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-detail-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+    .cs-info-detail-toggle { flex: 0 0 auto; width: 24px; height: 24px; border: 1px solid rgba(143,255,213,0.22); border-radius: 6px; background: rgba(255,255,255,0.04); color: #d7f7ea; font-size: 13px; font-weight: 900; line-height: 1; cursor: pointer; }
+    .cs-info-detail-toggle:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
+    .cs-info-detail-body { display: block; padding: 8px 0 0 13px; color: #c9cacd; font-size: 13px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+    .cs-info-detail-body[hidden] { display: none; }
     .cs-info-item { position: relative; display: block; padding: 10px 0 10px 13px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #c9cacd; font-size: 13px; line-height: 1.55; }
     .cs-info-item::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 12px; width: 2px; border-radius: 2px; background: rgba(0,255,163,0.55); }
     .cs-info-dot { display: none; }
@@ -683,13 +744,14 @@
     .cs-gnimti-stat-label { display: flex; align-items: center; justify-content: center; min-height: 24px; border-radius: 999px; background: rgba(0,255,163,0.11); color: #bfffe7; font-size: 12px; font-weight: 800; padding: 5px 10px; }
     .cs-gnimti-stat-label-team { background: rgba(82,118,255,0.14); color: #c9d4ff; }
     .cs-gnimti-stat-item img { display: block; width: 100%; height: 45%; min-height: 0; object-fit: contain; }
+    .cs-gnimti-stat-empty { display: flex; align-items: center; justify-content: center; min-width: 160px; min-height: 220px; padding: 14px; border: 1px dashed rgba(157,158,163,0.22); border-radius: 7px; color: #8b8d92; font-size: 12px; font-weight: 800; text-align: center; }
     .cs-gnimti-empty-detail { margin: auto; color: #8b8d92; font-size: 13px; font-weight: 600; }
     .cs-info-mention { color: #efeff1; font-weight: 700; text-decoration: none; }
     .cs-info-mention:hover { color: #00FFA3; text-decoration: underline; text-underline-offset: 3px; }
     .cs-info-tag { color: #9d9ea3; font-weight: 700; }
     .cs-info-tag::before { content: "#"; color: #6b6d73; margin-right: 1px; }
-    .cs-info-section .cs-inline-feedback-trigger, .cs-info-media-trigger { height: auto; min-height: 0; padding: 0 2px; border: 0; border-radius: 0; background: transparent; color: #93c5fd; font-size: inherit; font-weight: 700; line-height: inherit; vertical-align: baseline; }
-    .cs-info-section .cs-inline-feedback-trigger:hover, .cs-info-media-trigger:hover, .cs-info-media-trigger.cs-open { background: transparent; color: #bfdbfe; text-decoration: underline; text-underline-offset: 3px; }
+    .cs-info-section .cs-inline-feedback-trigger, .cs-info-media-trigger, .cs-info-text-popup-trigger { height: auto; min-height: 0; padding: 0 2px; border: 0; border-radius: 0; background: transparent; color: #93c5fd; font-size: inherit; font-weight: 700; line-height: inherit; vertical-align: baseline; }
+    .cs-info-section .cs-inline-feedback-trigger:hover, .cs-info-media-trigger:hover, .cs-info-media-trigger.cs-open, .cs-info-text-popup-trigger:hover, .cs-info-text-popup-trigger.cs-open { background: transparent; color: #bfdbfe; text-decoration: underline; text-underline-offset: 3px; }
     .cs-info-media-trigger::before { content: ""; display: none; }
 
     /* 비라이브 채널 화면: _action 첫 위치의 일정 버튼 + absolute 패널 */
@@ -753,6 +815,13 @@
     :host(.cs-light-theme) .cs-pop-text,
     :host(.cs-light-theme) .cs-info-list { border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-pop-title { border-left-color: #03a950; background: rgba(3,169,80,0.1); color: #083d26; }
+    :host(.cs-light-theme) .cs-info-subhead { color: #1e2024; }
+    :host(.cs-light-theme) .cs-info-subhead::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
+    :host(.cs-light-theme) .cs-info-group, :host(.cs-light-theme) .cs-info-detail + .cs-info-detail { border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-info-group-title, :host(.cs-light-theme) .cs-info-detail-title { color: #1e2024; }
+    :host(.cs-light-theme) .cs-info-group-title::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
+    :host(.cs-light-theme) .cs-info-detail-body { color: #4b4f55; }
+    :host(.cs-light-theme) .cs-info-detail-toggle { border-color: rgba(3,169,80,0.22); background: rgba(3,169,80,0.07); color: #047344; }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
     :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { background: rgba(3,169,80,0.07); }
@@ -782,13 +851,14 @@
 
     :host(.cs-light-theme) .cs-gnimti-stat-label { background: rgba(3,169,80,0.12); color: #007a3a; }
     :host(.cs-light-theme) .cs-gnimti-stat-label-team { background: rgba(72,93,210,0.12); color: #3344aa; }
+    :host(.cs-light-theme) .cs-gnimti-stat-empty { border-color: #d3d6da; color: #777c83; }
     :host(.cs-light-theme) .cs-gnimti-member.cs-selected { background: #eef0f2; box-shadow: inset 0 0 0 1px rgba(3,169,80,0.4); }
     :host(.cs-light-theme) .cs-info-item::before { background: rgba(3,169,80,0.55); }
     :host(.cs-light-theme) .cs-info-mention { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-mention:hover { color: #008a43; }
     :host(.cs-light-theme) .cs-info-tag { color: #6f747b; }
-    :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger, :host(.cs-light-theme) .cs-info-media-trigger { color: #1d4ed8; background: transparent; border: 0; }
-    :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger.cs-open { color: #1e40af; background: transparent; }
+    :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger, :host(.cs-light-theme) .cs-info-media-trigger, :host(.cs-light-theme) .cs-info-text-popup-trigger { color: #1d4ed8; background: transparent; border: 0; }
+    :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger.cs-open, :host(.cs-light-theme) .cs-info-text-popup-trigger:hover, :host(.cs-light-theme) .cs-info-text-popup-trigger.cs-open { color: #1e40af; background: transparent; }
     :host(.cs-light-theme) .cs-cell-today .cs-cell-date,
     :host(.cs-light-theme) .cs-cell-today .cs-cell-time { color: #008a43; }
     :host(.cs-light-theme) .cs-cell-today .cs-cell-title,
@@ -831,6 +901,12 @@
     :host(.cs-light-theme) .cs-vod-btn:hover { background: rgba(3,169,80,0.17); }
     :host(.cs-light-theme) .cs-vod-btn-disabled,
     :host(.cs-light-theme) .cs-vod-btn-disabled:hover { color: #a3a7ad; background: #e9ebed; }
+    :host(.cs-light-theme) .cs-update-history-section { background: #f8f9fa; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-update-history-title { color: #1e2024; }
+    :host(.cs-light-theme) .cs-update-history-toggle,
+    :host(.cs-light-theme) .cs-update-history-arrow { border-color: rgba(3,169,80,0.22); background: rgba(3,169,80,0.07); color: #047344; }
+    :host(.cs-light-theme) .cs-update-history-toggle:hover,
+    :host(.cs-light-theme) .cs-update-history-arrow:hover { background: rgba(3,169,80,0.14); color: #035c36; }
     :host(.cs-light-theme) .cs-footer { background: #f5f6f7; border-color: #e1e3e6; }
     :host(.cs-light-theme) .cs-schedule-notice,
     :host(.cs-light-theme) .cs-updated { color: #777c83; }
@@ -855,6 +931,8 @@
     :host(.cs-light-theme) .cs-feedback-input,
     :host(.cs-light-theme) .cs-feedback-select,
     :host(.cs-light-theme) .cs-feedback-textarea { background: #f7f8f9; border-color: #d8dadd; color: #1e2024; }
+    :host(.cs-light-theme) .cs-feedback-contact-toggle { border-color: rgba(3,169,80,0.28); background: rgba(3,169,80,0.08); color: #047344; }
+    :host(.cs-light-theme) .cs-feedback-contact-toggle:hover, :host(.cs-light-theme) .cs-feedback-contact-toggle.cs-open { background: rgba(3,169,80,0.14); color: #035c36; }
     :host(.cs-light-theme) .cs-popover { background: #ffffff; border-color: #d8dadd; box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
     :host(.cs-light-theme) .cs-pop-arrow { background: #ffffff; border-color: #d8dadd; }
     :host(.cs-light-theme) .cs-pop-date { color: #1e2024; }
@@ -1028,7 +1106,7 @@
     }
 
     return '<div class="' + classes.join(" ") + '" data-date="' + key + '"' +
-      (hoverable ? ' data-hoverable="1"' : "") + ">" +
+      (hoverable ? ' data-hoverable="1" role="button" tabindex="0"' : "") + ">" +
       dateRow + body + (state.gameOnly || compact ? "" : timeIndicatorsHtml(entry, isPast)) + "</div>";
   }
 
@@ -1116,7 +1194,7 @@
       '<div class="cs-notice">' +
             '<p class="cs-schedule-notice" title="◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.">◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.</p>' +
       '<p class="cs-schedule-notice" title="◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.">◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.</p>' +
-      '<p class="cs-schedule-notice" title="◈ 모바일 설치 방법은 링크를 눌러 확인할 수 있습니다.">' + directiveHtml('◈ 모바일에서는 홈 화면에 추가해 앱처럼 사용할 수 있습니다. :install[모바일 설치 방법]') + '</p>' +
+      '<p class="cs-schedule-notice cs-install-notice" title="◈ 모바일 설치 방법은 OS별 버튼을 눌러 확인할 수 있습니다."><span class="cs-install-notice-text">◈ 모바일에서는 홈 화면에 추가해 앱처럼 사용할 수 있습니다.</span>' + installGuideTriggerHtml("Android", "android") + installGuideTriggerHtml("iOS", "ios") + '</p>' +
       '</div>' +
       '<div class="cs-footer-meta-frame">' +
       '<button type="button" class="cs-feedback-open' + (state.feedbackOpen ? " cs-open" : "") + '" id="cs-feedback-open" aria-expanded="' + String(state.feedbackOpen) + '">문의·제보</button>' +
@@ -1124,6 +1202,7 @@
       '<button class="cs-refresh" id="cs-refresh" title="새로고침">⟳</button>' +
       "</div>" +
       "</div>" +
+      updateHistoryHtml() +
       feedbackPanelHtml()) +
       "</div>";
 
@@ -1138,15 +1217,63 @@
     return '<span class="cs-time-indicators">' + html + "</span>";
   }
 
+  function infoSectionTitle(text) {
+    const match = String(text || "").trim().match(/^@section\s*:\s*([\s\S]+)$/i);
+    return match ? match[1].trim() : "";
+  }
+
+  function structuredInfoDataFromText(text) {
+    const raw = String(text || "").trim();
+    if (!raw.startsWith(INFO_V2_PREFIX)) return null;
+    try {
+      const parsed = JSON.parse(raw.slice(INFO_V2_PREFIX.length));
+      const items = Array.isArray(parsed.items) ? parsed.items.map((entry) => ({
+        title: String((entry && entry.title) || ""),
+        body: String((entry && entry.body) || ""),
+        collapsed: entry && entry.collapsed !== false,
+      })).filter((entry) => entry.title.trim() || entry.body.trim()) : [];
+      return { title: String((parsed && parsed.title) || ""), items };
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function structuredInfoHtml(data, infoIndex) {
+    if (!data || !data.items.length) return "";
+    const title = String(data.title || "").trim();
+    const groupTitle = title ? '<div class="cs-info-group-title">' + directiveHtml(title, { infoMode: true }) + '</div>' : "";
+    const details = data.items.map((entry, subIndex) => {
+      const key = infoIndex + "-" + subIndex;
+      const defaultExpanded = entry.collapsed === false;
+      const expanded = state.infoExpanded.has(key) || (defaultExpanded && !state.infoExpanded.has("closed:" + key));
+      const body = String(entry.body || "").trim();
+      const label = expanded ? "\u25b2" : "\u25bc";
+      const titleHtml = directiveHtml(String(entry.title || "").trim() || "\uc138\ubd80 \uc18c\uc2dd", { infoMode: true });
+      return '<div class="cs-info-detail" data-info-detail="' + escapeHtml(key) + '">' +
+        '<div class="cs-info-detail-head">' +
+          '<span class="cs-info-detail-title">' + titleHtml + '</span>' +
+          '<button type="button" class="cs-info-detail-toggle" data-info-toggle="' + escapeHtml(key) + '" aria-expanded="' + String(expanded) + '" aria-label="' + (expanded ? "\uc811\uae30" : "\ud3bc\uce58\uae30") + '">' + label + '</button>' +
+        '</div>' +
+        '<div class="cs-info-detail-body"' + (expanded ? "" : " hidden") + '>' + directiveHtml(body, { infoMode: true }) + '</div>' +
+      '</div>';
+    }).join("");
+    return '<li class="cs-info-group">' + groupTitle + details + '</li>';
+  }
   function infoSectionHtml() {
     const items = (state.channel && state.channel.info) || [];
     if (!items.length) return "";
 
     const itemsHtml = items
-      .map((text) =>
-        '<li class="cs-info-item"><span class="cs-info-dot"></span>' +
-        '<span class="cs-info-text">' + directiveHtml(text, { infoMode: true }) + "</span></li>"
-      )
+      .map((text, index) => {
+        const structured = structuredInfoDataFromText(text);
+        if (structured) return structuredInfoHtml(structured, index);
+        const sectionTitle = infoSectionTitle(text);
+        if (sectionTitle) {
+          return '<li class="cs-info-subhead"><span class="cs-info-subhead-label">' + directiveHtml(sectionTitle, { infoMode: true }) + "</span></li>";
+        }
+        return '<li class="cs-info-item"><span class="cs-info-dot"></span>' +
+          '<span class="cs-info-text">' + directiveHtml(text, { infoMode: true }) + "</span></li>";
+      })
       .join("");
 
     return (
@@ -1178,6 +1305,66 @@
     const latest = state.data && state.data.latestExtensionVersion;
     const deployed = state.deployedExtensionVersion;
     return !!latest && !!deployed && compareVersions(latest, EXTENSION_VERSION) > 0 && compareVersions(latest, deployed) === 0;
+  }
+
+  function parseUpdateHistoryPayload(raw) {
+    const payload = String(raw || "").trim();
+    if (!payload) return [];
+    try {
+      const parsed = JSON.parse(payload);
+      const title = String((parsed && parsed.title) || "").trim();
+      const body = String((parsed && parsed.body) || "").trim();
+      return title || body ? [{ label: title || "업데이트", body }] : [];
+    } catch (_e) {}
+    const items = [];
+    for (let i = 0; i < payload.length; i++) {
+      if (payload[i] !== ":") continue;
+      const item = parseTextPopupDirectiveAt(payload, i);
+      if (!item) continue;
+      if (item.body) items.push({ label: item.label || "업데이트", body: item.body });
+      i = item.end - 1;
+    }
+    if (items.length) return items;
+    return [{ label: payload.split(/\r?\n/)[0] || "업데이트", body: payload }];
+  }
+
+  function updateHistoryItems() {
+    return ((state.data && state.data.updateHistories) || [])
+      .slice()
+      .reverse()
+      .flatMap(parseUpdateHistoryPayload)
+      .filter((item) => item && String(item.body || "").trim());
+  }
+
+  function updateHistoryCardHtml(item) {
+    const label = String((item && item.label) || "\uC5C5\uB370\uC774\uD2B8").trim() || "\uC5C5\uB370\uC774\uD2B8";
+    const body = String((item && item.body) || "").trim();
+    if (!body) return "";
+    return '<button type="button" class="cs-update-history-card cs-inline-text-popup-trigger" data-text-popup-label="' + escapeHtml(label) + '" data-text-popup-body="' + escapeHtml(encodeURIComponent(body)) + '"><span class="cs-text-popup-label">' + directiveHtml(label, { disableProfileLinks: true }) + '</span></button>';
+  }
+
+  function updateHistoryHtml() {
+    const items = updateHistoryItems();
+    if (!items.length) return "";
+    const cards = items.map(updateHistoryCardHtml).filter(Boolean).join("");
+    if (!cards) return "";
+    const expanded = !!state.updateHistoryExpanded;
+    const controls = expanded
+      ? '<span class="cs-update-history-controls" aria-label="\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED \uC774\uB3D9">' +
+        '<button type="button" class="cs-update-history-arrow" data-update-history-scroll="-1" aria-label="\uC774\uC804 \uC5C5\uB370\uC774\uD2B8">\u2039</button>' +
+        '<button type="button" class="cs-update-history-arrow" data-update-history-scroll="1" aria-label="\uB2E4\uC74C \uC5C5\uB370\uC774\uD2B8">\u203A</button>' +
+        '</span>'
+      : "";
+    const toggleLabel = expanded ? "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED \uC811\uAE30" : "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED \uD3BC\uCE58\uAE30";
+    return '<div class="cs-section cs-update-history-section' + (expanded ? "" : " cs-update-history-collapsed") + '" aria-label="\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED">' +
+      '<div class="cs-update-history-head">' +
+      '<span class="cs-update-history-title">\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED</span>' +
+      controls +
+      '<button type="button" class="cs-update-history-toggle" id="cs-update-history-toggle" aria-expanded="' + String(expanded) + '" aria-label="' + toggleLabel + '" title="' + toggleLabel + '">' +
+      '<span class="cs-update-history-caret" aria-hidden="true">' + (expanded ? "\u25B2" : "\u25BC") + '</span>' +
+      '</button></div>' +
+      (expanded ? '<div class="cs-update-history-viewport" id="cs-update-history-viewport"><div class="cs-update-history-track" id="cs-update-history-track">' + cards + '</div></div>' : "") +
+      '</div>';
   }
 
   function noticeItems() {
@@ -1237,8 +1424,10 @@
       '<label class="cs-feedback-label" for="cs-feedback-link">관련 링크</label>' +
       '<p class="cs-feedback-notice">검증 가능한 링크가 없으면 일정 반영이 제한될 수 있습니다.</p>' +
       '<input class="cs-feedback-input" id="cs-feedback-link" type="url" inputmode="url" placeholder="https://" value="' + escapeHtml(draft.relatedLink) + '" /></div>' +
-      // '<label class="cs-feedback-label" for="cs-feedback-contact">이메일 (선택)</label>' +
-      // '<input class="cs-feedback-input" id="cs-feedback-contact" type="email" value="' + escapeHtml(draft.contact) + '" />' +
+      '<button type="button" class="cs-feedback-contact-toggle' + (draft.contactOpen ? " cs-open" : "") + '" id="cs-feedback-contact-toggle" aria-expanded="' + String(!!draft.contactOpen) + '">' + (draft.contactOpen ? "회신 메일 입력 닫기" : "회신 받을 메일 추가") + "</button>" +
+      '<div id="cs-feedback-contact-field"' + (draft.contactOpen ? "" : " hidden") + ">" +
+      '<label class="cs-feedback-label" for="cs-feedback-contact">회신 받을 메일</label>' +
+      '<input class="cs-feedback-input" id="cs-feedback-contact" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" value="' + escapeHtml(draft.contact) + '" /></div>' +
       '<div class="cs-feedback-actions"><span class="cs-feedback-status" id="cs-feedback-status" aria-live="polite"></span>' +
       '<button type="button" class="cs-feedback-submit" id="cs-feedback-submit"' + (draft.message.trim() ? "" : " disabled") + ">보내기</button></div>" +
       "</div>"
@@ -1316,9 +1505,19 @@
     const cls = "cs-inline-media-trigger" + (infoMode ? " cs-info-media-trigger" : "");
     return '<button type="button" class="' + cls + '" data-media-label="' + escapeHtml(safeLabel) + '" data-media-url="' + escapeHtml(safeUrl) + '"><span class="cs-inline-media-label">' + directiveHtml(safeLabel, { disableProfileLinks: true, infoMode }) + "</span></button>";
   }
-  function installGuideTriggerHtml(label) {
+  function textPopupTriggerHtml(label, body, options) {
+    const safeLabel = String(label || "\uD14D\uC2A4\uD2B8").trim() || "\uD14D\uC2A4\uD2B8";
+    const safeBody = String(body || "").trim();
+    const infoMode = !!(options && options.infoMode);
+    if (!safeBody) return directiveHtml(safeLabel, { disableProfileLinks: true, infoMode });
+    const cls = "cs-inline-text-popup-trigger" + (infoMode ? " cs-info-text-popup-trigger" : "");
+    return '<button type="button" class="' + cls + '" data-text-popup-label="' + escapeHtml(safeLabel) + '" data-text-popup-body="' + escapeHtml(encodeURIComponent(safeBody)) + '"><span class="cs-text-popup-label">' + directiveHtml(safeLabel, { disableProfileLinks: true, infoMode }) + "</span></button>";
+  }
+  function installGuideTriggerHtml(label, platform) {
     const safeLabel = String(label || "모바일 설치 방법").trim() || "모바일 설치 방법";
-    return '<button type="button" class="cs-install-guide-trigger" data-install-guide="1" data-install-label="' + escapeHtml(safeLabel) + '"><span class="cs-install-guide-label">' + directiveHtml(safeLabel, { disableProfileLinks: true }) + '</span></button>';
+    const safePlatform = String(platform || "").trim().toLowerCase();
+    const platformAttr = safePlatform ? ' data-install-platform="' + escapeHtml(safePlatform) + '"' : "";
+    return '<button type="button" class="cs-install-guide-trigger" data-install-guide="1" data-install-label="' + escapeHtml(safeLabel) + '"' + platformAttr + '><span class="cs-install-guide-label">' + directiveHtml(safeLabel, { disableProfileLinks: true }) + '</span></button>';
   }
 
   function parseInstallDirectiveAt(raw, start) {
@@ -1353,6 +1552,20 @@
       label: body.slice(0, braceOpen).trim(),
       url: body.slice(braceOpen + 1, braceClose).trim(),
       end: close + 1,
+    };
+  }
+
+  function parseTextPopupDirectiveAt(raw, start) {
+    if (raw.slice(start, start + 3).toLowerCase() !== ":p[") return null;
+    const labelStart = start + 3;
+    const braceOpen = raw.indexOf("{", labelStart);
+    if (braceOpen < 0) return null;
+    const close = raw.indexOf("}]", braceOpen + 1);
+    if (close < 0) return null;
+    return {
+      label: raw.slice(labelStart, braceOpen).trim(),
+      body: raw.slice(braceOpen + 1, close).trim(),
+      end: close + 2,
     };
   }
 
@@ -1440,6 +1653,8 @@
     const trimmed = raw.trim();
     const wholeMedia = parseMediaDirectiveAt(trimmed, 0);
     if (wholeMedia && wholeMedia.end === trimmed.length) return mediaTriggerHtml(wholeMedia.label, wholeMedia.url, options);
+    const wholeTextPopup = parseTextPopupDirectiveAt(trimmed, 0);
+    if (wholeTextPopup && wholeTextPopup.end === trimmed.length) return textPopupTriggerHtml(wholeTextPopup.label, wholeTextPopup.body, options);
     const wholeInstall = parseInstallDirectiveAt(trimmed, 0);
     if (wholeInstall && wholeInstall.end === trimmed.length) return installGuideTriggerHtml(wholeInstall.label);
     const wholeBracket = trimmed.match(/^:(s|t)\[/i);
@@ -1467,6 +1682,14 @@
         plainStart = i;
         continue;
       }
+      const textPopup = parseTextPopupDirectiveAt(raw, i);
+      if (textPopup) {
+        flushPlain(i);
+        html += textPopupTriggerHtml(textPopup.label, textPopup.body, options);
+        i = textPopup.end;
+        plainStart = i;
+        continue;
+      }
       const media = parseMediaDirectiveAt(raw, i);
       if (media) {
         flushPlain(i);
@@ -1474,6 +1697,18 @@
         i = media.end;
         plainStart = i;
         continue;
+      }
+      if (raw.slice(i, i + 3).toLowerCase() === ":p[") {
+        const braceOpen = raw.indexOf("{", i + 3);
+        const close = braceOpen >= 0 ? raw.indexOf("}]", braceOpen + 1) : -1;
+        if (braceOpen > i && close > braceOpen) {
+          const label = raw.slice(i + 3, braceOpen).trim();
+          flushPlain(i);
+          if (label) html += directiveHtml(label, options);
+          i = close + 2;
+          plainStart = i;
+          continue;
+        }
       }
       if (raw.slice(i, i + 3).toLowerCase() === ":m[") {
         const end = findDirectiveBracketEnd(raw, i + 2);
@@ -1529,9 +1764,13 @@
     return /^[0-9a-f]{32}$/i.test(id);
   }
 
+  function channelDisplayName(c) {
+    return String((c && c.channelName) || "").trim() || "이름 없음";
+  }
+
   function infoProfileTextHtml(c, disableLink) {
     if (!c) return "";
-    const name = String(c.channelName || "").trim() || "이름 없음";
+    const name = channelDisplayName(c);
     if (!disableLink && isRealChzzkChannelRef(c)) {
       const url = "https://chzzk.naver.com/" + encodeURIComponent(c.channelId);
       return '<a class="cs-info-mention" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(name) + "</a>";
@@ -1540,7 +1779,7 @@
   }
   function channelAvatarLinkHtml(c, disableLink) {
     if (!c) return "";
-    const tip = '<span class="cs-member-tip">' + escapeHtml(c.channelName || "이름 없음") + "</span>";
+    const tip = '<span class="cs-member-tip">' + escapeHtml(channelDisplayName(c)) + "</span>";
     if (!disableLink && isRealChzzkChannelRef(c)) {
       const url = "https://chzzk.naver.com/" + encodeURIComponent(c.channelId);
       return '<a class="cs-member-avatar" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' +
@@ -1548,6 +1787,7 @@
     }
     return '<span class="cs-member-avatar">' + memberAvatarImgHtml(c) + tip + "</span>";
   }
+
 
   // 칸 본문: 부별 컨텐츠(entry.parts)가 있으면 부마다 한 줄, 없으면 기존 짧은명/제목 한 줄
   // 합방 멤버는 그리드에는 노출하지 않고 팝오버에서만 보여준다.
@@ -1607,6 +1847,8 @@
     const updateRefresh = s.getElementById("cs-update-refresh");
     const noticePrev = s.getElementById("cs-notice-prev");
     const noticeNext = s.getElementById("cs-notice-next");
+    const updateHistoryViewport = s.getElementById("cs-update-history-viewport");
+    const updateHistoryToggle = s.getElementById("cs-update-history-toggle");
     const monthToggle = s.getElementById("cs-month-toggle");
     const extensionCollapse = s.getElementById("cs-extension-collapse");
     const gameToggle = s.getElementById("cs-game-toggle");
@@ -1619,6 +1861,8 @@
     const feedbackMessage = s.getElementById("cs-feedback-message");
     const feedbackLinkField = s.getElementById("cs-feedback-link-field");
     const feedbackLink = s.getElementById("cs-feedback-link");
+    const feedbackContactToggle = s.getElementById("cs-feedback-contact-toggle");
+    const feedbackContactField = s.getElementById("cs-feedback-contact-field");
     const feedbackContact = s.getElementById("cs-feedback-contact");
     const feedbackStatus = s.getElementById("cs-feedback-status");
     const feedbackCount = s.getElementById("cs-feedback-count");
@@ -1660,26 +1904,68 @@
       state.noticeIndex = (state.noticeIndex + 1) % items.length;
       render();
     });
+    if (updateHistoryToggle) updateHistoryToggle.addEventListener("click", () => {
+      state.updateHistoryExpanded = !state.updateHistoryExpanded;
+      closeMediaPopover();
+      render();
+    });
+    s.querySelectorAll("[data-update-history-scroll]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!updateHistoryViewport) return;
+        const dir = Number(button.getAttribute("data-update-history-scroll") || 1) || 1;
+        const amount = Math.max(150, Math.floor(updateHistoryViewport.clientWidth * 0.78));
+        updateHistoryViewport.scrollBy({ left: dir * amount, behavior: "smooth" });
+      });
+    });
 
     if (grid) {
       grid.addEventListener("mouseover", (ev) => {
         const cell = ev.target.closest ? ev.target.closest("[data-hoverable]") : null;
-        if (cell && grid.contains(cell)) scheduleOpenPopover(cell);
+        if (!cell || !grid.contains(cell)) return;
+        if (cell.contains(ev.relatedTarget)) return;
+        scheduleOpenPopover(cell, { pinned: false });
       });
       grid.addEventListener("mouseout", (ev) => {
         const cell = ev.target.closest ? ev.target.closest("[data-hoverable]") : null;
-        if (cell) scheduleClosePopover();
+        if (!cell || !grid.contains(cell)) return;
+        if (cell.contains(ev.relatedTarget)) return;
+        scheduleClosePopover();
+      });
+      grid.addEventListener("click", (ev) => {
+        const cell = ev.target.closest ? ev.target.closest("[data-hoverable]") : null;
+        if (!cell || !grid.contains(cell)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        scheduleOpenPopover(cell, { pinned: true });
+      });
+      grid.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " " && ev.code !== "Space" && ev.code !== "Spacebar") return;
+        const cell = ev.target.closest ? ev.target.closest("[data-hoverable]") : null;
+        if (!cell || !grid.contains(cell)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        scheduleOpenPopover(cell, { pinned: true });
       });
     }
 
     if (popover) {
-      // 팝오버 위로 마우스가 이동하면 닫힘 취소 (긴 메모 읽기 대비)
       popover.addEventListener("mouseenter", () => {
         if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
       });
       popover.addEventListener("mouseleave", scheduleClosePopover);
     }
 
+    if (!state.scheduleOutsideHandler) {
+      state.scheduleOutsideHandler = (event) => {
+        if (!state.host || !state.shadow) return;
+        const path = event.composedPath ? event.composedPath() : [];
+        if (path.includes(state.host)) return;
+        closePopover();
+      };
+      document.addEventListener("mousedown", state.scheduleOutsideHandler);
+    }
     const setFeedbackOpen = (open) => {
       state.feedbackOpen = open;
       if (open) closePopover();
@@ -1691,6 +1977,23 @@
       if (open && feedbackMessage) setTimeout(() => feedbackMessage.focus(), 0);
     };
     if (root) root.onclick = (event) => {
+      const infoToggle = event.target.closest && event.target.closest("[data-info-toggle]");
+      if (infoToggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        const key = infoToggle.getAttribute("data-info-toggle") || "";
+        if (!key) return;
+        const expandedNow = infoToggle.getAttribute("aria-expanded") === "true";
+        if (expandedNow) {
+          state.infoExpanded.delete(key);
+          state.infoExpanded.add("closed:" + key);
+        } else {
+          state.infoExpanded.add(key);
+          state.infoExpanded.delete("closed:" + key);
+        }
+        render();
+        return;
+      }
       const mediaImage = event.target.closest && event.target.closest(".cs-media-expandable");
       if (mediaImage) {
         event.preventDefault();
@@ -1706,6 +2009,14 @@
         else showInstallGuidePopover(installTrigger);
         return;
       }
+      const textPopupTrigger = event.target.closest && event.target.closest(".cs-inline-text-popup-trigger");
+      if (textPopupTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (textPopupTrigger.classList.contains("cs-open")) closeMediaPopover();
+        else showTextPopupPopover(textPopupTrigger);
+        return;
+      }
       const mediaTrigger = event.target.closest && event.target.closest(".cs-inline-media-trigger");
       if (mediaTrigger) {
         event.preventDefault();
@@ -1714,6 +2025,7 @@
         else showMediaPopover(mediaTrigger);
         return;
       }
+      if (!(event.target.closest && (event.target.closest("[data-hoverable]") || event.target.closest("#cs-popover")))) closePopover();
       if (!(event.target.closest && event.target.closest(".cs-media-popover"))) closeMediaPopover();
     };
     const gnimtiFrame = s.querySelector(".cs-info-new-frame");
@@ -1769,6 +2081,16 @@
       if (feedbackSubmit) feedbackSubmit.disabled = !feedbackMessage.value.trim();
     });
     if (feedbackLink) feedbackLink.addEventListener("input", () => { state.feedbackDraft.relatedLink = feedbackLink.value; });
+    if (feedbackContactToggle) feedbackContactToggle.addEventListener("click", () => {
+      const open = !state.feedbackDraft.contactOpen;
+      state.feedbackDraft.contactOpen = open;
+      if (!open) state.feedbackDraft.contact = "";
+      render();
+      if (open && state.shadow) setTimeout(() => {
+        const input = state.shadow.getElementById("cs-feedback-contact");
+        if (input) input.focus();
+      }, 0);
+    });
     if (feedbackContact) feedbackContact.addEventListener("input", () => { state.feedbackDraft.contact = feedbackContact.value; });
     if (feedbackSubmit) feedbackSubmit.addEventListener("click", async () => {
       const draft = state.feedbackDraft;
@@ -1784,12 +2106,19 @@
           return;
         }
       }
+      const replyContact = draft.contactOpen ? String(draft.contact || "").trim() : "";
+      if (replyContact && feedbackContact && !feedbackContact.checkValidity()) {
+        feedbackStatus.textContent = "회신 메일 주소를 확인해주세요.";
+        feedbackStatus.className = "cs-feedback-status cs-error";
+        feedbackContact.focus();
+        return;
+      }
       feedbackSubmit.disabled = true;
       feedbackStatus.textContent = "보내는 중…";
       feedbackStatus.className = "cs-feedback-status";
       const result = await sendRuntimeMessage({
         type: "submitFeedback",
-        payload: { feedbackType: draft.type, message: draft.message, relatedLink: draft.relatedLink, contact: draft.contact },
+        payload: { feedbackType: draft.type, message: draft.message, relatedLink: draft.relatedLink, contact: replyContact },
       });
       if (!result || !result.ok) {
         feedbackStatus.textContent = "전송 실패: " + ((result && result.error) || "알 수 없는 오류");
@@ -1799,7 +2128,7 @@
       }
       feedbackStatus.textContent = "전달되었습니다. 감사합니다!";
       feedbackStatus.className = "cs-feedback-status cs-success";
-      state.feedbackDraft = { type: "일정", message: "", relatedLink: "", contact: "" };
+      state.feedbackDraft = { type: "일정", message: "", relatedLink: "", contact: "", contactOpen: false };
       setTimeout(() => { state.feedbackOpen = false; if (state.shadow) render(); }, 1200);
     });
 
@@ -1813,16 +2142,27 @@
     document.addEventListener("mousedown", state.feedbackOutsideHandler);
   }
 
-  function scheduleOpenPopover(cell) {
+  function scheduleOpenPopover(cell, options) {
     if (state.popoverTimer) clearTimeout(state.popoverTimer);
     if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
-    state.popoverTimer = setTimeout(() => openPopover(cell), 150);
+    const pinned = !!(options && options.pinned);
+    const key = cell && cell.getAttribute("data-date");
+    const popover = state.shadow && state.shadow.getElementById("cs-popover");
+    const sameOpen = !!(key && popover && popover.classList.contains("cs-open") && state.activePopoverDate === key);
+    if (!pinned && state.schedulePopoverPinned) return;
+    if (pinned && sameOpen && state.schedulePopoverPinned) {
+      closePopover();
+      return;
+    }
+    state.schedulePopoverPinned = pinned;
+    openPopover(cell);
   }
 
   function scheduleClosePopover() {
     if (state.popoverTimer) clearTimeout(state.popoverTimer);
     if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
-    state.popoverCloseTimer = setTimeout(closePopover, 200);
+    if (state.schedulePopoverPinned) return;
+    state.popoverCloseTimer = setTimeout(closePopover, 180);
   }
 
   function openPopover(cell) {
@@ -1934,6 +2274,7 @@
 
     body.innerHTML = html;
     popover.style.width = "max-content";
+    state.activePopoverDate = key;
     popover.classList.add("cs-open");
 
     // 위치 계산: 팝오버의 실제 absolute 기준인 일정 섹션을 사용한다.
@@ -1968,7 +2309,39 @@
     }
   }
 
-  function gnimtiRosterColumns() {
+  function gnimtiAdminContent() {
+    const byChannel = (state.data && state.data.gnimtiContentByChannel) || {};
+    return byChannel[state.channelId] || (state.data && state.data.gnimtiContent) || {};
+  }
+
+  function gnimtiMonthData(month) {
+    const content = gnimtiAdminContent();
+    const data = content && content[month];
+    return data && typeof data === "object" ? data : {};
+  }
+
+  function gnimtiSeptemberMembers() {
+    const data = gnimtiMonthData("september");
+    return Array.isArray(data.members) ? data.members.map((member) => ({
+      name: String((member && member.name) || "").trim(),
+      position: String((member && member.position) || "").trim(),
+      tier: String((member && member.tier) || "").trim().toUpperCase(),
+      selfImageUrl: String((member && member.selfImageUrl) || "").trim(),
+      analysisImageUrl: String((member && member.analysisImageUrl) || "").trim(),
+    })).filter((member) => member.name) : [];
+  }
+
+  function gnimtiRosterColumns(month) {
+    if (month === "september") {
+      const order = ["탑", "정글", "미드", "원딜", "서포터"];
+      const columns = order.map((position) => ({ position, folder: "", members: [] }));
+      const extra = { position: "기타", folder: "", members: [] };
+      gnimtiSeptemberMembers().forEach((member) => {
+        const column = columns.find((item) => item.position === member.position) || extra;
+        column.members.push(member.name);
+      });
+      return extra.members.length ? columns.concat(extra) : columns;
+    }
     return [
       { position: "탑", folder: "TOP", members: ["김뿡", "김호러", "러너", "룩삼", "승우아빠", "울프", "윤가놈", "인간젤리", "철면수심", "캡틴잭", "크랭크", "푸린", "한동숙"] },
       { position: "정글", folder: "JG", members: ["꼴랑이", "멋사", "삼식", "소우릎", "플레임", "헤징"] },
@@ -1978,17 +2351,36 @@
     ];
   }
 
-  function gnimtiMemberInfo(name) {
+  function gnimtiMemberData(name, month) {
+    if (month !== "september") return null;
+    const key = String(name || "").trim();
+    return gnimtiSeptemberMembers().find((member) => member.name === key) || null;
+  }
+
+  function gnimtiMemberInfo(name, month) {
+    const adminMember = gnimtiMemberData(name, month);
+    if (adminMember) return { name, position: adminMember.position, folder: "" };
     for (const column of gnimtiRosterColumns()) {
       if (column.members.includes(name)) return { name, position: column.position, folder: column.folder };
     }
     return { name, position: "", folder: "" };
   }
 
-  function gnimtiMemberImages(name) {
+  function gnimtiMemberImages(name, month) {
+    const adminMember = gnimtiMemberData(name, month);
+    if (adminMember) {
+      return [
+        { label: "본인 평가", url: adminMember.selfImageUrl, team: false },
+        { label: "분석관팀 평가", url: adminMember.analysisImageUrl, team: true },
+      ];
+    }
     const info = gnimtiMemberInfo(name);
     if (!info.folder) return [];
-    return [1, 2].map((index) => api.runtime.getURL("images/gnimti/" + info.folder + "/" + name + index + ".png"));
+    return [1, 2].map((index) => ({
+      label: index === 1 ? "본인 평가" : "분석관팀 평가",
+      url: api.runtime.getURL("images/gnimti/" + info.folder + "/" + name + index + ".png"),
+      team: index !== 1,
+    }));
   }
 
   const GNIMTI_MEMBER_TIERS = Object.freeze({
@@ -2034,44 +2426,45 @@
     "피닉스박": "A",
   });
 
-  function gnimtiMemberTier(name) {
-    const tier = GNIMTI_MEMBER_TIERS[String(name || "").trim()] || "";
+  function gnimtiMemberTier(name, month) {
+    const adminMember = gnimtiMemberData(name, month);
+    const tier = adminMember ? adminMember.tier : (GNIMTI_MEMBER_TIERS[String(name || "").trim()] || "");
     const imageUrl = GNIMTI_TIER_BACK_IMAGE_URLS[tier];
     return imageUrl ? { tier, imageUrl } : null;
   }
-  function gnimtiMemberProfile(name) {
+  function gnimtiMemberProfile(name, month) {
     const profiles = (state.data && state.data.gnimtiProfiles) || {};
     return profiles[name] || profiles[String(name || "").trim()] || { channelId: "", channelName: name, channelImageUrl: "" };
   }
 
 
-  function gnimtiMemberHtml(name, selectedName) {
-    const profile = gnimtiMemberProfile(name);
+  function gnimtiMemberHtml(name, selectedName, month) {
+    const profile = gnimtiMemberProfile(name, month);
     const displayName = String((profile && profile.channelName) || name || "").trim();
-    const tier = gnimtiMemberTier(name);
+    const tier = gnimtiMemberTier(name, month);
     const avatar = '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>';
     const nameHtml = '<span class="cs-gnimti-name">' + escapeHtml(displayName) + '</span>';
     const className = "cs-gnimti-member" + (tier ? " cs-gnimti-member-tier-bg" : "") + (name === selectedName ? " cs-selected" : "");
     const style = tier ? ' style="--gnimti-tier-bg: url(' + escapeHtml(tier.imageUrl) + ')" title="' + escapeHtml(tier.tier + " 티어") + '"' : "";
     return '<button type="button" class="' + className + '" data-gnimti-member="' + escapeHtml(name) + '"' + style + '>' + avatar + nameHtml + '</button>';
   }
-  function gnimtiMemberDetailHtml(name) {
+  function gnimtiMemberDetailHtml(name, month) {
     if (!name) return '<aside class="cs-gnimti-detail"><div class="cs-gnimti-empty-detail">멤버를 선택하세요</div></aside>';
-    const profile = gnimtiMemberProfile(name);
+    const profile = gnimtiMemberProfile(name, month);
     const displayName = String((profile && profile.channelName) || name || "").trim();
-    const info = gnimtiMemberInfo(name);
-    const images = gnimtiMemberImages(name);
+    const info = gnimtiMemberInfo(name, month);
+    const images = gnimtiMemberImages(name, month);
     return '<aside class="cs-gnimti-detail" data-gnimti-detail="1">' +
       '<div class="cs-gnimti-detail-head">' +
       '<span class="cs-gnimti-avatar">' + memberAvatarImgHtml(profile) + '</span>' +
       '<div class="cs-gnimti-detail-title">' + escapeHtml(displayName) + (info.position ? ' · ' + escapeHtml(info.position) : '') + '</div>' +
       '</div>' +
-      '<div class="cs-gnimti-images"><div class="cs-gnimti-card">' + images.map((src, index) => {
-        const label = index === 0 ? "본인 평가" : "분석관팀 평가";
-        const labelClass = index === 0 ? "cs-gnimti-stat-label" : "cs-gnimti-stat-label cs-gnimti-stat-label-team";
-        return '<figure class="cs-gnimti-stat-item"><figcaption class="' + labelClass + '">' + label + '</figcaption>' +
-          '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(displayName + ' ' + label) + '" />' +
-          '</figure>';
+      '<div class="cs-gnimti-images"><div class="cs-gnimti-card">' + images.map((item) => {
+        const labelClass = item.team ? "cs-gnimti-stat-label cs-gnimti-stat-label-team" : "cs-gnimti-stat-label";
+        const media = item.url
+          ? '<img src="' + escapeHtml(item.url) + '" alt="' + escapeHtml(displayName + ' ' + item.label) + '" />'
+          : '<div class="cs-gnimti-stat-empty">이미지 준비 중</div>';
+        return '<figure class="cs-gnimti-stat-item"><figcaption class="' + labelClass + '">' + escapeHtml(item.label) + '</figcaption>' + media + '</figure>';
       }).join("") + '</div></div></aside>';
   }
 
@@ -2086,6 +2479,10 @@
     ];
   }
 
+  function gnimtiTabMonth(tab) {
+    return String(tab || "").startsWith("september") ? "september" : "august";
+  }
+
   function gnimtiTabsHtml(activeTab) {
     const current = activeTab || "members";
     const tabs = gnimtiTabs();
@@ -2098,33 +2495,41 @@
   function gnimtiPlaceholderHtml(label) {
     return '<div class="cs-gnimti-content"><div class="cs-gnimti-placeholder">' + escapeHtml(label) + '</div></div>';
   }
-  function gnimtiTierlistHtml() {
+  function gnimtiTierlistHtml(month) {
+    if (month === "september") {
+      const url = String(gnimtiMonthData("september").tierlistImageUrl || "").trim();
+      return url ? '<div class="cs-gnimti-content"><div class="cs-gnimti-tierlist"><img src="' + escapeHtml(url) + '" alt="9월 티어리스트" /></div></div>' : gnimtiPlaceholderHtml("9월 티어리스트 준비 중");
+    }
     return '<div class="cs-gnimti-content"><div class="cs-gnimti-tierlist"><img src="' + GNIMTI_TIERLIST_IMAGE_URL + '" alt="8\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8" /></div></div>';
   }
 
-  function gnimtiRosterBoardHtml() {
-    return '<div class="cs-gnimti-content"><div class="cs-gnimti-roster-board">' + GNIMTI_ROSTER_IMAGE_URLS.map((src, index) =>
-      '<img src="' + src + '" alt="8\uC6D4 \uB85C\uC2A4\uD130 ' + (index + 1) + '" />'
+  function gnimtiRosterBoardHtml(month) {
+    const urls = month === "september" ? ((gnimtiMonthData("september").rosterImageUrls || []).filter(Boolean)) : GNIMTI_ROSTER_IMAGE_URLS;
+    if (!urls.length) return gnimtiPlaceholderHtml(month === "september" ? "9월 로스터 준비 중" : "8월 로스터 준비 중");
+    return '<div class="cs-gnimti-content"><div class="cs-gnimti-roster-board">' + urls.map((src, index) =>
+      '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml((month === "september" ? "9월" : "8월") + ' 로스터 ' + (index + 1)) + '" />'
     ).join("") + '</div></div>';
   }
 
   function gnimtiContentHtml(tab, selectedName) {
-    if (tab === "september-members") return gnimtiPlaceholderHtml("9\uC6D4 \uADF8\uB2D8\uD2F0 \uD3C9\uAC00 \uC900\uBE44 \uC911");
-    if (tab === "september-tier") return gnimtiPlaceholderHtml("9\uC6D4 \uD2F0\uC5B4\uB9AC\uC2A4\uD2B8 \uC900\uBE44 \uC911");
-    if (tab === "september-roster") return gnimtiPlaceholderHtml("9\uC6D4 \uB85C\uC2A4\uD130 \uC900\uBE44 \uC911");
-    if (tab === "tier") return gnimtiTierlistHtml();
-    if (tab === "roster") return gnimtiRosterBoardHtml();
-    return gnimtiRosterHtml(selectedName);
+    if (tab === "september-members") return gnimtiSeptemberMembers().length ? gnimtiRosterHtml(selectedName, "september") : gnimtiPlaceholderHtml("9월 그님티 평가 준비 중");
+    if (tab === "september-tier") return gnimtiTierlistHtml("september");
+    if (tab === "september-roster") return gnimtiRosterBoardHtml("september");
+    if (tab === "tier") return gnimtiTierlistHtml("august");
+    if (tab === "roster") return gnimtiRosterBoardHtml("august");
+    return gnimtiRosterHtml(selectedName, "august");
   }
-  function gnimtiRosterHtml(selectedName) {
-    const columns = gnimtiRosterColumns();
-    const activeName = selectedName || (columns[0] && columns[0].members[0]) || "";
+  function gnimtiRosterHtml(selectedName, month) {
+    const currentMonth = month || "august";
+    const columns = gnimtiRosterColumns(currentMonth);
+    const firstColumn = columns.find((column) => column.members && column.members.length);
+    const activeName = selectedName || (firstColumn && firstColumn.members[0]) || "";
     const roster = '<div class="cs-gnimti-roster">' + columns.map((column) =>
       '<section class="cs-gnimti-column">' +
       '<div class="cs-gnimti-position">' + escapeHtml(column.position) + '</div>' +
-      '<div class="cs-gnimti-members">' + column.members.map((name) => gnimtiMemberHtml(name, activeName)).join("") + '</div></section>'
+      '<div class="cs-gnimti-members">' + column.members.map((name) => gnimtiMemberHtml(name, activeName, currentMonth)).join("") + '</div></section>'
     ).join("") + '</div>';
-    return '<div class="cs-gnimti-content">' + roster + gnimtiMemberDetailHtml(activeName) + '</div>';
+    return '<div class="cs-gnimti-content">' + roster + gnimtiMemberDetailHtml(activeName, currentMonth) + '</div>';
   }
 
   function renderGnimtiTab(pop, tab) {
@@ -2143,8 +2548,10 @@
     if (dialog) dialog.scrollTop = 0;
   }
   function updateGnimtiDetail(pop, name) {
+    const activeTab = pop && pop.getAttribute("data-gnimti-tab") || "members";
+    const month = gnimtiTabMonth(activeTab);
     const current = pop && pop.querySelector(".cs-gnimti-detail");
-    if (current) current.outerHTML = gnimtiMemberDetailHtml(name);
+    if (current) current.outerHTML = gnimtiMemberDetailHtml(name, month);
     if (pop) pop.querySelectorAll(".cs-gnimti-member").forEach((button) => {
       button.classList.toggle("cs-selected", button.getAttribute("data-gnimti-member") === name);
     });
@@ -2346,21 +2753,25 @@
 
   function closeMediaPopover() {
     const pop = state.shadow && state.shadow.getElementById("cs-media-popover");
-    if (pop) pop.classList.remove("cs-open", "cs-media-expanded", "cs-install-guide-popover");
+    if (pop) {
+      pop.classList.remove("cs-open", "cs-media-expanded", "cs-install-guide-popover", "cs-text-popover");
+      pop.style.width = "";
+    }
     closeOriginalImage();
-    if (state.shadow) state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    if (state.shadow) state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
   }
 
   function showMediaPopover(trigger) {
     const url = trigger.getAttribute("data-media-url") || "";
     const label = trigger.getAttribute("data-media-label") || "미디어";
     const pop = ensureMediaPopover();
+    pop.style.width = "";
     const title = pop.querySelector("#cs-media-title");
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = mediaEmbedHtml(url, label);
-    pop.classList.remove("cs-install-guide-popover");
-    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    pop.classList.remove("cs-install-guide-popover", "cs-text-popover");
+    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
 
@@ -2378,26 +2789,105 @@
     pop.style.left = left + "px";
     pop.style.top = top + "px";
   }
-  function installGuideHtml() {
-    return '<div class="cs-install-guide">' +
-      '<section class="cs-install-guide-section"><h4>iOS</h4>' +
-        '<img class="cs-media-expandable" src="' + OBAL_IOS_GUIDE_IMAGE_URL + '" alt="iOS 오뱅알 설치 방법" title="클릭해서 확대" />' +
-      '</section>' +
-      '<section class="cs-install-guide-section"><h4>Android</h4>' +
-        '<img class="cs-media-expandable" src="' + OBAL_ANDROID_GUIDE_IMAGE_URL + '" alt="Android 오뱅알 설치 방법" title="클릭해서 확대" />' +
-      '</section>' +
-      '</div>';
+  function textPopupPreferredWidth(text, rootWidth) {
+    const maxWidth = Math.max(260, Math.min(680, Math.floor((rootWidth || window.innerWidth || 680) - 16)));
+    const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    const measurer = document.createElement("span");
+    measurer.style.position = "fixed";
+    measurer.style.left = "-10000px";
+    measurer.style.top = "-10000px";
+    measurer.style.visibility = "hidden";
+    measurer.style.whiteSpace = "pre";
+    measurer.style.fontSize = "13px";
+    measurer.style.lineHeight = "1.65";
+    measurer.style.fontFamily = "Arial, sans-serif";
+    document.body.appendChild(measurer);
+    let longest = 0;
+    lines.forEach((line) => {
+      measurer.textContent = line || " ";
+      longest = Math.max(longest, Math.ceil(measurer.getBoundingClientRect().width));
+    });
+    measurer.remove();
+    return Math.max(260, Math.min(maxWidth, longest + 48));
   }
 
-  function showInstallGuidePopover(trigger) {
-    const label = trigger.getAttribute("data-install-label") || "모바일 설치 방법";
+  function showTextPopupPopover(trigger) {
+    const label = trigger.getAttribute("data-text-popup-label") || "\uD14D\uC2A4\uD2B8";
+    const rawText = trigger.getAttribute("data-text-popup-body") || "";
+    let text = rawText;
+    try { text = decodeURIComponent(rawText); } catch (_e) {}
     const pop = ensureMediaPopover();
     const title = pop.querySelector("#cs-media-title");
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
-    if (body) body.innerHTML = installGuideHtml();
+    if (body) body.innerHTML = '<div class="cs-text-popup-content">' + directiveHtml(text) + '</div>';
+    pop.classList.remove("cs-install-guide-popover", "cs-media-expanded");
+    pop.classList.add("cs-text-popover");
+    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    trigger.classList.add("cs-open");
+
+    const root = state.shadow && state.shadow.getElementById("cs-root");
+    if (root && pop.parentElement !== root) root.appendChild(pop);
+    const rootRect = root ? root.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const preferredWidth = textPopupPreferredWidth(text, rootRect.width);
+    pop.style.width = preferredWidth + "px";
+    const contentEl = body && body.querySelector(".cs-text-popup-content");
+    if (contentEl) contentEl.style.width = Math.max(220, preferredWidth - 22) + "px";
+    pop.classList.add("cs-open");
+
+    const rect = trigger.getBoundingClientRect();
+    const popRect = pop.getBoundingClientRect();
+    const maxLeft = Math.max(8, rootRect.width - popRect.width - 8);
+    const maxTop = Math.max(8, rootRect.height - popRect.height - 8);
+    let left;
+    let top;
+    if (trigger.classList.contains("cs-update-history-card")) {
+      left = rect.left - rootRect.left + rect.width / 2 - popRect.width / 2;
+      top = rect.bottom - rootRect.top + 8;
+    } else {
+      const rightLeft = rect.right - rootRect.left + 8;
+      const leftFallback = rect.left - rootRect.left - popRect.width - 8;
+      left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
+      top = rect.top - rootRect.top;
+    }
+    const isUpdateHistoryPopup = trigger.classList.contains("cs-update-history-card");
+    pop.style.left = Math.max(8, Math.min(left, maxLeft)) + "px";
+    pop.style.top = (isUpdateHistoryPopup ? top : Math.max(8, Math.min(top, maxTop))) + "px";
+  }
+  function installGuideSectionHtml(platform) {
+    const isAndroid = platform === "android";
+    const title = isAndroid ? "Android" : "iOS";
+    const imageUrl = isAndroid ? OBAL_ANDROID_GUIDE_IMAGE_URL : OBAL_IOS_GUIDE_IMAGE_URL;
+    const description = isAndroid
+      ? "Android 모바일 브라우저에서 먼저 모바일 링크에 접속한 뒤, 브라우저 메뉴에서 홈 화면에 추가하세요."
+      : "iPhone Safari에서 먼저 모바일 링크에 접속한 뒤, 공유 버튼에서 홈 화면에 추가하세요.";
+    const link = '<a class="cs-install-guide-link" href="' + OBAL_MOBILE_LINK_URL + '" target="_blank" rel="noopener noreferrer">' + OBAL_MOBILE_LINK_URL + '</a>';
+    return '<section class="cs-install-guide-section"><h4>' + title + '</h4>' +
+      '<p>' + description + " " + link + '</p>' +
+      '<img class="cs-media-expandable" src="' + imageUrl + '" alt="' + title + ' 오뱅알 설치 방법" title="클릭해서 확대" />' +
+      '</section>';
+  }
+
+  function installGuideHtml(platform) {
+    const normalized = String(platform || "").trim().toLowerCase();
+    if (normalized === "android" || normalized === "ios") {
+      return '<div class="cs-install-guide">' + installGuideSectionHtml(normalized) + '</div>';
+    }
+    return '<div class="cs-install-guide">' + installGuideSectionHtml("ios") + installGuideSectionHtml("android") + '</div>';
+  }
+
+  function showInstallGuidePopover(trigger) {
+    const label = trigger.getAttribute("data-install-label") || "모바일 설치 방법";
+    const platform = trigger.getAttribute("data-install-platform") || "";
+    const pop = ensureMediaPopover();
+    pop.style.width = "";
+    const title = pop.querySelector("#cs-media-title");
+    const body = pop.querySelector("#cs-media-body");
+    if (title) title.textContent = label;
+    if (body) body.innerHTML = installGuideHtml(platform);
+    pop.classList.remove("cs-text-popover", "cs-media-expanded");
     pop.classList.add("cs-install-guide-popover");
-    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
+    state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
 
@@ -2417,6 +2907,10 @@
   }
 
   function closePopover() {
+    if (state.popoverTimer) clearTimeout(state.popoverTimer);
+    if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
+    state.activePopoverDate = "";
+    state.schedulePopoverPinned = false;
     const popover = state.shadow && state.shadow.getElementById("cs-popover");
     if (popover) popover.classList.remove("cs-open");
   }
@@ -2613,12 +3107,47 @@
   }
 
 
+
+  function setChannelSchedulePanelOpen(open) {
+    if (!state.shadow) return false;
+    const button = state.shadow.getElementById("cs-channel-button");
+    const panel = state.shadow.getElementById("cs-channel-panel");
+    if (button && panel) {
+      panel.classList.toggle("cs-open", open);
+      button.classList.toggle("cs-open", open);
+      button.setAttribute("aria-expanded", String(open));
+      return true;
+    }
+    const floatPanel = state.shadow.getElementById("cs-float-panel");
+    if (floatPanel) {
+      floatPanel.classList.toggle("cs-open", open);
+      return true;
+    }
+    if (state.extensionCollapsed && open) {
+      state.extensionCollapsed = false;
+      saveExtensionCollapsed(false);
+      render();
+    }
+    return false;
+  }
+
+  async function applyPendingScheduleOpenRequest() {
+    if (state.openScheduleRequestConsumed || !state.channelId || !state.host) return;
+    const response = await sendRuntimeMessage({ type: "consumeOpenScheduleRequest", channelId: state.channelId });
+    state.openScheduleRequestConsumed = true;
+    if (response && response.ok && response.open) {
+      state.schedulePanelForcedOpen = true;
+      setChannelSchedulePanelOpen(true);
+    }
+  }
   function mountInline(anchor) {
     const host = createHost();
     anchor.insertAdjacentElement("afterend", host);
     state.mode = "inline";
     syncPageTheme();
     render();
+    if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
+    applyPendingScheduleOpenRequest();
   }
 
   function mountChannelButton(action) {
@@ -2643,10 +3172,13 @@
     const panel = state.shadow.getElementById("cs-channel-panel");
     button.addEventListener("click", () => {
       const open = panel.classList.toggle("cs-open");
+      state.schedulePanelForcedOpen = open;
       button.classList.toggle("cs-open", open);
       button.setAttribute("aria-expanded", String(open));
     });
     render();
+    if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
+    applyPendingScheduleOpenRequest();
   }
 
   function mountFloating() {
@@ -2669,15 +3201,24 @@
 
     const btn = state.shadow.getElementById("cs-float-btn");
     const panel = state.shadow.getElementById("cs-float-panel");
-    btn.addEventListener("click", () => panel.classList.toggle("cs-open"));
+    btn.addEventListener("click", () => {
+      const open = panel.classList.toggle("cs-open");
+      state.schedulePanelForcedOpen = open;
+    });
 
     render();
+    if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
+    applyPendingScheduleOpenRequest();
   }
 
   function unmount() {
     if (state.feedbackOutsideHandler) {
       document.removeEventListener("mousedown", state.feedbackOutsideHandler);
       state.feedbackOutsideHandler = null;
+    }
+    if (state.scheduleOutsideHandler) {
+      document.removeEventListener("mousedown", state.scheduleOutsideHandler);
+      state.scheduleOutsideHandler = null;
     }
     if (state.host && state.host.isConnected) state.host.remove();
     state.host = null;
@@ -2731,6 +3272,8 @@
       state.channelId = channelId;
       state.channel = null;
       state.pageOffset = 0;
+      state.openScheduleRequestConsumed = false;
+      state.schedulePanelForcedOpen = false;
       loggedMissingChannel = false;
     }
 
@@ -2803,7 +3346,10 @@
         anchorRetries = 0;
       }
       if (!state.host) tryMount();
-      if (state.host) syncPageTheme();
+      if (state.host) {
+        syncPageTheme();
+        applyPendingScheduleOpenRequest();
+      }
 
       // 비라이브 채널은 _action 버튼 모드, 라이브 화면은 기존 인라인 모드로 자동 전환
       const offlineAction = findOfflineActionAnchor();

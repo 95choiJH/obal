@@ -1,4 +1,4 @@
-﻿# 일정 관리자 페이지
+# 일정 관리자 페이지
 
 Supabase Auth로 로그인해 방송 일정, 소식, 문의/제보 상태를 관리하는 정적 관리자 페이지입니다.
 
@@ -31,19 +31,27 @@ values ('Supabase Auth > Users에서 복사한 UUID');
 
 ```powershell
 npx supabase functions deploy chzzk-search
+npx supabase functions deploy chzzk-category-search
+npx supabase functions deploy sync-live-category
 npx supabase functions deploy submit-feedback
 ```
 
-`chzzk-search`는 스트리머 자동완성에 필요합니다. `submit-feedback`는 확장 프로그램의 공개 문의/제보 등록에 필요합니다.
+`chzzk-search`는 스트리머 자동완성에 필요합니다. `chzzk-category-search`는 게임/카테고리 자동완성에 필요합니다. `sync-live-category`는 방송 시작 및 카테고리 변경 감지 후 방송 시작 날짜 일정의 게임 목록 및 부 자동 생성에 필요합니다. `submit-feedback`는 확장 프로그램의 공개 문의/제보 등록에 필요합니다.
+
+`chzzk-category-search`는 치지직 Open API Client 인증을 사용하므로 Edge Function secrets에 `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`을 설정해야 합니다.
+
+`sync-live-category`는 쓰기 작업을 수행하므로 `LIVE_CATEGORY_SYNC_SECRET`을 설정하고, Supabase Dashboard의 Scheduled Functions에서 1분 주기로 호출하도록 설정하세요. 기본적으로 `GAME` 카테고리만 게임 목록에 추가하고 같은 이름의 부를 자동 생성합니다. 전체 카테고리를 추가하려면 `LIVE_CATEGORY_SYNC_TYPES=*`를 설정하세요.
+
+테스트로 실제 저장 경로를 검증할 때는 `POST` body에 `startedAt`과 `testCategories`를 보낼 수 있습니다. Cron의 빈 body `{}`는 기존처럼 현재 라이브 상태를 조회합니다.
 
 ## 로컬 테스트
 
 ```powershell
 cd admin
-python -m http.server 8000
+node local-server.js
 ```
 
-브라우저에서 `http://localhost:8000`으로 접속하세요.
+브라우저에서 `http://127.0.0.1:8001`으로 접속하세요. 로컬 서버는 Supabase Edge Function 프록시 경로를 함께 제공합니다.
 
 `file://`로 직접 열면 Supabase Auth 세션/리다이렉트 동작이 제한될 수 있어 권장하지 않습니다.
 
@@ -57,3 +65,7 @@ python -m http.server 8000
 - `config.js`
 - `app.js`
 - `vendor/supabase-2.45.4.min.js`
+
+## 자동 카테고리/부 생성 설정
+
+설정 메뉴의 자동 카테고리/부 생성 토글은 public.admin_settings 테이블에 auto_live_category_sync 값으로 저장됩니다. OFF이면 sync-live-category가 disabled로 종료되어 치지직 카테고리를 일정의 게임 목록과 부 제목에 반영하지 않습니다. 테이블이 아직 없으면 기본 OFF로 동작하므로, 운영 DB에 supabase/rls-hardening.sql을 적용하세요.

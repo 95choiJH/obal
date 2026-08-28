@@ -2,7 +2,7 @@
   "use strict";
 
   const cfg = OBAENGAL_MOBILE_CONFIG;
-  const MOBILE_APP_VERSION = "v27";
+  const MOBILE_APP_VERSION = "v1.1.0";
   const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
   const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey() };
   let channelLoadPromise = null;
@@ -468,7 +468,20 @@
   function renderSelectedSchedule() {
     const key = state.selectedDate || todayKey();
     const entry = entriesByDate().get(key) || null;
-    $("selectedScheduleHeading").textContent = key === todayKey() ? "오늘 일정" : fullDateLabel(key);
+    const isToday = key === todayKey();
+    $("selectedScheduleHeading").textContent = isToday ? "오늘 일정" : fullDateLabel(key);
+    const head = $("selectedScheduleHeading").closest(".selected-schedule-head");
+    let startTime = $("selectedScheduleStartTime");
+    if (head && !startTime) {
+      startTime = document.createElement("span");
+      startTime.id = "selectedScheduleStartTime";
+      startTime.className = "selected-schedule-start-time";
+      head.appendChild(startTime);
+    }
+    if (startTime) {
+      startTime.hidden = !isToday;
+      startTime.textContent = entry && entry.status !== "off" && entry.start ? entry.start : "시간 미정";
+    }
     $("scheduleList").innerHTML = scheduleDetailHtml(key, entry);
   }
 
