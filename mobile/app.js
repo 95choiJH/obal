@@ -2,7 +2,8 @@
   "use strict";
 
   const cfg = OBAENGAL_MOBILE_CONFIG;
-  const MOBILE_APP_VERSION = "v1.1.0";
+  const MOBILE_APP_VERSION = "v1.1.1";
+  const INFO_V2_PREFIX = "@info-v2:";
   const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
   const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey() };
   let channelLoadPromise = null;
@@ -490,8 +491,45 @@
     if (!list) return;
     const items = state.infoRows.filter((item) => item.content);
     list.innerHTML = items.length
-      ? items.map((item) => `<article class="mobile-info-card"><span class="mobile-info-marker" aria-hidden="true"></span><div class="mobile-info-text">${directiveInlineHtml(item.content)}</div></article>`).join("")
+      ? items.map((item) => infoItemHtml(item)).join("")
       : `<div class="empty-state"><strong>등록된 소식이 없습니다.</strong><span>관리자 페이지에서 소식이 등록되면 표시됩니다.</span></div>`;
+  }
+
+  function structuredInfoData(value) {
+    const raw = String(value || "").trim();
+    if (!raw.startsWith(INFO_V2_PREFIX)) return null;
+    try {
+      const parsed = JSON.parse(raw.slice(INFO_V2_PREFIX.length));
+      const items = Array.isArray(parsed && parsed.items) ? parsed.items.map((entry) => ({
+        title: String((entry && entry.title) || "").trim(),
+        body: String((entry && entry.body) || "").trim(),
+        collapsed: !entry || entry.collapsed !== false,
+      })).filter((entry) => entry.title || entry.body) : [];
+      return { title: String((parsed && parsed.title) || "").trim(), items };
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function infoItemHtml(item) {
+    const content = String((item && item.content) || "").trim();
+    const structured = structuredInfoData(content);
+    if (structured) {
+      const title = structured.title
+        ? `<h3 class="mobile-info-group-title">${directiveInlineHtml(structured.title)}</h3>`
+        : "";
+      const details = structured.items.map((entry) => {
+        const summary = directiveInlineHtml(entry.title || "세부 소식");
+        const body = entry.body
+          ? `<div class="mobile-info-detail-body">${directiveInlineHtml(entry.body)}</div>`
+          : "";
+        return `<details class="mobile-info-detail"${entry.collapsed ? "" : " open"}><summary>${summary}</summary>${body}</details>`;
+      }).join("");
+      return `<section class="mobile-info-group">${title}${details}</section>`;
+    }
+    const section = content.match(/^@section\s*:\s*([\s\S]+)$/i);
+    if (section) return `<h3 class="mobile-info-section-title">${directiveInlineHtml(section[1].trim())}</h3>`;
+    return `<article class="mobile-info-card"><span class="mobile-info-marker" aria-hidden="true"></span><div class="mobile-info-text">${directiveInlineHtml(content)}</div></article>`;
   }
 
   function renderMonth() {
