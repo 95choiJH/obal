@@ -9,7 +9,12 @@ const MAX_KEYWORD_LENGTH = 40;
 function allowedOrigins() {
   return (Deno.env.get("CHZZK_CATEGORY_SEARCH_ALLOWED_ORIGINS") || Deno.env.get("CHZZK_SEARCH_ALLOWED_ORIGINS") || "")
     .split(",")
-    .map((item) => item.trim())
+    .map((item) => {
+      const origin = item.trim();
+      // Browser Origin headers never include a trailing slash. Accept the
+      // common secret format "https://example.com/" as the same origin.
+      return origin.endsWith("://*") ? origin : origin.replace(/\/+$/, "");
+    })
     .filter(Boolean);
 }
 

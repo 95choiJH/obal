@@ -18,6 +18,7 @@ node_modules/
 
 # Supabase local CLI state
 supabase/.temp/
+.cli-profile/
 
 # Logs and temporary files
 *.log
