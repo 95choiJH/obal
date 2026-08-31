@@ -15,7 +15,7 @@
   const BREAK_ICON_URL = api.runtime.getURL("icons/on_break.png");
   const BREAK_LIGHT_ICON_URL = api.runtime.getURL("icons/on_break-white.png");
   const UNDETERMINED_ICON_URL = api.runtime.getURL("icons/undetermined.png");
-  const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined-white.png");
+  const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined.png");
   const NAVER_CAFE_ICON_URL = api.runtime.getURL("icons/naver_cafe.png");
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
   const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
@@ -339,7 +339,7 @@
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; left: 50%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.35); transform-origin: bottom center; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; right: 16%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-position: center bottom; transform: scale(1.15); transform-origin: bottom right; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
 
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
@@ -459,6 +459,9 @@
     .cs-media-popover.cs-media-expanded { width: min(760px, 100%); max-height: none; }
     .cs-media-popover.cs-install-guide-popover { width: min(634px, calc(100% - 16px)); max-height: min(80vh, 720px); }
     .cs-media-popover.cs-text-popover { width: auto; min-width: 260px; max-width: min(680px, calc(100% - 16px)); max-height: min(72vh, 520px); }
+    .cs-media-popover { overflow: auto; box-sizing: border-box; }
+    .cs-media-popover .cs-media-body img, .cs-media-popover .cs-media-body video, .cs-media-popover .cs-media-body iframe { max-width: 100%; }
+    .cs-media-popover .cs-media-body video, .cs-media-popover .cs-media-body iframe { width: min(720px, 100%); }
     .cs-media-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .cs-media-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 12px; font-weight: 700;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -622,6 +625,7 @@
       white-space: pre; overflow-wrap: normal; word-break: normal; }
     .cs-pop-part-text .cs-info-mention, .cs-pop-part-text .cs-inline-profile, .cs-pop-part-text .cs-text-badge { color: inherit; }
     .cs-tag-tone, .cs-part-tag.cs-tag-tone, .cs-text-badge.cs-tag-tone { color: var(--cs-tag-color); background: var(--cs-tag-bg); border-color: var(--cs-tag-border); }
+    .cs-cell-muted .cs-part-tag.cs-tag-tone { color: #7c7d82; background: rgba(124,125,130,0.12); border-color: transparent; }
     .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     .cs-pop-note-box { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px;
       padding: 8px 10px; background: #1f2023; border: 1px solid #3a3c40; border-radius: 8px; }
@@ -629,6 +633,12 @@
     .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.65;
       white-space: pre; overflow-wrap: normal; word-break: normal; display: flex; align-items: center; }
 
+    .cs-pop-detail-layout { display: grid; grid-template-columns: max-content minmax(156px, 240px); align-items: stretch; gap: 8px; margin-top: 8px; }
+    .cs-pop-detail-main { min-width: 0; }
+    .cs-pop-detail-layout > .cs-pop-note-box { box-sizing: border-box; width: 100%; min-width: 0; margin-top: 0; }
+    .cs-pop-detail-layout > .cs-pop-note-box .cs-pop-note-list { min-width: 0; }
+    .cs-pop-detail-layout > .cs-pop-note-box .cs-pop-note-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; }
+    .cs-pop-detail-main > .cs-pop-parts-box:first-child { margin-top: 0; }
     .cs-pop-parts-box { margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
     .cs-pop-part { min-width: 0; padding: 8px; border: 1px solid rgba(157,158,163,0.18); border-radius: 7px; background: rgba(0,0,0,0.18); }
     .cs-pop-part .cs-pop-row { margin-bottom: 0; }
@@ -671,14 +681,17 @@
     .cs-info-subhead:first-child { padding-top: 10px; }
     .cs-info-subhead::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
     .cs-info-subhead-label { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
-    .cs-info-group { padding: 13px 0 9px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-group { padding-top: 13px; }
     .cs-info-group:first-child { padding-top: 10px; }
     .cs-info-group-title { display: flex; align-items: center; gap: 10px; color: #ffffff; font-size: 16px; font-weight: 950; line-height: 1.25; }
     .cs-info-group-title::before { content: ""; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #00FFA3; box-shadow: 0 0 0 3px rgba(0,255,163,0.12); }
     .cs-info-group-title::after { content: ""; flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(0,255,163,0.42), rgba(255,255,255,0.05)); }
-    .cs-info-detail { padding: 9px 0 0; }
-    .cs-info-detail + .cs-info-detail { margin-top: 9px; border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-info-detail { padding: 9px 0; }
+    .cs-info-detail:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.06); }
     .cs-info-detail-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .cs-info-detail-head[data-info-toggle] { margin: -5px -6px; padding: 5px 6px; border-radius: 6px; cursor: pointer; transition: background 0.14s ease, color 0.14s ease; }
+    .cs-info-detail-head[data-info-toggle]:hover { background: rgba(0,255,163,0.07); }
+    .cs-info-detail-head[data-info-toggle]:hover .cs-info-detail-title { color: #ffffff; }
     .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
     .cs-info-detail-toggle { flex: 0 0 auto; width: 24px; height: 24px; border: 1px solid rgba(143,255,213,0.22); border-radius: 6px; background: rgba(255,255,255,0.04); color: #d7f7ea; font-size: 13px; font-weight: 900; line-height: 1; cursor: pointer; }
     .cs-info-detail-toggle:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
@@ -750,6 +763,15 @@
     .cs-info-mention:hover { color: #00FFA3; text-decoration: underline; text-underline-offset: 3px; }
     .cs-info-tag { color: #9d9ea3; font-weight: 700; }
     .cs-info-tag::before { content: "#"; color: #6b6d73; margin-right: 1px; }
+    .cs-new-tag { display: inline-flex; align-items: center; min-height: 17px; margin-left: 4px; padding: 1px 6px 0; border: 1px solid rgba(251,113,133,0.42); border-radius: 999px; background: rgba(251,113,133,0.14); color: #fb7185; font-size: 10px; font-weight: 950; line-height: 1.35; letter-spacing: 0; text-transform: uppercase; vertical-align: 0.08em; animation: cs-new-tag-pulse 1.55s ease-in-out infinite; box-shadow: 0 0 0 rgba(251,113,133,0); }
+    .cs-info-tag.cs-new-tag::before { content: none; }
+    @keyframes cs-new-tag-pulse {
+      0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 0 0 rgba(251,113,133,0); }
+      45% { transform: translateY(-1px) scale(1.04); box-shadow: 0 0 10px rgba(251,113,133,0.34); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .cs-new-tag { animation: none; }
+    }
     .cs-info-section .cs-inline-feedback-trigger, .cs-info-media-trigger, .cs-info-text-popup-trigger { height: auto; min-height: 0; padding: 0 2px; border: 0; border-radius: 0; background: transparent; color: #93c5fd; font-size: inherit; font-weight: 700; line-height: inherit; vertical-align: baseline; }
     .cs-info-section .cs-inline-feedback-trigger:hover, .cs-info-media-trigger:hover, .cs-info-media-trigger.cs-open, .cs-info-text-popup-trigger:hover, .cs-info-text-popup-trigger.cs-open { background: transparent; color: #bfdbfe; text-decoration: underline; text-underline-offset: 3px; }
     .cs-info-media-trigger::before { content: ""; display: none; }
@@ -804,7 +826,7 @@
     :host(.cs-light-theme) .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-break-icon-light { transform: translateX(-50%) translateY(1.5%) scale(1.1) !important; }
     :host(.cs-light-theme) .cs-month-cell.cs-cell-off .cs-break-icon-light { transform: translateX(-50%) translateY(1.5%) scale(1.3) !important; }
     :host(.cs-light-theme) .cs-undetermined-icon-dark { display: none !important; }
-    :host(.cs-light-theme) .cs-undetermined-icon-light { display: block !important; transform: translateX(-50%) scale(1.35) !important; }
+    :host(.cs-light-theme) .cs-undetermined-icon-light { display: block !important; }
     :host(.cs-light-theme) .cs-cell-hoverable:hover { background: #eceef0; border-color: #d3d6da; }
     :host(.cs-light-theme) .cs-cell-today { background: rgba(0,199,90,0.09); border-color: rgba(0,199,90,0.5); }
     :host(.cs-light-theme) .cs-cell-today.cs-cell-hoverable:hover { background: rgba(0,199,90,0.15); }
@@ -817,11 +839,13 @@
     :host(.cs-light-theme) .cs-pop-title { border-left-color: #03a950; background: rgba(3,169,80,0.1); color: #083d26; }
     :host(.cs-light-theme) .cs-info-subhead { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-subhead::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
-    :host(.cs-light-theme) .cs-info-group, :host(.cs-light-theme) .cs-info-detail + .cs-info-detail { border-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-info-group, :host(.cs-light-theme) .cs-info-detail:not(:last-child) { border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-group-title, :host(.cs-light-theme) .cs-info-detail-title { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-group-title::after { background: linear-gradient(90deg, rgba(3,169,80,0.38), #e6e8eb); }
     :host(.cs-light-theme) .cs-info-detail-body { color: #4b4f55; }
     :host(.cs-light-theme) .cs-info-detail-toggle { border-color: rgba(3,169,80,0.22); background: rgba(3,169,80,0.07); color: #047344; }
+    :host(.cs-light-theme) .cs-info-detail-head[data-info-toggle]:hover { background: rgba(3,169,80,0.07); }
+    :host(.cs-light-theme) .cs-info-detail-head[data-info-toggle]:hover .cs-info-detail-title { color: #0f1720; }
     :host(.cs-light-theme) .cs-info-item { color: #4b4f55; border-color: #e6e8eb; }
     :host(.cs-light-theme) .cs-info-empty { color: #8b9097; }
     :host(.cs-light-theme) .cs-info-new-frame:hover, :host(.cs-light-theme) .cs-info-new-frame:focus-visible { background: rgba(3,169,80,0.07); }
@@ -857,6 +881,7 @@
     :host(.cs-light-theme) .cs-info-mention { color: #1e2024; }
     :host(.cs-light-theme) .cs-info-mention:hover { color: #008a43; }
     :host(.cs-light-theme) .cs-info-tag { color: #6f747b; }
+    :host(.cs-light-theme) .cs-new-tag { border-color: rgba(225,29,72,0.3); background: rgba(225,29,72,0.1); color: #be123c; }
     :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger, :host(.cs-light-theme) .cs-info-media-trigger, :host(.cs-light-theme) .cs-info-text-popup-trigger { color: #1d4ed8; background: transparent; border: 0; }
     :host(.cs-light-theme) .cs-info-section .cs-inline-feedback-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger:hover, :host(.cs-light-theme) .cs-info-media-trigger.cs-open, :host(.cs-light-theme) .cs-info-text-popup-trigger:hover, :host(.cs-light-theme) .cs-info-text-popup-trigger.cs-open { color: #1e40af; background: transparent; }
     :host(.cs-light-theme) .cs-cell-today .cs-cell-date,
@@ -942,6 +967,7 @@
     :host(.cs-light-theme) .cs-pop-part-label { color: #007a3a; background: rgba(3,169,80,0.12); }
     :host(.cs-light-theme) .cs-pop-part-text { color: #F2F3F5; }
     :host(.cs-light-theme) .cs-tag-tone, :host(.cs-light-theme) .cs-part-tag.cs-tag-tone, :host(.cs-light-theme) .cs-text-badge.cs-tag-tone { color: var(--cs-tag-light-color); background: var(--cs-tag-light-bg); border-color: var(--cs-tag-light-border); }
+    :host(.cs-light-theme) .cs-cell-muted .cs-part-tag.cs-tag-tone { color: #969ba1; background: #e9ebed; border-color: transparent; }
     :host(.cs-light-theme) .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     :host(.cs-light-theme) .cs-pop-note-box { background: #f5f6f7; border-color: #dfe1e4; }
     :host(.cs-light-theme) .cs-pop-note-text { color: #4b4f55; }
@@ -1052,10 +1078,13 @@
         const tagClass = p.speculative ? "cs-part-tag cs-part-tag-speculative" :
           isSpecialPart(p) ? "cs-part-tag cs-part-tag-collab" : "cs-part-tag";
         const tagLabel = partDisplayLabel(p, idx);
+        const firstTag = firstPartTag(p);
+        const tagToneClass = firstTag ? " cs-tag-tone" : "";
+        const tagToneAttr = firstTag ? tagToneStyleAttr(firstTag) : "";
         let display = '<span class="cs-part-text">' + directiveHtml(p.content) + "</span>";
         if (p.displayType === "tag") display = '<span class="cs-text-badge">' + directiveHtml(p.content) + "</span>";
         if (p.displayType === "profile" && p.profile) display = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
-        const tagHtml = tagLabel ? '<span class="' + tagClass + '">' + escapeHtml(tagLabel) + "</span>" : "";
+        const tagHtml = tagLabel ? '<span class="' + tagClass + tagToneClass + '"' + tagToneAttr + '>' + escapeHtml(tagLabel) + "</span>" : "";
         return '<div class="cs-cell-part">' + tagHtml + display + "</div>";
       }).join("");
     }
@@ -1231,7 +1260,8 @@
         title: String((entry && entry.title) || ""),
         body: String((entry && entry.body) || ""),
         collapsed: entry && entry.collapsed !== false,
-      })).filter((entry) => entry.title.trim() || entry.body.trim()) : [];
+        hasBody: !entry || entry.hasBody !== false,
+      })).filter((entry) => entry.title.trim() || (entry.hasBody && entry.body.trim())) : [];
       return { title: String((parsed && parsed.title) || ""), items };
     } catch (_e) {
       return null;
@@ -1244,17 +1274,21 @@
     const groupTitle = title ? '<div class="cs-info-group-title">' + directiveHtml(title, { infoMode: true }) + '</div>' : "";
     const details = data.items.map((entry, subIndex) => {
       const key = infoIndex + "-" + subIndex;
+      const hasBody = !entry || entry.hasBody !== false;
       const defaultExpanded = entry.collapsed === false;
-      const expanded = state.infoExpanded.has(key) || (defaultExpanded && !state.infoExpanded.has("closed:" + key));
+      const expanded = hasBody && (state.infoExpanded.has(key) || (defaultExpanded && !state.infoExpanded.has("closed:" + key)));
       const body = String(entry.body || "").trim();
       const label = expanded ? "\u25b2" : "\u25bc";
       const titleHtml = directiveHtml(String(entry.title || "").trim() || "\uc138\ubd80 \uc18c\uc2dd", { infoMode: true });
-      return '<div class="cs-info-detail" data-info-detail="' + escapeHtml(key) + '">' +
-        '<div class="cs-info-detail-head">' +
+      const toggleAttr = hasBody ? ' data-info-toggle="' + escapeHtml(key) + '" aria-expanded="' + String(expanded) + '" aria-label="' + (expanded ? "\uc811\uae30" : "\ud3bc\uce58\uae30") + '"' : "";
+      const toggle = hasBody ? '<button type="button" class="cs-info-detail-toggle" data-info-toggle="' + escapeHtml(key) + '" aria-expanded="' + String(expanded) + '" aria-label="' + (expanded ? "\uc811\uae30" : "\ud3bc\uce58\uae30") + '">' + label + '</button>' : "";
+      const bodyHtml = hasBody ? '<div class="cs-info-detail-body"' + (expanded ? "" : " hidden") + '>' + directiveHtml(body, { infoMode: true }) + '</div>' : "";
+      return '<div class="cs-info-detail' + (hasBody ? "" : " cs-info-detail-title-only") + '" data-info-detail="' + escapeHtml(key) + '">' +
+        '<div class="cs-info-detail-head"' + toggleAttr + '>' +
           '<span class="cs-info-detail-title">' + titleHtml + '</span>' +
-          '<button type="button" class="cs-info-detail-toggle" data-info-toggle="' + escapeHtml(key) + '" aria-expanded="' + String(expanded) + '" aria-label="' + (expanded ? "\uc811\uae30" : "\ud3bc\uce58\uae30") + '">' + label + '</button>' +
+          toggle +
         '</div>' +
-        '<div class="cs-info-detail-body"' + (expanded ? "" : " hidden") + '>' + directiveHtml(body, { infoMode: true }) + '</div>' +
+        bodyHtml +
       '</div>';
     }).join("");
     return '<li class="cs-info-group">' + groupTitle + details + '</li>';
@@ -1589,7 +1623,7 @@
       "합방": [205, 125, 211, 252, 3, 105, 161],
       "공방": [222, 191, 96, 165, 37, 99, 235],
       "타방송": [252, 216, 180, 254, 109, 40, 217],
-      "광고": [340, 251, 113, 133, 180, 35, 82],
+      "광고": [14, 251, 146, 60, 194, 65, 12],
       "야방": [27, 251, 146, 60, 194, 93, 22],
     };
     const tone = fixed[text];
@@ -1634,8 +1668,14 @@
     return flags.length ? flags[0] : "";
   }
 
+  function isNewTagText(text) {
+    return String(text || "").trim().toLowerCase() === "new";
+  }
   function renderDirectiveToken(kind, text, profiles, options) {
     const profile = profiles[text] || { channelId: "", channelName: text, channelImageUrl: "" };
+    if (kind === "t" && isNewTagText(text)) {
+      return '<span class="cs-new-tag" aria-label="새 업데이트">NEW</span>';
+    }
     if (options && options.infoMode) {
       if (kind === "t") return '<span class="cs-info-tag">' + styledTextHtml(text) + "</span>";
       return infoProfileTextHtml(profile, options && options.disableProfileLinks);
@@ -1646,8 +1686,7 @@
       return '<span class="cs-text-badge' + toneClass + '"' + toneAttr + '>' + directiveHtml(text, options) + "</span>";
     }
     return '<span class="cs-inline-profile">' + channelAvatarLinkHtml(profile, options && options.disableProfileLinks) + "</span>";
-  }
-  function directiveHtml(value, options) {
+  }  function directiveHtml(value, options) {
     const raw = String(value || "");
     const profiles = (state.data && state.data.directiveProfiles) || {};
     const trimmed = raw.trim();
@@ -1821,12 +1860,15 @@
           const tagClass = p.speculative ? "cs-part-tag cs-part-tag-speculative" :
             isSpecialPart(p) ? "cs-part-tag cs-part-tag-collab" : "cs-part-tag";
           const tagLabel = partDisplayLabel(p, idx);
+          const firstTag = firstPartTag(p);
+          const tagToneClass = firstTag ? " cs-tag-tone" : "";
+          const tagToneAttr = firstTag ? tagToneStyleAttr(firstTag) : "";
           let display = '<span class="cs-part-text">' + directiveHtml(p.content) + "</span>";
           if (p.displayType === "tag") display = '<span class="cs-text-badge">' + directiveHtml(p.content) + "</span>";
           if (p.displayType === "profile" && p.profile) {
             display = '<span class="cs-inline-profile">' + channelAvatarLinkHtml(p.profile) + "</span>";
           }
-          const tagHtml = tagLabel ? '<span class="' + tagClass + '">' + escapeHtml(tagLabel) + "</span>" : "";
+          const tagHtml = tagLabel ? '<span class="' + tagClass + tagToneClass + '"' + tagToneAttr + '>' + escapeHtml(tagLabel) + "</span>" : "";
           const memoDot = partNotes(p).length ? '<span class="cs-part-memo-icon" title="메모 있음" aria-label="메모 있음">✎</span>' : "";
           return '<div class="cs-cell-part">' + tagHtml + display + memoDot + "</div>";
         })
@@ -1978,7 +2020,8 @@
     };
     if (root) root.onclick = (event) => {
       const infoToggle = event.target.closest && event.target.closest("[data-info-toggle]");
-      if (infoToggle) {
+      const infoInlineAction = event.target.closest && event.target.closest(".cs-inline-media-trigger, .cs-inline-text-popup-trigger, .cs-install-guide-trigger, a");
+      if (infoToggle && !infoInlineAction) {
         event.preventDefault();
         event.stopPropagation();
         const key = infoToggle.getAttribute("data-info-toggle") || "";
@@ -2212,18 +2255,20 @@
       html += '<div class="cs-pop-title">' + directiveHtml(titleText, { tagTone: true }) + "</div>";
     }
 
+    let detailHtml = "";
+
     // 시간 줄: 과거 일정과 휴방에서는 생략
     if (!isPast && !isOff) {
       const timeText = entry.start
         ? escapeHtml(entry.start + (entry.end ? " ~ " + entry.end : " ~"))
         : "시간 미정";
-      html += '<div class="cs-pop-row"><span class="cs-pop-icon">◷</span>' +
+      detailHtml += '<div class="cs-pop-row"><span class="cs-pop-icon">◷</span>' +
         '<span class="cs-pop-text">' + timeText + "</span></div>";
     }
 
-    // 부별 컨텐츠: 칸에서 말줄임된 내용을 전체 표시. 합방이면 멤버 아바타도 여기서만 노출.
+    // 부메모는 각 세부 일정 카드 안에 유지하고, 전체 메모만 상세정보 옆으로 분리한다.
     if (!isOff && entry.parts && entry.parts.length) {
-      html += '<div class="cs-pop-parts-box">' + entry.parts
+      detailHtml += '<div class="cs-pop-parts-box">' + entry.parts
         .map((p, idx) => {
           const iconClass = p.speculative ? "cs-pop-icon cs-pop-icon-speculative" :
             isSpecialPart(p) ? "cs-pop-icon cs-pop-icon-collab" : "cs-pop-icon";
@@ -2265,13 +2310,18 @@
         .join("") + "</div>";
     }
 
-    if (notes.length) {
-      html += '<div class="cs-pop-note-box"><span class="cs-pop-icon">✎</span>' +
+    const notesHtml = notes.length
+      ? '<div class="cs-pop-note-box"><span class="cs-pop-icon">✎</span>' +
         '<div class="cs-pop-note-list">' + notes.map((note) =>
           '<div class="cs-pop-note-text">' + directiveHtml(note, { tagTone: true }) + "</div>"
-        ).join("") + "</div></div>";
-    }
+        ).join("") + "</div></div>"
+      : "";
 
+    if (detailHtml && notesHtml) {
+      html += '<div class="cs-pop-detail-layout"><div class="cs-pop-detail-main">' + detailHtml + "</div>" + notesHtml + "</div>";
+    } else {
+      html += detailHtml + notesHtml;
+    }
     body.innerHTML = html;
     popover.style.width = "max-content";
     state.activePopoverDate = key;
@@ -2761,6 +2811,26 @@
     if (state.shadow) state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
   }
 
+  function mediaPopoverBounds() {
+    const root = state.shadow && state.shadow.getElementById("cs-root");
+    const rect = root ? root.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    return { root, rect, margin: 8 };
+  }
+
+  function clampMediaPopoverPosition(pop, left, top) {
+    const bounds = mediaPopoverBounds();
+    const rootRect = bounds.rect;
+    const margin = bounds.margin;
+    const maxWidth = Math.max(120, rootRect.width - margin * 2);
+    const maxHeight = Math.max(120, rootRect.height - margin * 2);
+    pop.style.maxWidth = maxWidth + "px";
+    pop.style.maxHeight = maxHeight + "px";
+    const popRect = pop.getBoundingClientRect();
+    const maxLeft = Math.max(margin, rootRect.width - popRect.width - margin);
+    const maxTop = Math.max(margin, rootRect.height - popRect.height - margin);
+    pop.style.left = Math.max(margin, Math.min(left, maxLeft)) + "px";
+    pop.style.top = Math.max(margin, Math.min(top, maxTop)) + "px";
+  }
   function showMediaPopover(trigger) {
     const url = trigger.getAttribute("data-media-url") || "";
     const label = trigger.getAttribute("data-media-label") || "미디어";
@@ -2775,19 +2845,18 @@
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
 
-    const root = state.shadow && state.shadow.getElementById("cs-root");
+    const bounds = mediaPopoverBounds();
+    const root = bounds.root;
+    const rootRect = bounds.rect;
+    const margin = bounds.margin;
     if (root && pop.parentElement !== root) root.appendChild(pop);
     const rect = trigger.getBoundingClientRect();
-    const rootRect = root ? root.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
     const popRect = pop.getBoundingClientRect();
-    const maxLeft = Math.max(8, rootRect.width - popRect.width - 8);
-    const rightLeft = rect.right - rootRect.left + 8;
-    const leftFallback = rect.left - rootRect.left - popRect.width - 8;
-    const left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
-    const maxTop = Math.max(8, rootRect.height - popRect.height - 8);
-    const top = Math.max(8, Math.min(rect.top - rootRect.top, maxTop));
-    pop.style.left = left + "px";
-    pop.style.top = top + "px";
+    const rightLeft = rect.right - rootRect.left + margin;
+    const leftFallback = rect.left - rootRect.left - popRect.width - margin;
+    const left = rightLeft + popRect.width <= rootRect.width - margin ? rightLeft : leftFallback;
+    const top = rect.top - rootRect.top;
+    clampMediaPopoverPosition(pop, left, top);
   }
   function textPopupPreferredWidth(text, rootWidth) {
     const maxWidth = Math.max(260, Math.min(680, Math.floor((rootWidth || window.innerWidth || 680) - 16)));
@@ -2826,10 +2895,12 @@
     state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
 
-    const root = state.shadow && state.shadow.getElementById("cs-root");
+    const bounds = mediaPopoverBounds();
+    const root = bounds.root;
+    const rootRect = bounds.rect;
+    const margin = bounds.margin;
     if (root && pop.parentElement !== root) root.appendChild(pop);
-    const rootRect = root ? root.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-    const preferredWidth = textPopupPreferredWidth(text, rootRect.width);
+    const preferredWidth = Math.min(textPopupPreferredWidth(text, rootRect.width), Math.max(260, rootRect.width - margin * 2));
     pop.style.width = preferredWidth + "px";
     const contentEl = body && body.querySelector(".cs-text-popup-content");
     if (contentEl) contentEl.style.width = Math.max(220, preferredWidth - 22) + "px";
@@ -2837,22 +2908,18 @@
 
     const rect = trigger.getBoundingClientRect();
     const popRect = pop.getBoundingClientRect();
-    const maxLeft = Math.max(8, rootRect.width - popRect.width - 8);
-    const maxTop = Math.max(8, rootRect.height - popRect.height - 8);
     let left;
     let top;
     if (trigger.classList.contains("cs-update-history-card")) {
       left = rect.left - rootRect.left + rect.width / 2 - popRect.width / 2;
-      top = rect.bottom - rootRect.top + 8;
+      top = rect.bottom - rootRect.top + margin;
     } else {
-      const rightLeft = rect.right - rootRect.left + 8;
-      const leftFallback = rect.left - rootRect.left - popRect.width - 8;
-      left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
+      const rightLeft = rect.right - rootRect.left + margin;
+      const leftFallback = rect.left - rootRect.left - popRect.width - margin;
+      left = rightLeft + popRect.width <= rootRect.width - margin ? rightLeft : leftFallback;
       top = rect.top - rootRect.top;
     }
-    const isUpdateHistoryPopup = trigger.classList.contains("cs-update-history-card");
-    pop.style.left = Math.max(8, Math.min(left, maxLeft)) + "px";
-    pop.style.top = (isUpdateHistoryPopup ? top : Math.max(8, Math.min(top, maxTop))) + "px";
+    clampMediaPopoverPosition(pop, left, top);
   }
   function installGuideSectionHtml(platform) {
     const isAndroid = platform === "android";
@@ -2891,21 +2958,19 @@
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
 
-    const root = state.shadow && state.shadow.getElementById("cs-root");
+    const bounds = mediaPopoverBounds();
+    const root = bounds.root;
+    const rootRect = bounds.rect;
+    const margin = bounds.margin;
     if (root && pop.parentElement !== root) root.appendChild(pop);
     const rect = trigger.getBoundingClientRect();
-    const rootRect = root ? root.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
     const popRect = pop.getBoundingClientRect();
-    const maxLeft = Math.max(8, rootRect.width - popRect.width - 8);
-    const rightLeft = rect.right - rootRect.left + 8;
-    const leftFallback = rect.left - rootRect.left - popRect.width - 8;
-    const left = rightLeft + popRect.width <= rootRect.width - 8 ? rightLeft : Math.max(8, Math.min(leftFallback, maxLeft));
-    const maxTop = Math.max(8, rootRect.height - popRect.height - 8);
-    const top = Math.max(8, Math.min(rect.top - rootRect.top, maxTop));
-    pop.style.left = left + "px";
-    pop.style.top = top + "px";
+    const rightLeft = rect.right - rootRect.left + margin;
+    const leftFallback = rect.left - rootRect.left - popRect.width - margin;
+    const left = rightLeft + popRect.width <= rootRect.width - margin ? rightLeft : leftFallback;
+    const top = rect.top - rootRect.top;
+    clampMediaPopoverPosition(pop, left, top);
   }
-
   function closePopover() {
     if (state.popoverTimer) clearTimeout(state.popoverTimer);
     if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
