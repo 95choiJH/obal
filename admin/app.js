@@ -1437,8 +1437,7 @@
       game.posterImageUrl = category.posterImageUrl || "";
       close();
       markDirty();
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
+      input.blur();
     };
     const mergeOptions = (localLabels, apiItems) => {
       const seen = new Set();
@@ -1477,9 +1476,10 @@
         .slice(0, 5);
     };
     const render = () => {
+      clearTimeout(timer);
+      if (input.dataset.searchDropdownSuppressed === "1") { close(); return; }
       const keyword = input.value.trim();
       renderOptions(mergeOptions(localMatches(), []), keyword ? "치지직 카테고리 검색 중..." : "");
-      clearTimeout(timer);
       if (!keyword) return;
       const seq = ++requestSeq;
       timer = setTimeout(async () => {
@@ -1490,7 +1490,7 @@
       }, 220);
     };
     input.addEventListener("input", render);
-    input.addEventListener("focus", render);
+    input.addEventListener("focus", () => { delete input.dataset.searchDropdownSuppressed; render(); });
     input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
     input.addEventListener("blur", () => setTimeout(close, 160));
   }
@@ -2386,6 +2386,21 @@
 
   function bindInstantMemberResult(button, handler) {
     let handled = false;
+    const resultContainer = () => button.closest && button.closest(".member-results, .directive-suggestions, .directive-popup-results");
+    const suppressLinkedSearchInput = () => {
+      const container = resultContainer();
+      if (!container || !container.parentElement) return;
+      const input = container.parentElement.querySelector('input[data-gif="label"], input[data-msearch], input[data-hsearch]');
+      if (!input) return;
+      input.dataset.searchDropdownSuppressed = "1";
+      input.blur();
+    };
+    const closeResultContainer = () => {
+      const container = resultContainer();
+      if (!container) return;
+      if (container.classList && container.classList.contains("directive-suggestions")) container.hidden = true;
+      container.innerHTML = "";
+    };
     const run = (event) => {
       if (event) {
         event.preventDefault();
@@ -2393,14 +2408,18 @@
       }
       if (handled) return;
       handled = true;
+      suppressLinkedSearchInput();
+      closeResultContainer();
       handler();
-      setTimeout(() => { handled = false; }, 0);
+      setTimeout(() => {
+        closeResultContainer();
+        handled = false;
+      }, 0);
     };
     button.onpointerdown = run;
     button.onmousedown = run;
     button.onclick = run;
   }
-
   function insertPopupInlineDirective(source, editor, kind) {
     editor._toolbarSelectionOffsets = editor._toolbarSelectionOffsets || currentEditorSelectionOffsets(editor) || editor._lastSelectionOffsets;
     saveDirectiveInsertPopupState();
@@ -3165,9 +3184,13 @@
     let debounceTimer = null;
     let seq = 0;
     const run = () => {
-      const keyword = el.value.trim();
       clearTimeout(debounceTimer);
       const resultsEl = $(resultsId);
+      if (el.dataset.searchDropdownSuppressed === "1") {
+        if (resultsEl) resultsEl.innerHTML = "";
+        return;
+      }
+      const keyword = el.value.trim();
       if (!keyword) {
         if (resultsEl) resultsEl.innerHTML = "";
         return;
@@ -3182,6 +3205,7 @@
         if (el2) renderResults(el2, result, latestKeyword || keyword);
       }, 250);
     };
+    el.addEventListener("focus", () => { delete el.dataset.searchDropdownSuppressed; run(); });
     el.oninput = run;
     el.onkeyup = run;
     el.onchange = run;
