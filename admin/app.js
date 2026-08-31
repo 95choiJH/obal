@@ -769,7 +769,7 @@
   }
 
   function emptyInfoSubItem(body) {
-    return { title: "", body: body || "", collapsed: true };
+    return { title: "", body: body || "", collapsed: true, hasBody: true };
   }
 
   function structuredInfoData(item) {
@@ -781,6 +781,7 @@
         title: String((entry && entry.title) || ""),
         body: String((entry && entry.body) || ""),
         collapsed: entry && entry.collapsed !== false,
+        hasBody: !entry || entry.hasBody !== false,
       })) : [];
       return { title: String((parsed && parsed.title) || ""), items };
     } catch (_e) {
@@ -795,6 +796,7 @@
         title: String((entry && entry.title) || ""),
         body: String((entry && entry.body) || ""),
         collapsed: entry && entry.collapsed !== false,
+        hasBody: !entry || entry.hasBody !== false,
       })),
     };
     return STRUCTURED_INFO_PREFIX + JSON.stringify(clean);
@@ -1040,8 +1042,15 @@
   function structuredInfoSubItemHtml(entry, i, si, total) {
     const fieldId = "info-sub-body-" + i + "-" + si;
     const titleId = "info-sub-title-" + i + "-" + si;
+    const hasBody = !entry || entry.hasBody !== false;
+    const bodyEditor = hasBody ? (
+        '<div class="info-sub-editor-shell">' +
+          '<div class="info-sub-toolbar"></div>' +
+          '<textarea id="' + fieldId + '" class="info-sub-body" data-isub-body="' + i + '-' + si + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \ubcf8\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694. \ubbf8\ub514\uc5b4 \ubc84\ud2bc\uc73c\ub85c \uc774\ubbf8\uc9c0/\ub9c1\ud06c\ub97c \ucd94\uac00\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4." data-ii="' + i + '" data-si="' + si + '">' + esc(entry.body || "") + '</textarea>' +
+        '</div>'
+      ) : "";
     return (
-      '<div class="info-sub-card" data-info-sub="' + i + '-' + si + '">' +
+      '<div class="info-sub-card' + (hasBody ? "" : " no-body") + '" data-info-sub="' + i + '-' + si + '">' +
         '<div class="info-sub-head">' +
           '<div class="info-sub-title-shell">' +
             '<div class="info-sub-title-toolbar"></div>' +
@@ -1050,18 +1059,15 @@
           '<div class="info-card-actions">' +
             '<button class="move-btn" data-isub-move="up" data-ii="' + i + '" data-si="' + si + '"' + (si === 0 ? " disabled" : "") + ' aria-label="\uc138\ubd80 \uc18c\uc2dd \uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
             '<button class="move-btn" data-isub-move="down" data-ii="' + i + '" data-si="' + si + '"' + (si === total - 1 ? " disabled" : "") + ' aria-label="\uc138\ubd80 \uc18c\uc2dd \uc544\ub798\ub85c \uc774\ub3d9">\u25bc</button>' +
-            '<button type="button" class="flag-toggle' + (entry.collapsed !== false ? " on" : "") + '" data-isub-collapse="' + i + '-' + si + '" title="\ud504\ub860\ud2b8\uc5d0\uc11c \uae30\ubcf8 \uc811\ud798 \uc0c1\ud0dc\ub85c \ud45c\uc2dc">\uae30\ubcf8\uc811\ud798</button>' +
+            '<button type="button" class="flag-toggle' + (hasBody ? " on" : "") + '" data-isub-has-body="' + i + '-' + si + '" title="\uc138\ubd80 \uc18c\uc2dd \ub0b4\uc6a9 \uc785\ub825 \ubc0f \ud504\ub860\ud2b8 \uc811\uae30/\ud3bc\uce58\uae30 \uc0ac\uc6a9 \uc5ec\ubd80">\ub0b4\uc6a9\uc788\uc74c</button>' +
+            (hasBody ? '<button type="button" class="flag-toggle' + (entry.collapsed !== false ? " on" : "") + '" data-isub-collapse="' + i + '-' + si + '" title="\ud504\ub860\ud2b8\uc5d0\uc11c \uae30\ubcf8 \uc811\ud798 \uc0c1\ud0dc\ub85c \ud45c\uc2dc">\uae30\ubcf8\uc811\ud798</button>' : "") +
             '<button type="button" class="icon-btn" data-isub-del="' + i + '-' + si + '" aria-label="\uc138\ubd80 \uc18c\uc2dd \uc0ad\uc81c">' + trashSvg() + '</button>' +
           '</div>' +
         '</div>' +
-        '<div class="info-sub-editor-shell">' +
-          '<div class="info-sub-toolbar"></div>' +
-          '<textarea id="' + fieldId + '" class="info-sub-body" data-isub-body="' + i + '-' + si + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \ubcf8\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694. \ubbf8\ub514\uc5b4 \ubc84\ud2bc\uc73c\ub85c \uc774\ubbf8\uc9c0/\ub9c1\ud06c\ub97c \ucd94\uac00\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4." data-ii="' + i + '" data-si="' + si + '">' + esc(entry.body || "") + '</textarea>' +
-        '</div>' +
+        bodyEditor +
       '</div>'
     );
   }
-
   function infoItemHtml(u, i) {
     if (isInfoSectionInfoItem(u)) return infoSectionItemHtml(u, i);
     if (isStructuredInfoItem(u)) return structuredInfoItemHtml(u, i);
@@ -1148,6 +1154,17 @@
         const data = structuredInfoData(info[i]) || { title: "", items: [] };
         data.items[si] = data.items[si] || emptyInfoSubItem("");
         data.items[si].collapsed = data.items[si].collapsed === false;
+        setStructuredInfoData(i, data);
+        renderInfo();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-isub-has-body]").forEach((el) => {
+      el.onclick = () => {
+        const [i, si] = el.getAttribute("data-isub-has-body").split("-").map(Number);
+        const data = structuredInfoData(info[i]) || { title: "", items: [] };
+        data.items[si] = data.items[si] || emptyInfoSubItem("");
+        data.items[si].hasBody = data.items[si].hasBody === false;
         setStructuredInfoData(i, data);
         renderInfo();
         markDirty();
@@ -2539,12 +2556,18 @@
     const selected = context && context.token ? context.label : selectedEditorText(source, editor);
     openDirectiveInsertPopup("태그 삽입",
       '<div class="directive-popup-field"><label>태그 텍스트</label><div data-tag-editor="1"></div></div>' +
+      '<div class="directive-popup-field"><button type="button" class="add-btn small" data-tag-new="1">NEW 태그</button></div>' +
       popupActionsHtml("확인", { allowDelete: !!(context && context.token) }),
       (popup) => {
         bindPopupCancel(popup);
         bindPopupDelete(popup, context);
         const draft = setupPopupDirectiveEditor(popup, '[data-tag-editor="1"]', selected, "태그 텍스트", { allowInserts: true });
-        const apply = popup.querySelector('[data-popup-apply="1"]');
+        const newTag = popup.querySelector('[data-tag-new="1"]');
+        if (newTag) newTag.onclick = () => {
+          if (context && context.token) applyDirectiveTokenEdit(context, ":t[New]");
+          else replaceEditorSelection(source, editor, ":t[New]");
+          closeDirectiveInsertPopup();
+        };        const apply = popup.querySelector('[data-popup-apply="1"]');
         apply.onclick = () => {
           const text = cleanDirectiveValue(popupEditorValue(draft), [], { preserveWhitespace: true });
           if (!text.trim()) { draft.editor.focus(); return; }

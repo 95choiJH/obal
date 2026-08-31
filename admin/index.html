@@ -535,6 +535,7 @@
   .info-sub-list { display: flex; flex-direction: column; gap: 9px; }
   .info-sub-card { padding: 9px; border: 1px solid rgba(127,127,127,0.16); border-radius: 8px; background: rgba(255,255,255,0.025); }
   .info-sub-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .info-sub-card.no-body .info-sub-head { margin-bottom: 0; }
   .info-sub-title-shell { overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface2); }
   .info-sub-title-toolbar { min-height: 34px; display: flex; align-items: center; padding: 4px 6px; border-bottom: 1px solid rgba(127,127,127,0.16); background: rgba(0,0,0,0.06); }
   .info-sub-title-toolbar .style-toolbar { margin: 0; }
@@ -695,7 +696,7 @@
 
 <script src="config.js?v=20260712-feedback-drawer"></script>
 <script src="vendor/supabase-2.45.4.min.js"></script>
-<script src="app.js?v=20260826-auto-sync-setting"></script>
+<script src="app.js?v=20260831-info-body-toggle"></script>
 </body>
 </html>
 
