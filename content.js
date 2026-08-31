@@ -91,6 +91,7 @@
   const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
   const PAGE_SIZE = 5;
   const INFO_V2_PREFIX = "@info-v2:";
+  const LIVE_START_CHECK_INTERVAL = 30000;
 
   // 치지직 DOM 앵커 후보 (실제 확장프로그램들이 사용하는 클래스 접두어 기반)
   // 위에서부터 순서대로 시도하고, 모두 실패하면 플로팅 모드로 폴백
@@ -186,6 +187,135 @@
 
   function loadSchedule(force) {
     return sendRuntimeMessage({ type: "getSchedule", force: !!force });
+  }
+  function targetChannelId() {
+    const cfg = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
+    return String(cfg.channelId || "0dad8baf12a436f722faa8e5001c5011").trim();
+  }
+
+  function findLivePlayerToastParent() {
+    const fullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fullscreen) return { element: fullscreen, insidePlayer: true };
+
+    const webPlayer = document.querySelector(".webplayer-internal-video");
+    if (webPlayer) {
+      const element = /^(VIDEO|CANVAS|IFRAME)$/i.test(webPlayer.tagName) && webPlayer.parentElement
+        ? webPlayer.parentElement
+        : webPlayer;
+      return { element, insidePlayer: true };
+    }
+
+    const videos = Array.from(document.querySelectorAll("video"));
+    const visibleVideos = videos
+      .map((video) => ({ video, rect: video.getBoundingClientRect() }))
+      .filter((item) => item.rect.width >= 240 && item.rect.height >= 135);
+    const video = visibleVideos.sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height))[0];
+    if (!video) return { element: document.body || document.documentElement, insidePlayer: false };
+
+    const player = video.video.closest('[class*="player"], [class*="Player"], [class*="live_player"], [class*="video_player"], [class*="video_area"], [class*="video_container"]');
+    if (player) return { element: player, insidePlayer: true };
+
+    let candidate = video.video.parentElement;
+    let best = candidate;
+    const videoArea = video.rect.width * video.rect.height;
+    for (let i = 0; candidate && i < 5; i += 1, candidate = candidate.parentElement) {
+      const rect = candidate.getBoundingClientRect();
+      const area = rect.width * rect.height;
+      if (rect.width >= video.rect.width && rect.height >= video.rect.height && area <= videoArea * 3.2) best = candidate;
+    }
+    return { element: best || document.body || document.documentElement, insidePlayer: !!best };
+  }
+
+  function ensureLiveStartToastHost() {
+    const target = findLivePlayerToastParent();
+    const parent = target.element;
+    if (!parent) return null;
+    let host = document.getElementById("obaengal-live-start-toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "obaengal-live-start-toast-host";
+      host.style.zIndex = "2147483647";
+      host.style.pointerEvents = "none";
+      host.attachShadow({ mode: "open" });
+    }
+
+    if (target.insidePlayer) {
+      const computed = window.getComputedStyle(parent);
+      if (computed.position === "static") parent.style.position = "relative";
+      host.style.position = "absolute";
+      host.style.top = "18px";
+      host.style.right = "18px";
+      host.style.left = "auto";
+      host.style.bottom = "auto";
+    } else {
+      host.style.position = "fixed";
+      host.style.top = "18px";
+      host.style.right = "18px";
+      host.style.left = "auto";
+      host.style.bottom = "auto";
+    }
+
+    if (host.parentNode !== parent) parent.appendChild(host);
+    return host;
+  }
+
+  function showLiveStartToast(channelName) {
+    const host = ensureLiveStartToastHost();
+    if (!host || !host.shadowRoot) return;
+    const name = String(channelName || "\uB530\uD6A8\uB2C8").trim() || "\uB530\uD6A8\uB2C8";
+    host.shadowRoot.innerHTML =
+      '<style>' +
+      ':host{all:initial}.toast{display:flex;align-items:center;gap:10px;max-width:min(360px,calc(100vw - 36px));box-sizing:border-box;padding:12px 14px;border:1px solid rgba(0,255,163,.38);border-radius:8px;background:#15171a;color:#f4f5f6;font:700 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 34px rgba(0,0,0,.42);transform:translateY(-8px);opacity:0;animation:cs-live-toast-in .18s ease forwards,cs-live-toast-out .2s ease 5.8s forwards}.mark{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#00ffa3;box-shadow:0 0 0 5px rgba(0,255,163,.12)}@keyframes cs-live-toast-in{to{transform:translateY(0);opacity:1}}@keyframes cs-live-toast-out{to{transform:translateY(-8px);opacity:0}}' +
+      '</style><div class="toast" role="status" aria-live="polite"><span class="mark"></span><span id="obaengal-live-start-toast-text"></span></div>';
+    const text = host.shadowRoot.getElementById("obaengal-live-start-toast-text");
+    if (text) text.textContent = "'" + name + "'\uB2D8\uC774 \uBC29\uC1A1\uC744 \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4";
+    clearTimeout(host._obaengalLiveToastTimer);
+    host._obaengalLiveToastTimer = setTimeout(() => {
+      if (host && host.isConnected) host.remove();
+    }, 6300);
+  }
+
+  let liveStartCheckInFlight = false;
+  let lastLiveStartCheckAt = 0;
+
+  async function checkTargetLiveStartToast(force) {
+    if (document.visibilityState !== "visible" || liveStartCheckInFlight) return;
+    const currentChannelId = getChannelIdFromUrl();
+    const target = targetChannelId();
+    if (!currentChannelId || !target || currentChannelId.toLowerCase() === target.toLowerCase()) return;
+    const now = Date.now();
+    if (!force && now - lastLiveStartCheckAt < LIVE_START_CHECK_INTERVAL) return;
+    lastLiveStartCheckAt = now;
+    liveStartCheckInFlight = true;
+    try {
+      const result = await sendRuntimeMessage({ type: "checkTargetLiveStart", currentChannelId });
+      if (result && result.notify) showLiveStartToast(result.channelName || "\uB530\uD6A8\uB2C8");
+    } catch (_e) {
+    } finally {
+      liveStartCheckInFlight = false;
+    }
+  }
+
+  function startLiveStartWatcher() {
+    setTimeout(() => checkTargetLiveStartToast(true), 2500);
+    setInterval(() => checkTargetLiveStartToast(false), LIVE_START_CHECK_INTERVAL);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") checkTargetLiveStartToast(true);
+    });
+    document.addEventListener("fullscreenchange", ensureLiveStartToastHost);
+    document.addEventListener("webkitfullscreenchange", ensureLiveStartToastHost);
+    window.addEventListener("message", (event) => {
+      if (event.source !== window) return;
+      const data = event.data || {};
+      if (!data) return;
+      if (data.type === "obaengal:test-live-start-toast") {
+        showLiveStartToast(data.channelName || "\uB530\uD6A8\uB2C8");
+        return;
+      }
+      if (data.type === "obaengal:test-live-start-check") {
+        checkTargetLiveStartToast(true);
+      }
+    });
   }
 
   function indexSchedule() {
@@ -3476,4 +3606,5 @@
   document.addEventListener("webkitfullscreenchange", syncFullscreenVisibility);
   watch();
   startAutoRefresh();
+  startLiveStartWatcher();
 })();

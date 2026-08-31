@@ -15,6 +15,9 @@ const AVAILABLE_UPDATE_VERSION_KEY = "availableUpdateVersion";
 const READY_UPDATE_VERSION_KEY = "readyUpdateVersion";
 const APPLY_UPDATE_TAB_KEY = "applyUpdateTabId";
 const OPEN_SCHEDULE_REQUEST_KEY = "openScheduleRequest";
+const TARGET_LIVE_STATE_KEY = "targetLiveStartState";
+const TARGET_LIVE_STATUS_CACHE_KEY = "targetLiveStatusCache";
+const TARGET_LIVE_STATUS_CACHE_TTL = 25000;
 let updateReloadScheduled = false;
 
 function storageGet(keys) {
@@ -49,6 +52,117 @@ function defaultChannelId() {
 
 function defaultChannelUrl() {
   return "https://chzzk.naver.com/" + encodeURIComponent(defaultChannelId());
+}
+
+function targetChannelName() {
+  const c = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
+  return String(c.channelName || "\uB530\uD6A8\uB2C8").trim() || "\uB530\uD6A8\uB2C8";
+}
+
+function normalizeLiveStatusPayload(json) {
+  const content = json && json.content ? json.content : null;
+  if (!content || typeof content !== "object") return { ok: false, live: false, error: "empty content" };
+  const status = String(content.status || "").toUpperCase();
+  const live = status === "OPEN" || status === "LIVE";
+  const liveKey = live
+    ? String(content.liveId || content.openDate || content.liveTitle || status || "open").trim()
+    : "";
+  return {
+    ok: true,
+    live,
+    status,
+    liveKey,
+    title: String(content.liveTitle || "").trim(),
+    openDate: String(content.openDate || "").trim(),
+  };
+}
+
+async function fetchTargetLiveStatus(force) {
+  const now = Date.now();
+  if (!force) {
+    const saved = await storageGet([TARGET_LIVE_STATUS_CACHE_KEY]);
+    const cached = saved[TARGET_LIVE_STATUS_CACHE_KEY];
+    if (cached && typeof cached === "object" && cached.fetchedAt && now - cached.fetchedAt < TARGET_LIVE_STATUS_CACHE_TTL) {
+      return cached.value || { ok: false, live: false, error: "invalid cache" };
+    }
+  }
+
+  const channelId = defaultChannelId();
+  const url = "https://api.chzzk.naver.com/polling/v2/channels/" + encodeURIComponent(channelId) + "/live-status";
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const value = normalizeLiveStatusPayload(await res.json());
+    await storageSet({ [TARGET_LIVE_STATUS_CACHE_KEY]: { fetchedAt: now, value } });
+    return value;
+  } catch (error) {
+    const value = { ok: false, live: false, error: String((error && error.message) || error) };
+    await storageSet({ [TARGET_LIVE_STATUS_CACHE_KEY]: { fetchedAt: now, value } });
+    return value;
+  }
+}
+
+async function checkTargetLiveStart(currentChannelId) {
+  const targetChannelId = defaultChannelId();
+  const current = String(currentChannelId || "").trim().toLowerCase();
+  if (!current || current === targetChannelId.toLowerCase()) {
+    return { ok: true, notify: false, live: false, targetChannelId };
+  }
+
+  const status = await fetchTargetLiveStatus(false);
+  const saved = await storageGet([TARGET_LIVE_STATE_KEY]);
+  const previous = saved[TARGET_LIVE_STATE_KEY] && typeof saved[TARGET_LIVE_STATE_KEY] === "object"
+    ? saved[TARGET_LIVE_STATE_KEY]
+    : null;
+  const now = Date.now();
+
+  if (!status.ok) {
+    await storageSet({
+      [TARGET_LIVE_STATE_KEY]: {
+        ...(previous || {}),
+        checkedAt: now,
+        lastError: status.error || "live status check failed",
+      },
+    });
+    return { ok: false, notify: false, live: false, targetChannelId, error: status.error };
+  }
+
+  if (!status.live) {
+    await storageSet({
+      [TARGET_LIVE_STATE_KEY]: {
+        ...(previous || {}),
+        live: false,
+        liveKey: "",
+        checkedAt: now,
+        lastError: "",
+      },
+    });
+    return { ok: true, notify: false, live: false, targetChannelId };
+  }
+
+  const liveKey = status.liveKey || "open";
+  const hadKnownState = !!previous && typeof previous.live === "boolean";
+  const notify = hadKnownState && previous.live === false && previous.lastNotifiedLiveKey !== liveKey;
+  await storageSet({
+    [TARGET_LIVE_STATE_KEY]: {
+      ...(previous || {}),
+      live: true,
+      liveKey,
+      checkedAt: now,
+      lastError: "",
+      lastNotifiedLiveKey: notify ? liveKey : ((previous && previous.lastNotifiedLiveKey) || ""),
+    },
+  });
+
+  return {
+    ok: true,
+    notify,
+    live: true,
+    targetChannelId,
+    channelName: targetChannelName(),
+    title: status.title || "",
+    openDate: status.openDate || "",
+  };
 }
 
 async function openDefaultChannelWithSchedule() {
@@ -603,6 +717,12 @@ async function submitFeedback(input) {
 }
 
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === "checkTargetLiveStart") {
+    checkTargetLiveStart(msg.currentChannelId).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, notify: false, error: String((error && error.message) || error) });
+    });
+    return true;
+  }
   if (msg && msg.type === "getSchedule") {
     fetchSchedule(!!msg.force).then(sendResponse);
     return true; // 비동기 응답 유지
