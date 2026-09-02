@@ -11,6 +11,7 @@
   const UPDATE_HISTORY_PREFIX = "@update:";
   const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
   const GNIMTI_CONTENT_SETTING_KEY = "gnimti_content";
+  const LIVE_TITLE_HISTORY_TABLE = cfg.liveTitleHistoryTableName || "live_title_history";
   const GNIMTI_IMAGE_BUCKET = cfg.gnimtiImageBucketName || "game-images";
 
   // ---- 상태 ----
@@ -19,6 +20,8 @@
   let feedback = [];     // 문의·제보함 (읽기 전용)
   let feedbackFilter = "all";
   let feedbackTypeFilter = "all";
+  let liveTitleHistory = [];
+  let liveTitleHistoryLoadError = "";
   let activeAdminMenu = "schedule";
   let selectedScheduleDate = "";
   let scheduleMonthOffset = 0;
@@ -53,7 +56,13 @@
       parts: (r.parts || []).map((p) => ({
         content: p.content || "",
         label: p.label || "",
+        categoryLabel: p.categoryLabel || "",
+        categoryId: p.categoryId || "",
+        categoryType: p.categoryType || "",
+        categoryPosterImageUrl: p.categoryPosterImageUrl || "",
+        manualPartLabel: Object.prototype.hasOwnProperty.call(p, "manualPartLabel") ? !!p.manualPartLabel : null,
         hidePartLabel: !!p.hidePartLabel,
+        hiddenFromFront: !!p.hiddenFromFront,
         displayType: p.displayType || "text",
         profile: (p.profile && p.profile.channelId) || (p.profile && p.profile.channelName) || "",
         collab: !!p.collab,
@@ -204,6 +213,7 @@
       gameImages: Array.isArray(r.game_images) ? r.game_images.map(normalizeGameImage).filter(Boolean) : [],
       vods: Array.isArray(r.vods) ? r.vods.map(normalizeVod).filter(Boolean) : [],
     })).sort(compareScheduleDate);
+    rows.forEach(preparePartLabels);
 
     // 소식 테이블은 아직 없을 수 있으므로(선택 기능) 실패해도 일정 로드는 유지
     const { data: infoData, error: infoError } = await sb
@@ -214,6 +224,7 @@
       .order("id", { ascending: true });
     info = infoError ? [] : (infoData || []).map((u) => ({ id: u.id, content: u.content || "", hidden: !!u.hidden }));
     await loadAdminSettings();
+    await loadLiveTitleHistory();
 
     deletedIds = [];
     deletedInfoIds = [];
@@ -251,6 +262,41 @@
   }
   function adminSettingsTableName() {
     return cfg.adminSettingsTableName || "admin_settings";
+  }
+
+  function liveTitleHistoryTableName() {
+    return LIVE_TITLE_HISTORY_TABLE;
+  }
+
+  function formatHistoryDateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  async function loadLiveTitleHistory() {
+    liveTitleHistoryLoadError = "";
+    const { data, error } = await sb
+      .from(liveTitleHistoryTableName())
+      .select("id,channel_id,live_key,schedule_date,title,previous_title,category_label,category_id,category_type,category_poster_image_url,started_at,changed_at,created_at")
+      .eq("channel_id", cfg.channelId)
+      .order("changed_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(100);
+    if (error) {
+      liveTitleHistory = [];
+      liveTitleHistoryLoadError = error.message || String(error);
+      console.warn("[admin] 방제목 변경 기록 로드 실패:", error);
+      return;
+    }
+    liveTitleHistory = data || [];
   }
 
   function autoLiveCategorySyncEnabledFromValue(value) {
@@ -532,7 +578,7 @@
         '<div class="settings-row">' +
           '<div class="settings-copy">' +
             '<div class="settings-title">자동 카테고리/부 생성</div>' +
-            '<div class="settings-desc">방송 카테고리를 감지해 게임 목록과 부 제목을 자동으로 반영합니다.</div>' +
+            '<div class="settings-desc">방송 카테고리를 감지해 게임 목록과 부 제목을 자동으로 반영합니다. 방제목 변경 기록은 이 설정과 별도로 저장됩니다.</div>' +
           '</div>' +
           '<button type="button" class="settings-toggle" data-setting-auto-live-sync="1" aria-pressed="' + (enabled ? 'true' : 'false') + '">' +
             '<span class="toggle-label">' + (enabled ? 'ON' : 'OFF') + '</span>' +
@@ -540,8 +586,37 @@
           '</button>' +
         '</div>' +
         warning +
-      '</div>';
+      '</div>' +
+      liveTitleHistoryHtml();
     bindSettingsCards();
+  }
+
+  function liveTitleHistoryHtml() {
+    const error = liveTitleHistoryLoadError
+      ? '<div class="settings-warning">방제목 변경 기록을 불러올 수 없습니다. 운영 DB에 live_title_history 테이블과 RLS를 적용했는지 확인하세요.</div>'
+      : '';
+    const items = liveTitleHistory.length
+      ? liveTitleHistory.map((item) => {
+        const previous = item.previous_title ? '<div class="live-title-history-prev">이전: ' + esc(item.previous_title) + '</div>' : '';
+        const category = item.category_label ? '<span class="live-title-history-category">' + esc(item.category_label) + (item.category_type ? ' <b>' + esc(item.category_type) + '</b>' : '') + '</span>' : '<span class="live-title-history-category muted">카테고리 없음</span>';
+        return '<article class="live-title-history-item">' +
+          '<div class="live-title-history-main">' + esc(item.title || '') + '</div>' +
+          '<div class="live-title-history-meta">' + category + '<span>' + esc(item.schedule_date || '') + ' · ' + esc(formatHistoryDateTime(item.changed_at)) + '</span></div>' +
+          previous +
+        '</article>';
+      }).join("")
+      : '<div class="empty live-title-history-empty">아직 기록된 방제목 변경이 없습니다.</div>';
+    return '<div class="card settings-card live-title-history-card">' +
+      '<div class="settings-row live-title-history-head">' +
+        '<div class="settings-copy">' +
+          '<div class="settings-title">방제목 변경 기록</div>' +
+          '<div class="settings-desc">라이브 중 방제목이 바뀌면 마지막 기록과 비교해 자동으로 누적됩니다.</div>' +
+        '</div>' +
+        '<button type="button" class="add-btn small" data-live-title-history-refresh="1">새로고침</button>' +
+      '</div>' +
+      error +
+      '<div class="live-title-history-list">' + items + '</div>' +
+    '</div>';
   }
 
   function bindSettingsCards() {
@@ -550,6 +625,13 @@
         adminSettings.autoLiveCategorySync = !adminSettings.autoLiveCategorySync;
         renderSettings();
         markDirty();
+      };
+    });
+    document.querySelectorAll("[data-live-title-history-refresh]").forEach((el) => {
+      el.onclick = async () => {
+        el.disabled = true;
+        await loadLiveTitleHistory();
+        renderSettings();
       };
     });
   }
@@ -1054,7 +1136,7 @@
         '<div class="info-sub-head">' +
           '<div class="info-sub-title-shell">' +
             '<div class="info-sub-title-toolbar"></div>' +
-            '<input id="' + titleId + '" class="info-sub-title" data-isub-title="' + i + '-' + si + '" value="' + esc(entry.title || "") + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \uc81c\ubaa9 \uc608: \uc2a4\ud0c0\ud06c\ub798\ud504\ud2b8" />' +
+            '<textarea id="' + titleId + '" class="info-sub-title" data-isub-title="' + i + '-' + si + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \uc81c\ubaa9 \uc608: \uc2a4\ud0c0\ud06c\ub798\ud504\ud2b8">' + esc(entry.title || "") + '</textarea>' +
           '</div>' +
           '<div class="info-card-actions">' +
             '<button class="move-btn" data-isub-move="up" data-ii="' + i + '" data-si="' + si + '"' + (si === 0 ? " disabled" : "") + ' aria-label="\uc138\ubd80 \uc18c\uc2dd \uc704\ub85c \uc774\ub3d9">\u25b2</button>' +
@@ -1408,6 +1490,38 @@
     }
   }
 
+  function knownGameCategoryOptions(excludeInput) {
+    const seen = new Set();
+    const options = [];
+    const add = (item) => {
+      const normalized = normalizeGameCategory(item) || normalizeGameImage(item);
+      if (!normalized || !normalized.label) return;
+      const key = (normalized.categoryType || "") + "|" + (normalized.categoryId || "") + "|" + normalized.label.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      options.push({ source: item && item.source || "local", ...normalized });
+    };
+    rows.forEach((row) => {
+      (row.gameImages || []).forEach((game) => add({ source: "local", ...game }));
+      (row.parts || []).forEach((part) => {
+        const label = String(part && (part.categoryLabel || (part.autoCategory ? part.content : "")) || "").trim();
+        if (!label) return;
+        add({
+          source: "local",
+          label,
+          categoryId: part.categoryId || "",
+          categoryType: part.categoryType || "",
+          posterImageUrl: part.categoryPosterImageUrl || "",
+        });
+      });
+    });
+    if (excludeInput && excludeInput.value) {
+      const exact = excludeInput.value.trim().toLowerCase();
+      return options.filter((item) => item.label.toLowerCase() !== exact);
+    }
+    return options;
+  }
+
   function bindGameAutocomplete(input) {
     if (input.dataset.gameAutocompleteBound) return;
     input.dataset.gameAutocompleteBound = "1";
@@ -1494,6 +1608,126 @@
     input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
     input.addEventListener("blur", () => setTimeout(close, 160));
   }
+  function partCategoryLabel(part) {
+    return String(part && (part.categoryLabel || (part.autoCategory ? part.content : "")) || "").trim();
+  }
+
+  function partCategorySelectorHtml(i, pi, part) {
+    const label = partCategoryLabel(part);
+    const type = String(part && part.categoryType || "").trim().toUpperCase();
+    const poster = String(part && part.categoryPosterImageUrl || "").trim();
+    const selected = label
+      ? '<div class="part-category-selected">' +
+        (poster ? '<img class="game-result-poster" src="' + esc(poster) + '" alt="" />' : '<span class="game-result-poster game-result-poster-empty">' + esc(label.charAt(0) || "?") + '</span>') +
+        '<span class="part-category-selected-label">' + esc(label) + '</span>' +
+        (type ? '<span class="game-result-badge">' + esc(type) + '</span>' : '') +
+        '<button type="button" class="member-chip-del" data-delpartcategory="' + i + '-' + pi + '" aria-label="카테고리 제거">×</button>' +
+      '</div>'
+      : '';
+    return '<div class="part-category-box">' +
+      '<div class="host-label">카테고리</div>' +
+      selected +
+      '<div class="game-autocomplete-wrap part-category-search-wrap">' +
+        '<input type="text" data-part-category="' + i + '-' + pi + '" value="' + esc(label) + '" placeholder="\uBD80 \uCE74\uD14C\uACE0\uB9AC \uAC80\uC0C9" autocomplete="off" />' +
+        '<div class="member-results game-results" data-part-category-results="' + i + '-' + pi + '"></div>' +
+      '</div>' +
+      '<div class="game-meta-hint">이 부에 연결할 치지직 카테고리를 선택합니다. 직접 입력도 가능합니다.</div>' +
+    '</div>';
+  }
+
+  function bindPartCategoryAutocomplete(input) {
+    if (input.dataset.partCategoryAutocompleteBound) return;
+    input.dataset.partCategoryAutocompleteBound = "1";
+    const key = input.getAttribute("data-part-category") || "";
+    const results = document.querySelector('[data-part-category-results="' + key + '"]');
+    if (!results) return;
+    let timer = null;
+    let requestSeq = 0;
+    let latestOptions = [];
+    const close = () => { results.innerHTML = ""; };
+    const currentPart = () => {
+      const [i, pi] = key.split("-").map(Number);
+      rows[i].parts = rows[i].parts || [];
+      rows[i].parts[pi] = rows[i].parts[pi] || { content: "", label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
+      return rows[i].parts[pi];
+    };
+    const apply = (item) => {
+      const category = typeof item === "string" ? { label: item } : item;
+      input.dataset.applyingPartCategory = "1";
+      input.value = category.label || "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      delete input.dataset.applyingPartCategory;
+      const part = currentPart();
+      part.categoryLabel = category.label || "";
+      part.categoryId = category.categoryId || "";
+      part.categoryType = category.categoryType || "";
+      part.categoryPosterImageUrl = category.posterImageUrl || category.categoryPosterImageUrl || "";
+      part.autoCategory = false;
+      close();
+      markDirty();
+      input.blur();
+      render();
+    };
+    const mergeOptions = (localItems, apiItems) => {
+      const seen = new Set();
+      const options = [];
+      [...localItems, ...apiItems.map((item) => ({ source: "chzzk", ...item }))].forEach((item) => {
+        if (!item || !item.label) return;
+        const key = (item.categoryType || "") + "|" + (item.categoryId || "") + "|" + item.label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push(item);
+      });
+      return options.slice(0, 10);
+    };
+    const renderOptions = (options, statusText) => {
+      latestOptions = options;
+      if (!options.length && !statusText) { close(); return; }
+      const optionHtml = options.map((item, index) => {
+        const image = item.posterImageUrl ? '<img class="game-result-poster" src="' + esc(item.posterImageUrl) + '" alt="" />' : '<span class="game-result-poster game-result-poster-empty">' + esc((item.label || "?").charAt(0) || "?") + '</span>';
+        const badge = item.source === "chzzk" ? '<span class="game-result-badge">' + esc(item.categoryType || "CHZZK") + '</span>' : '<span class="game-result-badge local">기존</span>';
+        return '<button type="button" class="member-result game-result" data-part-category-pick="' + index + '">' + image + '<span class="game-result-main"><span class="game-result-label">' + esc(item.label) + '</span>' + badge + '</span></button>';
+      }).join("");
+      results.innerHTML = optionHtml + (statusText ? '<div class="member-result-empty">' + esc(statusText) + '</div>' : "");
+      results.querySelectorAll("[data-part-category-pick]").forEach((button) => {
+        bindInstantMemberResult(button, () => apply(latestOptions[+button.getAttribute("data-part-category-pick")]));
+      });
+    };
+    const localMatches = () => {
+      const query = input.value.trim().toLowerCase();
+      return knownGameCategoryOptions(input)
+        .filter((item) => !query || item.label.toLowerCase().includes(query))
+        .slice(0, 5);
+    };
+    const renderSearch = () => {
+      clearTimeout(timer);
+      const keyword = input.value.trim();
+      renderOptions(mergeOptions(localMatches(), []), keyword ? "치지직 카테고리 검색 중..." : "");
+      if (!keyword) return;
+      const seq = ++requestSeq;
+      timer = setTimeout(async () => {
+        const result = await searchChzzkCategories(keyword);
+        if (seq !== requestSeq) return;
+        renderOptions(mergeOptions(localMatches(), result.list), result.ok ? "" : "카테고리 검색 실패: " + result.error);
+      }, 220);
+    };
+    input.addEventListener("input", () => {
+      const part = currentPart();
+      part.categoryLabel = input.value;
+      part.autoCategory = false;
+      if (input.dataset.applyingPartCategory !== "1") {
+        part.categoryId = "";
+        part.categoryType = "";
+        part.categoryPosterImageUrl = "";
+      }
+      renderSearch();
+      markDirty();
+    });
+    input.addEventListener("focus", renderSearch);
+    input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+    input.addEventListener("blur", () => setTimeout(close, 160));
+  }
+
   function vodsListHtml(r, i) {
     const vods = r.vods || [];
     const itemsHtml = vods.map((v, vi) => vodItemHtml(i, v, vi)).join("");
@@ -1521,6 +1755,36 @@
     return '<button class="icon-btn" data-delvod="' + i + "-" + vi + '" aria-label="다시보기 삭제">' + trashSvg() + "</button>";
   }
 
+  function isAutoPartLabelCounted(part) {
+    return !!part && !part.hiddenFromFront && !part.hidePartLabel && !part.manualPartLabel;
+  }
+
+  function autoPartLabelFor(row, partIndex) {
+    const parts = (row && row.parts) || [];
+    let number = 1;
+    for (let index = 0; index < parts.length; index += 1) {
+      if (index === partIndex) return String(number) + "부";
+      if (isAutoPartLabelCounted(parts[index])) number += 1;
+    }
+    return String(number) + "부";
+  }
+
+  function preparePartLabels(row) {
+    const parts = (row && row.parts) || [];
+    let number = 1;
+    parts.forEach((part) => {
+      if (!part) return;
+      if (part.manualPartLabel == null) {
+        const expected = String(number) + "부";
+        part.manualPartLabel = !!part.label && part.label !== expected;
+      }
+      if (isAutoPartLabelCounted(part)) {
+        part.label = String(number) + "부";
+        number += 1;
+      }
+    });
+  }
+
   function partNotesListHtml(i, pi, p) {
     const notes = p.notes || [];
     const items = notes.map((note, ni) =>
@@ -1529,8 +1793,14 @@
           '<textarea data-part-note="' + i + '-' + pi + '-' + ni + '" placeholder="이 부에 대한 메모">' + esc(note.content || "") + '</textarea>' +
           '<div class="directive-preview" data-part-note-preview="' + i + '-' + pi + '-' + ni + '" style="margin:4px 0 0">' + directivePreviewHtml(note.content || "", null) + '</div>' +
         '</div>' +
-        '<button type="button" class="flag-toggle' + (note.hidden ? " on" : "") + '" data-part-note-hidden="' + i + '-' + pi + '-' + ni + '" title="확장 프로그램에서 이 부 메모를 숨깁니다">숨김</button>' +
-        '<button type="button" class="icon-btn" data-del-part-note="' + i + '-' + pi + '-' + ni + '" aria-label="부 메모 삭제">' + trashSvg() + '</button>' +
+        '<div class="part-note-actions">' +
+          '<div class="move-col" aria-label="부 메모 순서 이동">' +
+            '<button type="button" class="move-btn" data-part-note-move="' + i + '-' + pi + '-' + ni + '-up" aria-label="부 메모 위로 이동"' + (ni <= 0 ? " disabled" : "") + '>▲</button>' +
+            '<button type="button" class="move-btn" data-part-note-move="' + i + '-' + pi + '-' + ni + '-down" aria-label="부 메모 아래로 이동"' + (ni >= notes.length - 1 ? " disabled" : "") + '>▼</button>' +
+          '</div>' +
+          '<button type="button" class="flag-toggle' + (note.hidden ? " on" : "") + '" data-part-note-hidden="' + i + '-' + pi + '-' + ni + '" title="확장 프로그램에서 이 부 메모를 숨깁니다">숨김</button>' +
+          '<button type="button" class="icon-btn" data-del-part-note="' + i + '-' + pi + '-' + ni + '" aria-label="부 메모 삭제">' + trashSvg() + '</button>' +
+        '</div>' +
       '</div>'
     ).join("");
     return '<div class="part-notes-wrap"><div class="schedule-editor-section-head">부 메모</div>' + items +
@@ -1544,12 +1814,18 @@
     const outdoorOn = !!p.outdoor;
     const speculativeOn = !!p.speculative;
     const hidePartLabelOn = !!p.hidePartLabel;
+    const hiddenFromFrontOn = !!p.hiddenFromFront;
     const inputValue = p.displayType === "profile" ? ":s " + p.content : p.displayType === "tag" ? ":t " + p.content : p.content;
+    const manualPartLabelOn = !!p.manualPartLabel;
+    const partLabelValue = manualPartLabelOn ? (p.label || autoPartLabelFor(rows[i], pi)) : autoPartLabelFor(rows[i], pi);
     let html =
       '<div class="part-item">' +
         '<div class="part-title-row">' +
           '<input type="text" data-pf="content" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(inputValue) + '" placeholder="컨텐츠명" />' +
-          '<input class="part-label-input" type="text" data-pf="label" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(p.label || (pi + 1) + "부") + '" placeholder="부" aria-label="부 표시 이름"' + (speculativeOn ? " disabled" : "") + ' />' +
+          '<div class="part-label-control">' +
+            '<input class="part-label-input" type="text" data-pf="label" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(partLabelValue) + '" placeholder="부" aria-label="부 표시 이름"' + (!manualPartLabelOn ? " readonly" : "") + (speculativeOn ? " disabled" : "") + ' />' +
+            '<button type="button" class="flag-toggle part-label-manual-toggle' + (manualPartLabelOn ? " on" : "") + '" data-manualpartlabeltoggle="' + i + '-' + pi + '"' + (speculativeOn ? " disabled" : "") + ' title="직접 입력한 부는 자동 부 카운팅에서 제외됩니다">직접</button>' +
+          '</div>' +
         '</div>' +
         '<div class="directive-preview" data-directive-preview="' + i + '-' + pi + '">' + directivePreviewHtml(inputValue, p.profile) + '</div>' +
         '<div class="part-tools-row">' +
@@ -1563,7 +1839,9 @@
           '<button class="flag-toggle' + (outdoorOn ? " on" : "") + '" data-outdoortoggle="' + i + '-' + pi + '">야외</button>' +
           '<button class="flag-toggle speculative' + (speculativeOn ? " on" : "") + '" data-speculativetoggle="' + i + '-' + pi + '">예상</button>' +
           '<button class="flag-toggle' + (hidePartLabelOn ? " on" : "") + '" data-hidepartlabeltoggle="' + i + '-' + pi + '">부 숨김</button>' +
-        '</div>';
+          '<button class="flag-toggle' + (hiddenFromFrontOn ? " on" : "") + '" data-hiddenfronttoggle="' + i + '-' + pi + '">프론트숨김</button>' +
+        '</div>' +
+        partCategorySelectorHtml(i, pi, p);
     if (collabOn) {
       html +=
         '<div class="collab-box">' +
@@ -1776,7 +2054,7 @@
     return tokens;
   }
   function appendEditorText(parent, text) {
-    if (text) parent.appendChild(document.createTextNode(text));
+    if (text) parent.appendChild(document.createTextNode(text.replace(/ /g, "\u00a0")));
   }
 
   function appendStyledEditorText(parent, text) {
@@ -1973,7 +2251,7 @@
     let out = "";
     editor.childNodes.forEach((node) => {
       if (node.nodeType === Node.TEXT_NODE) {
-        out += (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "");
+        out += (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "").replace(/\u00a0/g, " ");
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         if (node.classList.contains("directive-input-token")) {
           node.dataset.raw = inlineDirectiveRaw(node);
@@ -2092,7 +2370,7 @@
   }
 
   function serializedNodeLength(node) {
-    if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "").length;
+    if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "").replace(/\u00a0/g, " ").length;
     if (node.nodeType !== Node.ELEMENT_NODE) return 0;
     if (node.classList.contains("directive-input-token")) return inlineDirectiveRaw(node).length;
     if (node.classList.contains("directive-token")) return (node.dataset.raw || node.textContent || "").length;
@@ -2105,7 +2383,7 @@
   function serializedOffsetInside(node, container, offset) {
     if (node === container) {
       if (node.nodeType === Node.TEXT_NODE) {
-        return (node.nodeValue || "").slice(0, offset).replaceAll(DIRECTIVE_CARET_CHAR, "").length;
+        return (node.nodeValue || "").slice(0, offset).replaceAll(DIRECTIVE_CARET_CHAR, "").replace(/\u00a0/g, " ").length;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return 0;
       if (node.classList.contains("directive-token")) return offset > 0 ? serializedNodeLength(node) : 0;
@@ -2178,7 +2456,7 @@
 
   function nodePointForOffset(node, target) {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "");
+      const text = (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "").replace(/\u00a0/g, " ");
       return { node, offset: Math.min(text.length, Math.max(0, target)) };
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return { node: node.parentNode || node, offset: 0 };
@@ -2215,7 +2493,7 @@
       const len = serializedNodeLength(node);
       if (seen + len >= target) {
         if (node.nodeType === Node.TEXT_NODE) {
-          const text = (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "");
+          const text = (node.nodeValue || "").replaceAll(DIRECTIVE_CARET_CHAR, "").replace(/\u00a0/g, " ");
           range.setStart(node, Math.min(text.length, Math.max(0, target - seen)));
         } else {
           range.setStartAfter(node);
@@ -3237,13 +3515,19 @@
 
   function normalizePart(p) {
     if (typeof p === "string") {
-      return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
+      return { content: p, label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
     }
     if (p && typeof p === "object") {
       return {
         content: p.content || "",
         label: p.label || "",
+        categoryLabel: String(p.categoryLabel || "").trim(),
+        categoryId: String(p.categoryId || "").trim(),
+        categoryType: String(p.categoryType || "").trim(),
+        categoryPosterImageUrl: String(p.categoryPosterImageUrl || p.posterImageUrl || "").trim(),
+        manualPartLabel: Object.prototype.hasOwnProperty.call(p, "manualPartLabel") ? !!p.manualPartLabel : null,
         hidePartLabel: !!p.hidePartLabel,
+        hiddenFromFront: !!p.hiddenFromFront,
         displayType: p.displayType || "text",
         profile: normalizeChannelRef(p.profile),
         collab: !!p.collab,
@@ -3260,7 +3544,7 @@
         categoryType: String(p.categoryType || "").trim(),
       };
     }
-    return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
+    return { content: "", label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
   }
 
   function findDirectiveBracketEnd(raw, openIndex) {
@@ -3468,6 +3752,22 @@
         markDirty();
       };
     });
+    document.querySelectorAll("[data-part-note-move]").forEach((el) => {
+      el.onclick = () => {
+        const [iRaw, piRaw, niRaw, direction] = el.getAttribute("data-part-note-move").split("-");
+        const i = Number(iRaw);
+        const pi = Number(piRaw);
+        const ni = Number(niRaw);
+        const notes = rows[i] && rows[i].parts && rows[i].parts[pi] && rows[i].parts[pi].notes;
+        if (!Array.isArray(notes)) return;
+        const target = direction === "up" ? ni - 1 : ni + 1;
+        if (target < 0 || target >= notes.length) return;
+        const [moved] = notes.splice(ni, 1);
+        notes.splice(target, 0, moved);
+        render();
+        markDirty();
+      };
+    });
     document.querySelectorAll("[data-del-part-note]").forEach((el) => {
       el.onclick = () => {
         const [i, pi, ni] = el.getAttribute("data-del-part-note").split("-").map(Number);
@@ -3508,6 +3808,9 @@
       const f = el.getAttribute("data-pf");
       el.oninput = () => {
         rows[i].parts[pi][f] = el.value;
+        if (f === "label") {
+          rows[i].parts[pi].manualPartLabel = true;
+        }
         if (f === "content") {
           rows[i].parts[pi].displayType = "text";
           rows[i].parts[pi].profile = null;
@@ -3521,7 +3824,8 @@
       el.onclick = () => {
         const i = +el.getAttribute("data-addpart");
         rows[i].parts = rows[i].parts || [];
-        rows[i].parts.push({ content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] });
+        rows[i].parts.push({ content: "", label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] });
+        preparePartLabels(rows[i]);
         render();
         markDirty();
       };
@@ -3537,6 +3841,7 @@
         if (target < 0 || target >= parts.length) return;
         const [moved] = parts.splice(pi, 1);
         parts.splice(target, 0, moved);
+        preparePartLabels(rows[i]);
         render();
         markDirty();
       };
@@ -3546,6 +3851,24 @@
       el.onclick = () => {
         const [i, pi] = el.getAttribute("data-delpart").split("-").map(Number);
         rows[i].parts.splice(pi, 1);
+        preparePartLabels(rows[i]);
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-part-category]").forEach((el) => {
+      bindPartCategoryAutocomplete(el);
+    });
+    document.querySelectorAll("[data-delpartcategory]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi] = el.getAttribute("data-delpartcategory").split("-").map(Number);
+        const part = rows[i] && rows[i].parts && rows[i].parts[pi];
+        if (!part) return;
+        part.categoryLabel = "";
+        part.categoryId = "";
+        part.categoryType = "";
+        part.categoryPosterImageUrl = "";
+        part.autoCategory = false;
         render();
         markDirty();
       };
@@ -3664,12 +3987,40 @@
         markDirty();
       };
     });
-    document.querySelectorAll("[data-hidepartlabeltoggle]").forEach((el) => {
+        document.querySelectorAll("[data-hidepartlabeltoggle]").forEach((el) => {
       el.onclick = () => {
         const [i, pi] = el.getAttribute("data-hidepartlabeltoggle").split("-").map(Number);
         rows[i].parts[pi].hidePartLabel = !rows[i].parts[pi].hidePartLabel;
+        preparePartLabels(rows[i]);
         render();
         markDirty();
+      };
+    });
+    document.querySelectorAll("[data-hiddenfronttoggle]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi] = el.getAttribute("data-hiddenfronttoggle").split("-").map(Number);
+        rows[i].parts[pi].hiddenFromFront = !rows[i].parts[pi].hiddenFromFront;
+        preparePartLabels(rows[i]);
+        render();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-manualpartlabeltoggle]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi] = el.getAttribute("data-manualpartlabeltoggle").split("-").map(Number);
+        const part = rows[i] && rows[i].parts && rows[i].parts[pi];
+        if (!part) return;
+        part.manualPartLabel = !part.manualPartLabel;
+        if (part.manualPartLabel && !part.label) part.label = autoPartLabelFor(rows[i], pi);
+        preparePartLabels(rows[i]);
+        render();
+        markDirty();
+        if (part.manualPartLabel) {
+          requestAnimationFrame(() => {
+            const input = document.querySelector('.part-label-input[data-i="' + i + '"][data-pi="' + pi + '"]');
+            if (input) { input.focus(); input.select(); }
+          });
+        }
       };
     });
     document.querySelectorAll("[data-mdel]").forEach((el) => {
@@ -3762,12 +4113,19 @@
       // id가 있는 기존 행은 id로 update (날짜를 바꿔도 같은 행이 이동하며, 새 행이 복제되지 않음).
       // id가 없는 새 행만 upsert(insert)한다.
       for (const r of rows) {
+        preparePartLabels(r);
         const parsedParts = await Promise.all((r.parts || []).map(parseDisplayDirective));
         const cleanParts = parsedParts
           .map((p) => ({
             content: (p.content || "").trim(),
             label: (p.label || "").trim(),
+            categoryLabel: (p.categoryLabel || "").trim(),
+            categoryId: (p.categoryId || "").trim(),
+            categoryType: (p.categoryType || "").trim(),
+            categoryPosterImageUrl: (p.categoryPosterImageUrl || "").trim(),
+            manualPartLabel: !!p.manualPartLabel,
             hidePartLabel: !!p.hidePartLabel,
+            hiddenFromFront: !!p.hiddenFromFront,
             displayType: p.displayType || "text",
             profile: p.profile || null,
             collab: !!p.collab,
@@ -3780,17 +4138,15 @@
             hostChannel: p.hostChannel || null,
             notes: serializeNotes(p.notes),
             autoCategory: !!p.autoCategory,
-            categoryId: (p.categoryId || "").trim(),
-            categoryType: (p.categoryType || "").trim(),
           }))
           .filter((p) => p.content);
         const cleanGameImages = (r.gameImages || [])
           .map((g) => ({
-            url: (g.url || "").trim(),
+            url: (g.url || g.posterImageUrl || "").trim(),
             label: (g.label || "").trim(),
             categoryId: (g.categoryId || "").trim(),
             categoryType: (g.categoryType || "").trim(),
-            posterImageUrl: (g.posterImageUrl || "").trim(),
+            posterImageUrl: (g.posterImageUrl || g.url || "").trim(),
           }))
           .filter((g) => g.label || g.url);
         const cleanVods = (r.vods || [])
@@ -3912,6 +4268,7 @@
         const menu = button.getAttribute("data-admin-menu");
         setActiveAdminMenu(menu);
         if (menu === "feedback") loadFeedback();
+        if (menu === "settings") loadLiveTitleHistory().then(renderSettings);
       };
     });
     document.querySelectorAll("[data-feedback-filter]").forEach((button) => {

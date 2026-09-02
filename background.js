@@ -17,7 +17,9 @@ const APPLY_UPDATE_TAB_KEY = "applyUpdateTabId";
 const OPEN_SCHEDULE_REQUEST_KEY = "openScheduleRequest";
 const TARGET_LIVE_STATE_KEY = "targetLiveStartState";
 const TARGET_LIVE_STATUS_CACHE_KEY = "targetLiveStatusCache";
-const TARGET_LIVE_STATUS_CACHE_TTL = 25000;
+const TARGET_CHANNEL_PROFILE_CACHE_KEY = "targetChannelProfileCache";
+const TARGET_LIVE_STATUS_CACHE_TTL = 9000;
+const TARGET_CHANNEL_PROFILE_CACHE_TTL = 6 * 60 * 60 * 1000;
 let updateReloadScheduled = false;
 
 function storageGet(keys) {
@@ -74,7 +76,41 @@ function normalizeLiveStatusPayload(json) {
     liveKey,
     title: String(content.liveTitle || "").trim(),
     openDate: String(content.openDate || "").trim(),
+    categoryName: String(content.liveCategoryValue || content.categoryValue || content.liveCategory || content.categoryType || "").trim(),
+    categoryKey: String(content.liveCategoryValue || content.categoryValue || content.liveCategory || content.categoryType || "").trim().toLowerCase(),
+    categoryType: String(content.categoryType || "").trim().toUpperCase(),
+    liveCategory: String(content.liveCategory || "").trim().toLowerCase(),
   };
+}
+async function fetchTargetChannelProfile() {
+  const now = Date.now();
+  const channelId = defaultChannelId();
+  const saved = await storageGet([TARGET_CHANNEL_PROFILE_CACHE_KEY]);
+  const cached = saved[TARGET_CHANNEL_PROFILE_CACHE_KEY];
+  if (cached && typeof cached === "object" && cached.channelId === channelId && cached.fetchedAt && now - cached.fetchedAt < TARGET_CHANNEL_PROFILE_CACHE_TTL) {
+    return cached.value || { channelName: targetChannelName(), channelImageUrl: "" };
+  }
+
+  let value = { channelName: targetChannelName(), channelImageUrl: "" };
+  try {
+    const res = await fetch("https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(channelId), {
+      headers: { Accept: "application/json" },
+      credentials: "omit",
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const normalized = normalizeChannelRef(json && json.content);
+      if (normalized) {
+        value = {
+          channelName: normalized.channelName || value.channelName,
+          channelImageUrl: normalized.channelImageUrl || "",
+        };
+      }
+    }
+  } catch (e) {
+  }
+  await storageSet({ [TARGET_CHANNEL_PROFILE_CACHE_KEY]: { channelId, fetchedAt: now, value } });
+  return value;
 }
 
 async function fetchTargetLiveStatus(force) {
@@ -102,7 +138,9 @@ async function fetchTargetLiveStatus(force) {
   }
 }
 
-async function checkTargetLiveStart(currentChannelId) {
+async function checkTargetLiveStart(currentChannelId, options) {
+  const liveStartNoticeEnabled = !options || options.liveStartNoticeEnabled !== false;
+  const categoryChangeNoticeEnabled = !options || options.categoryChangeNoticeEnabled !== false;
   const targetChannelId = defaultChannelId();
   const current = String(currentChannelId || "").trim().toLowerCase();
   if (!current || current === targetChannelId.toLowerCase()) {
@@ -133,6 +171,8 @@ async function checkTargetLiveStart(currentChannelId) {
         ...(previous || {}),
         live: false,
         liveKey: "",
+        categoryKey: "",
+        categoryName: "",
         checkedAt: now,
         lastError: "",
       },
@@ -140,26 +180,38 @@ async function checkTargetLiveStart(currentChannelId) {
     return { ok: true, notify: false, live: false, targetChannelId };
   }
 
+  const profile = await fetchTargetChannelProfile();
   const liveKey = status.liveKey || "open";
+  const categoryKey = status.categoryKey || "";
+  const categoryName = status.categoryName || "";
   const hadKnownState = !!previous && typeof previous.live === "boolean";
-  const notify = hadKnownState && previous.live === false && previous.lastNotifiedLiveKey !== liveKey;
+  const liveStartNotify = liveStartNoticeEnabled && hadKnownState && previous.live === false && previous.lastNotifiedLiveKey !== liveKey;
+  const isGameCategory = status.categoryType === "GAME" || (status.categoryType === "" && !!status.liveCategory && status.liveCategory !== "talk" && status.liveCategory !== "etc");
+  const categoryNotify = categoryChangeNoticeEnabled && isGameCategory && hadKnownState && previous.live === true && !!categoryKey && !!previous.categoryKey && previous.categoryKey !== categoryKey;
+  const notify = liveStartNotify || categoryNotify;
+  const notificationType = categoryNotify ? "categoryChange" : "liveStart";
   await storageSet({
     [TARGET_LIVE_STATE_KEY]: {
       ...(previous || {}),
       live: true,
       liveKey,
+      categoryKey,
+      categoryName,
       checkedAt: now,
       lastError: "",
-      lastNotifiedLiveKey: notify ? liveKey : ((previous && previous.lastNotifiedLiveKey) || ""),
+      lastNotifiedLiveKey: liveStartNotify ? liveKey : ((previous && previous.lastNotifiedLiveKey) || ""),
     },
   });
 
   return {
     ok: true,
     notify,
+    notificationType,
     live: true,
     targetChannelId,
-    channelName: targetChannelName(),
+    channelName: profile.channelName || targetChannelName(),
+    channelImageUrl: profile.channelImageUrl || "",
+    categoryName,
     title: status.title || "",
     openDate: status.openDate || "",
   };
@@ -308,13 +360,19 @@ function normalizeChannelRef(c) {
 // parts 항목을 {content, collab, official, otherChannel, members, hostChannel} 형태로 정규화 (구버전은 문자열 하나였음)
 function normalizePart(p) {
   if (typeof p === "string") {
-    return { content: p, label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
+    return { content: p, label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
   }
   if (p && typeof p === "object") {
     return {
       content: p.content || "",
       label: p.label || "",
+      categoryLabel: String(p.categoryLabel || "").trim(),
+      categoryId: String(p.categoryId || "").trim(),
+      categoryType: String(p.categoryType || "").trim(),
+      categoryPosterImageUrl: String(p.categoryPosterImageUrl || p.posterImageUrl || "").trim(),
+      manualPartLabel: !!p.manualPartLabel,
       hidePartLabel: !!p.hidePartLabel,
+      hiddenFromFront: !!p.hiddenFromFront,
       displayType: p.displayType || "text",
       profile: normalizeChannelRef(p.profile),
       collab: !!p.collab,
@@ -331,9 +389,23 @@ function normalizePart(p) {
       categoryType: String(p.categoryType || "").trim(),
     };
   }
-  return { content: "", label: "", hidePartLabel: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
+  return { content: "", label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
 }
 
+function visiblePartsForFront(parts) {
+  let visibleIndex = 0;
+  return parts
+    .map(normalizePart)
+    .filter((part) => part && !part.hiddenFromFront)
+    .map((part) => {
+      if (part.autoCategory && String(part.categoryType || "").toUpperCase() === "GAME" && !part.hidePartLabel && !part.manualPartLabel && !part.label) {
+        visibleIndex += 1;
+        return { ...part, label: String(visibleIndex) + "\uBD80" };
+      }
+      if (!part.hidePartLabel && !part.manualPartLabel) visibleIndex += 1;
+      return part;
+    });
+}
 function normalizeGameImage(item) {
   if (typeof item === "string") {
     const value = item.trim();
@@ -341,9 +413,12 @@ function normalizeGameImage(item) {
     return /^https?:\/\//i.test(value) ? { url: value, label: "" } : { url: "", label: value };
   }
   if (!item || typeof item !== "object") return null;
-  const url = String(item.url || item.imageUrl || item.src || "").trim();
+  const posterImageUrl = String(item.posterImageUrl || "").trim();
+  const url = String(item.url || item.imageUrl || item.src || posterImageUrl || "").trim();
   const label = String(item.label || item.title || item.name || item.game || "").trim();
-  return (label || url) ? { url, label } : null;
+  const categoryId = String(item.categoryId || "").trim();
+  const categoryType = String(item.categoryType || "").trim().toUpperCase();
+  return (label || url) ? { url, label, categoryId, categoryType, posterImageUrl } : null;
 }
 // vods 항목을 {url, label} 형태로 정규화. label이 없으면 "방송 다시보기"가 기본값.
 function normalizeVod(v) {
@@ -388,9 +463,12 @@ function rowsToChannels(rows) {
     if (r.end_time) entry.end = r.end_time;
     if (r.title) entry.title = r.title;
     if (r.title_short) entry.titleShort = r.title_short;
-    if (Array.isArray(r.parts) && r.parts.length) entry.parts = r.parts.map(normalizePart);
+    if (Array.isArray(r.parts) && r.parts.length) entry.parts = visiblePartsForFront(r.parts);
     if (Array.isArray(r.vods) && r.vods.length) entry.vods = r.vods.map(normalizeVod).filter(Boolean);
-    if (Array.isArray(r.game_images) && r.game_images.length) entry.gameImages = r.game_images.map(normalizeGameImage).filter(Boolean);
+    if (Array.isArray(r.game_images) && r.game_images.length) {
+      const allGameImages = r.game_images.map(normalizeGameImage).filter(Boolean);
+      entry.gameImages = allGameImages.filter((game) => game && (!game.categoryType || game.categoryType === "GAME"));
+    }
     if (r.status) entry.status = r.status;
     if (r.cafe_time) entry.cafeTime = true;
     if (r.video_time) entry.videoTime = true;
@@ -406,6 +484,41 @@ function rowsToChannels(rows) {
 }
 
 // 소식 행 배열을 channels[cid].info 목록으로 병합 (sort_order로 이미 정렬된 상태로 들어옴)
+
+function normalizeLiveTitleHistory(item) {
+  if (!item || typeof item !== "object") return null;
+  const title = String(item.title || "").trim();
+  if (!title) return null;
+  return {
+    id: item.id,
+    liveKey: String(item.live_key || item.liveKey || "").trim(),
+    scheduleDate: String(item.schedule_date || item.scheduleDate || "").trim(),
+    title,
+    previousTitle: String(item.previous_title || item.previousTitle || "").trim(),
+    categoryLabel: String(item.category_label || item.categoryLabel || "").trim(),
+    categoryId: String(item.category_id || item.categoryId || "").trim(),
+    categoryType: String(item.category_type || item.categoryType || "").trim().toUpperCase(),
+    categoryPosterImageUrl: String(item.category_poster_image_url || item.categoryPosterImageUrl || "").trim(),
+    startedAt: String(item.started_at || item.startedAt || "").trim(),
+    changedAt: String(item.changed_at || item.changedAt || "").trim(),
+  };
+}
+
+function liveTitleHistoriesByChannel(rows) {
+  const byChannel = {};
+  for (const row of rows || []) {
+    const channelId = String((row && (row.channel_id || row.channelId)) || "").trim();
+    const item = normalizeLiveTitleHistory(row);
+    if (!channelId || !item) continue;
+    if (!byChannel[channelId]) byChannel[channelId] = [];
+    byChannel[channelId].push(item);
+  }
+  Object.values(byChannel).forEach((list) => {
+    list.sort((a, b) => String(b.changedAt || "").localeCompare(String(a.changedAt || "")) || String(b.id || "").localeCompare(String(a.id || "")));
+  });
+  return byChannel;
+}
+
 function extensionVersionFromInfoItems(rows) {
   for (const r of rows || []) {
     const content = String((r && r.content) || "").trim();
@@ -616,6 +729,13 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
 
+  let titleHistories = {};
+  try {
+    const historyRows = await fetchTable(c.liveTitleHistoryTableName || "live_title_history", "changed_at.desc,id.desc");
+    titleHistories = liveTitleHistoriesByChannel(historyRows);
+  } catch (e) {
+  }
+
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
   let gnimtiContentByChannel = {};
@@ -624,7 +744,7 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -646,7 +766,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 
@@ -717,8 +837,19 @@ async function submitFeedback(input) {
 }
 
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === "getTargetChannelProfile") {
+    fetchTargetChannelProfile().then((profile) => {
+      sendResponse({ ok: true, ...(profile || {}) });
+    }).catch((error) => {
+      sendResponse({ ok: false, channelName: targetChannelName(), channelImageUrl: "", error: String((error && error.message) || error) });
+    });
+    return true;
+  }
   if (msg && msg.type === "checkTargetLiveStart") {
-    checkTargetLiveStart(msg.currentChannelId).then(sendResponse).catch((error) => {
+    checkTargetLiveStart(msg.currentChannelId, {
+      liveStartNoticeEnabled: msg.liveStartNoticeEnabled !== false,
+      categoryChangeNoticeEnabled: msg.categoryChangeNoticeEnabled !== false,
+    }).then(sendResponse).catch((error) => {
       sendResponse({ ok: false, notify: false, error: String((error && error.message) || error) });
     });
     return true;

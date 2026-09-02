@@ -43,6 +43,8 @@
   // 상태
   // ----------------------------------------------------------
   const EXTENSION_COLLAPSED_KEY = "obaengal:extension-collapsed";
+  const LIVE_START_NOTICE_KEY = "obaengal:live-start-notice";
+  const CATEGORY_CHANGE_NOTICE_KEY = "obaengal:category-change-notice";
 
   function readExtensionCollapsed() {
     try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
@@ -54,6 +56,15 @@
     catch (_) { /* 저장소 접근이 제한된 페이지에서는 현재 세션 상태만 사용 */ }
   }
 
+  function readNotificationSetting(key) {
+    try { return localStorage.getItem(key) !== "0"; }
+    catch (_) { return true; }
+  }
+
+  function saveNotificationSetting(key, enabled) {
+    try { localStorage.setItem(key, enabled ? "1" : "0"); }
+    catch (_) { /* 저장소 접근이 제한된 페이지에서는 현재 세션 상태만 사용 */ }
+  }
   const state = {
     data: null,          // schedule.json 전체
     fetchedAt: null,
@@ -65,6 +76,9 @@
     extensionCollapsed: readExtensionCollapsed(),
     monthOffset: 0,
     gameOnly: false,
+    settingsOpen: false,
+    liveStartNoticeEnabled: readNotificationSetting(LIVE_START_NOTICE_KEY),
+    categoryChangeNoticeEnabled: readNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY),
     selectedGame: "",
     noticeIndex: 0,
     deployedExtensionVersion: "",
@@ -86,12 +100,15 @@
     schedulePopoverPinned: false,
     openScheduleRequestConsumed: false,
     schedulePanelForcedOpen: false,
+    titleHistoryHost: null,
+    titleHistoryOpen: false,
+    titleHistoryOutsideHandler: null,
   };
 
   const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
   const PAGE_SIZE = 5;
   const INFO_V2_PREFIX = "@info-v2:";
-  const LIVE_START_CHECK_INTERVAL = 30000;
+  const LIVE_START_CHECK_INTERVAL = 10000;
 
   // 치지직 DOM 앵커 후보 (실제 확장프로그램들이 사용하는 클래스 접두어 기반)
   // 위에서부터 순서대로 시도하고, 모두 실패하면 플로팅 모드로 폴백
@@ -235,7 +252,7 @@
       host = document.createElement("div");
       host.id = "obaengal-live-start-toast-host";
       host.style.zIndex = "2147483647";
-      host.style.pointerEvents = "none";
+      host.style.pointerEvents = "auto";
       host.attachShadow({ mode: "open" });
     }
 
@@ -243,36 +260,90 @@
       const computed = window.getComputedStyle(parent);
       if (computed.position === "static") parent.style.position = "relative";
       host.style.position = "absolute";
-      host.style.top = "18px";
-      host.style.right = "18px";
-      host.style.left = "auto";
+      host.style.top = "16px";
+      host.style.left = "50%";
+      host.style.right = "auto";
       host.style.bottom = "auto";
+      host.style.transform = "translateX(-50%)";
     } else {
       host.style.position = "fixed";
-      host.style.top = "18px";
-      host.style.right = "18px";
-      host.style.left = "auto";
+      host.style.top = "16px";
+      host.style.left = "50%";
+      host.style.right = "auto";
       host.style.bottom = "auto";
+      host.style.transform = "translateX(-50%)";
     }
 
     if (host.parentNode !== parent) parent.appendChild(host);
     return host;
   }
 
-  function showLiveStartToast(channelName) {
+  function showLiveStartToast(channelName, channelImageUrl, messageSuffix, categoryName) {
     const host = ensureLiveStartToastHost();
     if (!host || !host.shadowRoot) return;
     const name = String(channelName || "\uB530\uD6A8\uB2C8").trim() || "\uB530\uD6A8\uB2C8";
+    const imageUrl = String(channelImageUrl || "").trim();
+    const suffix = String(messageSuffix || "\uB2D8\uC774 \uBC29\uC1A1\uC744 \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4").trim();
+    const category = String(categoryName || "").trim();
     host.shadowRoot.innerHTML =
       '<style>' +
-      ':host{all:initial}.toast{display:flex;align-items:center;gap:10px;max-width:min(360px,calc(100vw - 36px));box-sizing:border-box;padding:12px 14px;border:1px solid rgba(0,255,163,.38);border-radius:8px;background:#15171a;color:#f4f5f6;font:700 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 34px rgba(0,0,0,.42);transform:translateY(-8px);opacity:0;animation:cs-live-toast-in .18s ease forwards,cs-live-toast-out .2s ease 5.8s forwards}.mark{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#00ffa3;box-shadow:0 0 0 5px rgba(0,255,163,.12)}@keyframes cs-live-toast-in{to{transform:translateY(0);opacity:1}}@keyframes cs-live-toast-out{to{transform:translateY(-8px);opacity:0}}' +
-      '</style><div class="toast" role="status" aria-live="polite"><span class="mark"></span><span id="obaengal-live-start-toast-text"></span></div>';
-    const text = host.shadowRoot.getElementById("obaengal-live-start-toast-text");
-    if (text) text.textContent = "'" + name + "'\uB2D8\uC774 \uBC29\uC1A1\uC744 \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4";
+      ':host{all:initial}.toast{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(18,20,25,.98),rgba(28,31,38,.96)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#a78bfa,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f4f5f6;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.4);transform:translateX(-18px);opacity:0;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:1;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#d7dee7;font-weight:800}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{grid-column:2;appearance:none;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.09);color:#f8fafc;height:30px;padding:0 10px;font:900 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}.watch-btn:hover{border-color:rgba(125,211,252,.58);background:rgba(56,189,248,.2);color:#fff}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateX(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateX(-18px);opacity:0}}' +
+      '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button>';
+    const avatar = host.shadowRoot.getElementById("obaengal-live-start-avatar");
+    if (avatar) {
+      if (imageUrl) {
+        const img = document.createElement("img");
+        img.src = imageUrl;
+        img.alt = "";
+        avatar.appendChild(img);
+      } else {
+        const fallback = document.createElement("span");
+        fallback.className = "avatar-fallback";
+        fallback.textContent = name.charAt(0) || "D";
+        avatar.appendChild(fallback);
+      }
+    }
+    const nameEl = host.shadowRoot.getElementById("obaengal-live-start-name");
+    if (nameEl) nameEl.textContent = name;
+    const messageEl = host.shadowRoot.getElementById("obaengal-live-start-message");
+    if (messageEl) {
+      if (category) {
+        messageEl.appendChild(document.createTextNode("님이 카테고리를 변경하였습니다. "));
+        const categoryEl = document.createElement("span");
+        categoryEl.className = "category";
+        categoryEl.textContent = category;
+        messageEl.appendChild(categoryEl);
+
+      } else {
+        messageEl.textContent = suffix;
+      }
+    }
+    const toast = host.shadowRoot.getElementById("obaengal-live-start-toast");
+    const watchButton = host.shadowRoot.getElementById("obaengal-live-start-watch");
+    const goTarget = () => { window.location.href = "https://chzzk.naver.com/" + encodeURIComponent(targetChannelId()); };
+    if (watchButton) watchButton.addEventListener("click", goTarget);
     clearTimeout(host._obaengalLiveToastTimer);
-    host._obaengalLiveToastTimer = setTimeout(() => {
-      if (host && host.isConnected) host.remove();
-    }, 6300);
+    clearTimeout(host._obaengalLiveToastRemoveTimer);
+    const hideToast = () => {
+      if (!host || !host.isConnected || !toast) return;
+      toast.classList.add("is-exiting");
+      host._obaengalLiveToastRemoveTimer = setTimeout(() => {
+        if (host && host.isConnected) host.remove();
+      }, 220);
+    };
+    const startTimer = () => {
+      clearTimeout(host._obaengalLiveToastTimer);
+      host._obaengalLiveToastTimer = setTimeout(hideToast, 3150);
+    };
+    if (toast) {
+      toast.addEventListener("mouseenter", () => {
+        clearTimeout(host._obaengalLiveToastTimer);
+        clearTimeout(host._obaengalLiveToastRemoveTimer);
+        toast.classList.remove("is-exiting");
+      });
+      toast.addEventListener("mouseleave", startTimer);
+    }
+    startTimer();
   }
 
   let liveStartCheckInFlight = false;
@@ -288,8 +359,18 @@
     lastLiveStartCheckAt = now;
     liveStartCheckInFlight = true;
     try {
-      const result = await sendRuntimeMessage({ type: "checkTargetLiveStart", currentChannelId });
-      if (result && result.notify) showLiveStartToast(result.channelName || "\uB530\uD6A8\uB2C8");
+      const result = await sendRuntimeMessage({
+        type: "checkTargetLiveStart",
+        currentChannelId,
+        liveStartNoticeEnabled: state.liveStartNoticeEnabled,
+        categoryChangeNoticeEnabled: state.categoryChangeNoticeEnabled,
+      });
+      if (result && result.notify && (result.notificationType === "categoryChange" ? state.categoryChangeNoticeEnabled : state.liveStartNoticeEnabled)) {
+        const suffix = result.notificationType === "categoryChange" && result.categoryName
+          ? "님이 카테고리를 변경하였습니다. " + result.categoryName
+          : "\uB2D8\uC774 \uBC29\uC1A1\uC744 \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4";
+        showLiveStartToast(result.channelName || "\uB530\uD6A8\uB2C8", result.channelImageUrl || "", suffix, result.notificationType === "categoryChange" ? result.categoryName : "");
+      }
     } catch (_e) {
     } finally {
       liveStartCheckInFlight = false;
@@ -309,7 +390,18 @@
       const data = event.data || {};
       if (!data) return;
       if (data.type === "obaengal:test-live-start-toast") {
-        showLiveStartToast(data.channelName || "\uB530\uD6A8\uB2C8");
+        if (data.channelImageUrl) {
+          showLiveStartToast(data.channelName || "\uB530\uD6A8\uB2C8", data.channelImageUrl || "", data.messageSuffix || "", data.categoryName || "");
+          return;
+        }
+        sendRuntimeMessage({ type: "getTargetChannelProfile" }).then((profile) => {
+          showLiveStartToast(
+            data.channelName || (profile && profile.channelName) || "\uB530\uD6A8\uB2C8",
+            (profile && profile.channelImageUrl) || "",
+            data.messageSuffix || "",
+            data.categoryName || ""
+          );
+        });
         return;
       }
       if (data.type === "obaengal:test-live-start-check") {
@@ -404,6 +496,29 @@
 
     .cs-wrapper { position: relative; background: #1b1c1f; border: 1px solid #2e3033;
       border-radius: 10px; margin: 0 30px 20px; }
+    .cs-schedule-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 30px 6px; }
+    .cs-schedule-toolbar .cs-view-tip,
+    .cs-schedule-toolbar .cs-extension-collapse-tip { top: calc(100% + 6px); bottom: auto; }
+    .cs-settings-toggle { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 7px; border: 1px solid #3b3d42; background: #25272b; color: #d7d9dd;
+      font-size: 20px; line-height: 1; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+    .cs-settings-toggle:hover { border-color: #51545b; background: #2d2f34; color: #fff; }
+    .cs-settings-toggle.cs-open { border-color: #03a950; background: #03a950; color: #ffffff; box-shadow: 0 0 0 3px rgba(3,169,80,0.18), 0 8px 18px rgba(3,169,80,0.22); }
+    .cs-settings-tip { position: absolute; right: 0; top: calc(100% + 6px); z-index: 12; padding: 5px 8px;
+      border-radius: 6px; border: 1px solid #303238; background: #202126; color: #f3f4f5; font-size: 12px; white-space: nowrap;
+      opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity .15s ease, transform .15s ease, visibility .15s ease; pointer-events: none; }
+    .cs-settings-toggle:hover .cs-settings-tip,
+    .cs-settings-toggle:focus-visible .cs-settings-tip { opacity: 1; visibility: visible; transform: translateY(0); }
+    .cs-settings-panel { position: absolute; top: 38px; right: 30px; z-index: 18; width: min(330px, calc(100% - 60px)); box-sizing: border-box;
+      padding: 10px; border: 1px solid #343740; border-radius: 8px; background: #202126; color: #f1f2f4;
+      box-shadow: 0 12px 28px rgba(0,0,0,.34); }
+    .cs-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 36px; padding: 6px 4px; }
+    .cs-settings-row + .cs-settings-row { border-top: 1px solid rgba(255,255,255,.07); }
+    .cs-settings-label { min-width: 0; color: #eef0f3; font-size: 13px; font-weight: 700; line-height: 1.35; }
+    .cs-settings-switch { position: relative; flex: 0 0 auto; width: 42px; height: 24px; border: 0; border-radius: 999px; background: #4a4d54; cursor: pointer; transition: background .16s ease; }
+    .cs-settings-switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.28); transition: transform .16s ease; }
+    .cs-settings-switch.cs-on { background: #03a950; }
+    .cs-settings-switch.cs-on::after { transform: translateX(18px); }
     .cs-section { position: relative; padding: 12px 14px; }
     .cs-schedule-section { position: relative; border-radius: 10px; }
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
@@ -588,7 +703,7 @@
     .cs-media-popover.cs-open { display: block; }
     .cs-media-popover.cs-media-expanded { width: min(760px, 100%); max-height: none; }
     .cs-media-popover.cs-install-guide-popover { width: min(634px, calc(100% - 16px)); max-height: min(80vh, 720px); }
-    .cs-media-popover.cs-text-popover { width: auto; min-width: 260px; max-width: min(680px, calc(100% - 16px)); max-height: min(72vh, 520px); }
+    .cs-media-popover.cs-text-popover { width: auto; min-width: 260px; max-width: calc(100% - 16px); max-height: min(72vh, 520px); }
     .cs-media-popover { overflow: auto; box-sizing: border-box; }
     .cs-media-popover .cs-media-body img, .cs-media-popover .cs-media-body video, .cs-media-popover .cs-media-body iframe { max-width: 100%; }
     .cs-media-popover .cs-media-body video, .cs-media-popover .cs-media-body iframe { width: min(720px, 100%); }
@@ -615,6 +730,11 @@
     .cs-media-body iframe { aspect-ratio: 16 / 9; height: auto; }
     .cs-media-link { color: #93c5fd; font-size: 12px; overflow-wrap: anywhere; }
     .cs-text-popup-content { width: auto; min-width: 220px; max-width: 100%; max-height: calc(min(72vh, 520px) - 52px); overflow: auto; color: #d7d9de; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .cs-media-popover.cs-update-text-popover .cs-text-popup-content { scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.68) rgba(15,16,18,0.82); }
+    .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar { width: 10px; height: 10px; }
+    .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar-track { border-radius: 999px; background: linear-gradient(180deg, rgba(9,10,12,0.82), rgba(24,28,32,0.92)); }
+    .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar-thumb { border: 2px solid rgba(15,16,18,0.96); border-radius: 999px; background: linear-gradient(180deg, rgba(0,255,163,0.76), rgba(64,128,255,0.5)); box-shadow: 0 0 10px rgba(0,255,163,0.16); }
+    .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,255,163,0.92), rgba(64,128,255,0.66)); }
     .cs-text-popup-content .cs-text-badge { vertical-align: baseline; }
     .cs-install-guide-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
       min-height: 20px; padding: 1px 7px 1px 6px; border: 1px solid rgba(0,255,163,0.34); border-radius: 999px;
@@ -822,7 +942,7 @@
     .cs-info-detail-head[data-info-toggle] { margin: -5px -6px; padding: 5px 6px; border-radius: 6px; cursor: pointer; transition: background 0.14s ease, color 0.14s ease; }
     .cs-info-detail-head[data-info-toggle]:hover { background: rgba(0,255,163,0.07); }
     .cs-info-detail-head[data-info-toggle]:hover .cs-info-detail-title { color: #ffffff; }
-    .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+    .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 400; line-height: 1.35; white-space: pre-line; overflow-wrap: anywhere; }
     .cs-info-detail-toggle { flex: 0 0 auto; width: 24px; height: 24px; border: 1px solid rgba(143,255,213,0.22); border-radius: 6px; background: rgba(255,255,255,0.04); color: #d7f7ea; font-size: 13px; font-weight: 900; line-height: 1; cursor: pointer; }
     .cs-info-detail-toggle:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
     .cs-info-detail-body { display: block; padding: 8px 0 0 13px; color: #c9cacd; font-size: 13px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
@@ -942,6 +1062,16 @@
     :host(.cs-light-theme) .cs-extension-collapse { background: #ffffff; border-color: #d8dadd; color: #555a61; }
     :host(.cs-light-theme) .cs-extension-collapse:hover { background: #eceef0; border-color: #c5c8cc; color: #1e2024; }
     :host(.cs-light-theme) .cs-extension-collapse-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+
+    :host(.cs-light-theme) .cs-settings-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
+    :host(.cs-light-theme) .cs-settings-toggle:hover { background: #eceef0; border-color: #c5c8cc; color: #1e2024; }
+    :host(.cs-light-theme) .cs-settings-toggle.cs-open { background: #03a950; border-color: #03a950; color: #ffffff; box-shadow: 0 0 0 3px rgba(3,169,80,0.16), 0 8px 18px rgba(3,169,80,0.2); }
+    :host(.cs-light-theme) .cs-settings-tip,
+    :host(.cs-light-theme) .cs-settings-panel { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
+    :host(.cs-light-theme) .cs-settings-label { color: #25282d; }
+    :host(.cs-light-theme) .cs-settings-row + .cs-settings-row { border-top-color: #eceef0; }
+    :host(.cs-light-theme) .cs-settings-switch { background: #c9ccd1; }
+    :host(.cs-light-theme) .cs-settings-switch.cs-on { background: #03a950; }
     :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
     :host(.cs-light-theme) .cs-view-toggle:not(.cs-open) .cs-view-icon img { filter: brightness(0) saturate(100%) invert(34%) sepia(7%) saturate(472%) hue-rotate(174deg) brightness(92%) contrast(87%); }
     :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
@@ -1071,6 +1201,10 @@
     :host(.cs-light-theme) .cs-feedback-open:hover,
     :host(.cs-light-theme) .cs-feedback-open.cs-open { background: #eceef0; color: #1e2024; }
     :host(.cs-light-theme) .cs-feedback-panel { background: #ffffff; border-color: #d8dadd; box-shadow: 0 10px 30px rgba(0,0,0,0.16); }
+    :host(.cs-light-theme) .cs-media-popover.cs-update-text-popover .cs-text-popup-content { scrollbar-color: rgba(3,169,80,0.62) rgba(238,240,242,0.96); }
+    :host(.cs-light-theme) .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar-track { background: linear-gradient(180deg, #f4f6f8, #e7eaee); }
+    :host(.cs-light-theme) .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar-thumb { border-color: #f8f9fa; background: linear-gradient(180deg, rgba(3,169,80,0.72), rgba(72,93,210,0.42)); box-shadow: none; }
+    :host(.cs-light-theme) .cs-media-popover.cs-update-text-popover .cs-text-popup-content::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(3,169,80,0.88), rgba(72,93,210,0.56)); }
     :host(.cs-light-theme) .cs-install-guide { scrollbar-color: rgba(3,169,80,0.58) rgba(238,240,242,0.9); }
     :host(.cs-light-theme) .cs-install-guide::-webkit-scrollbar-track { background: rgba(238,240,242,0.9); }
     :host(.cs-light-theme) .cs-install-guide::-webkit-scrollbar-thumb { border-color: #f8f9fa; background: linear-gradient(180deg, rgba(3,169,80,0.7), rgba(3,169,80,0.42)); }
@@ -1114,6 +1248,7 @@
 
     @media (max-width: 600px) {
       .cs-header { flex-wrap: wrap; }
+      .cs-schedule-toolbar { margin-left: 16px; margin-right: 16px; }
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 35px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 12px; }
@@ -1323,8 +1458,25 @@
       : "";
 
     const updatedLabel = formatUpdated();
+    const monthToggleLabel = state.monthExpanded ? "주간 보기" : "월간 보기";
+    const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
+    const settingsLabel = "알림 설정";
+    const scheduleToolbarHtml =
+      '<div class="cs-schedule-toolbar">' +
+      (state.extensionCollapsed ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
+      '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" +
+      '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? "\u25BC" : "\u25B2") + '<span class="cs-extension-collapse-tip">' + collapseLabel + "</span></button>" +
+      "</div>";
+    const settingsPanelHtml = state.settingsOpen
+      ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송에서 방송 시작 알림</span><button type="button" class="cs-settings-switch' + (state.liveStartNoticeEnabled ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(state.liveStartNoticeEnabled) + '" aria-label="방송 시작 알림"></button></div>' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송에서 카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (state.categoryChangeNoticeEnabled ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(state.categoryChangeNoticeEnabled) + '" aria-label="카테고리 변경 알림"></button></div>' +
+        "</div>"
+      : "";
 
     root.innerHTML =
+      scheduleToolbarHtml +
+      settingsPanelHtml +
       (state.extensionCollapsed ? "" : updateNoticeHtml()) +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
@@ -1334,10 +1486,8 @@
       '<span class="cs-spacer"></span>' +
       (state.extensionCollapsed ? "" : monthLabel +
         (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
-        '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + (state.monthExpanded ? "주간 보기" : "월간 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.monthExpanded ? "주간 보기" : "월간 보기") + "</span></button>" +
         '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
         '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>") +
-      '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="오뱅알 ' + (state.extensionCollapsed ? "펼치기" : "접기") + '">' + (state.extensionCollapsed ? "▼" : "▲") + '<span class="cs-extension-collapse-tip">오뱅알 ' + (state.extensionCollapsed ? "펼치기" : "접기") + "</span></button>" +
       "</div>" +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
       '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
@@ -1519,7 +1669,7 @@
         '<button type="button" class="cs-update-history-arrow" data-update-history-scroll="1" aria-label="\uB2E4\uC74C \uC5C5\uB370\uC774\uD2B8">\u203A</button>' +
         '</span>'
       : "";
-    const toggleLabel = expanded ? "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED \uC811\uAE30" : "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED \uD3BC\uCE58\uAE30";
+    const toggleLabel = expanded ? "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED 접기" : "\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED 펼치기";
     return '<div class="cs-section cs-update-history-section' + (expanded ? "" : " cs-update-history-collapsed") + '" aria-label="\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED">' +
       '<div class="cs-update-history-head">' +
       '<span class="cs-update-history-title">\uC5C5\uB370\uC774\uD2B8 \uB0B4\uC5ED</span>' +
@@ -1660,6 +1810,14 @@
         render(text.slice(best.end + best.spec.marker.length));
     };
     return render(String(value || ""));
+  }
+  function plainDirectiveSegmentHtml(text) {
+    const raw = String(text || "");
+    if (!raw) return "";
+    if (/^[ \t\r\n]+$/.test(raw)) {
+      return escapeHtml(raw).replace(/ /g, "&nbsp;").replace(/\t/g, "&nbsp;&nbsp;").replace(/\r?\n/g, "<br>");
+    }
+    return plainDirectiveHtml(raw);
   }
   function mediaTriggerHtml(label, url, options) {
     const safeUrl = safeMediaUrl(url);
@@ -1840,7 +1998,7 @@
     let plainStart = 0;
     let i = 0;
     const flushPlain = (end) => {
-      if (end > plainStart) html += plainDirectiveHtml(raw.slice(plainStart, end));
+      if (end > plainStart) html += plainDirectiveSegmentHtml(raw.slice(plainStart, end));
     };
     while (i < raw.length) {
       const install = parseInstallDirectiveAt(raw, i);
@@ -2023,6 +2181,10 @@
     const updateHistoryToggle = s.getElementById("cs-update-history-toggle");
     const monthToggle = s.getElementById("cs-month-toggle");
     const extensionCollapse = s.getElementById("cs-extension-collapse");
+    const settingsToggle = s.getElementById("cs-settings-toggle");
+    const settingsPanel = s.getElementById("cs-settings-panel");
+    const liveStartNoticeToggle = s.getElementById("cs-live-start-notice-toggle");
+    const categoryChangeNoticeToggle = s.getElementById("cs-category-change-notice-toggle");
     const gameToggle = s.getElementById("cs-game-toggle");
     const grid = s.getElementById("cs-grid");
     const popover = s.getElementById("cs-popover");
@@ -2045,8 +2207,26 @@
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; } render(); });
     if (extensionCollapse) extensionCollapse.addEventListener("click", () => {
       closePopover();
+      state.settingsOpen = false;
       state.extensionCollapsed = !state.extensionCollapsed;
       saveExtensionCollapsed(state.extensionCollapsed);
+      render();
+    });
+    if (settingsToggle) settingsToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closePopover();
+      state.settingsOpen = !state.settingsOpen;
+      render();
+    });
+    if (settingsPanel) settingsPanel.addEventListener("click", (event) => event.stopPropagation());
+    if (liveStartNoticeToggle) liveStartNoticeToggle.addEventListener("click", () => {
+      state.liveStartNoticeEnabled = !state.liveStartNoticeEnabled;
+      saveNotificationSetting(LIVE_START_NOTICE_KEY, state.liveStartNoticeEnabled);
+      render();
+    });
+    if (categoryChangeNoticeToggle) categoryChangeNoticeToggle.addEventListener("click", () => {
+      state.categoryChangeNoticeEnabled = !state.categoryChangeNoticeEnabled;
+      saveNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY, state.categoryChangeNoticeEnabled);
       render();
     });
     if (gameToggle) gameToggle.addEventListener("click", () => { closePopover(); state.gameOnly = !state.gameOnly; render(); });
@@ -2934,7 +3114,7 @@
   function closeMediaPopover() {
     const pop = state.shadow && state.shadow.getElementById("cs-media-popover");
     if (pop) {
-      pop.classList.remove("cs-open", "cs-media-expanded", "cs-install-guide-popover", "cs-text-popover");
+      pop.classList.remove("cs-open", "cs-media-expanded", "cs-install-guide-popover", "cs-text-popover", "cs-update-text-popover");
       pop.style.width = "";
     }
     closeOriginalImage();
@@ -2970,7 +3150,7 @@
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = mediaEmbedHtml(url, label);
-    pop.classList.remove("cs-install-guide-popover", "cs-text-popover");
+    pop.classList.remove("cs-install-guide-popover", "cs-text-popover", "cs-update-text-popover");
     state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
     pop.classList.add("cs-open");
@@ -2988,8 +3168,9 @@
     const top = rect.top - rootRect.top;
     clampMediaPopoverPosition(pop, left, top);
   }
-  function textPopupPreferredWidth(text, rootWidth) {
-    const maxWidth = Math.max(260, Math.min(680, Math.floor((rootWidth || window.innerWidth || 680) - 16)));
+  function textPopupPreferredWidth(text, rootWidth, maxLimit, extraWidth) {
+    const availableWidth = Math.max(260, Math.floor((rootWidth || window.innerWidth || 680) - 16));
+    const maxWidth = Math.max(260, Math.min(maxLimit || 680, availableWidth));
     const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
     const measurer = document.createElement("span");
     measurer.style.position = "fixed";
@@ -3007,7 +3188,7 @@
       longest = Math.max(longest, Math.ceil(measurer.getBoundingClientRect().width));
     });
     measurer.remove();
-    return Math.max(260, Math.min(maxWidth, longest + 48));
+    return Math.max(260, Math.min(maxWidth, longest + (extraWidth || 48)));
   }
 
   function showTextPopupPopover(trigger) {
@@ -3020,7 +3201,7 @@
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = '<div class="cs-text-popup-content">' + directiveHtml(text) + '</div>';
-    pop.classList.remove("cs-install-guide-popover", "cs-media-expanded");
+    pop.classList.remove("cs-install-guide-popover", "cs-media-expanded", "cs-update-text-popover");
     pop.classList.add("cs-text-popover");
     state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
@@ -3030,7 +3211,10 @@
     const rootRect = bounds.rect;
     const margin = bounds.margin;
     if (root && pop.parentElement !== root) root.appendChild(pop);
-    const preferredWidth = Math.min(textPopupPreferredWidth(text, rootRect.width), Math.max(260, rootRect.width - margin * 2));
+    const maxPopupWidth = Math.max(260, rootRect.width - margin * 2 + 12);
+    const isUpdatePopup = trigger.classList.contains("cs-update-history-card");
+    pop.classList.toggle("cs-update-text-popover", isUpdatePopup);
+    const preferredWidth = Math.min(textPopupPreferredWidth(text, rootRect.width, isUpdatePopup ? maxPopupWidth : 680, isUpdatePopup ? 84 : 48), maxPopupWidth);
     pop.style.width = preferredWidth + "px";
     const contentEl = body && body.querySelector(".cs-text-popup-content");
     if (contentEl) contentEl.style.width = Math.max(220, preferredWidth - 22) + "px";
@@ -3082,7 +3266,7 @@
     const body = pop.querySelector("#cs-media-body");
     if (title) title.textContent = label;
     if (body) body.innerHTML = installGuideHtml(platform);
-    pop.classList.remove("cs-text-popover", "cs-media-expanded");
+    pop.classList.remove("cs-text-popover", "cs-media-expanded", "cs-update-text-popover");
     pop.classList.add("cs-install-guide-popover");
     state.shadow.querySelectorAll(".cs-inline-media-trigger.cs-open, .cs-inline-text-popup-trigger.cs-open, .cs-install-guide-trigger.cs-open").forEach((el) => el.classList.remove("cs-open"));
     trigger.classList.add("cs-open");
@@ -3230,6 +3414,8 @@
   // 사용자 지정 구조 규칙:
   // "_thumbnail*" 클래스를 함께 가진 요소를 찾고,
   // 그 조상 중 "_details*" 클래스를 가진 요소를 앵커로 사용 (그 다음에 삽입)
+
+
   function findDetailsAnchor() {
     const nodes = document.querySelectorAll('[class*="_thumbnail"]');
     for (const el of nodes) {
@@ -3303,6 +3489,221 @@
 
 
 
+
+  function getCurrentDataChannelId() {
+    const testChannelId = String(CHZZK_SCHEDULE_CONFIG.testChannelId || "").trim();
+    const testSourceChannelId = String(CHZZK_SCHEDULE_CONFIG.testSourceChannelId || "").trim();
+    return testChannelId && testSourceChannelId && state.channelId === testChannelId ? testSourceChannelId : state.channelId;
+  }
+
+  function getTitleHistoryItems() {
+    const dataChannelId = getCurrentDataChannelId();
+    const histories = state.data && state.data.titleHistories;
+    const list = histories && dataChannelId ? histories[dataChannelId] : [];
+    return Array.isArray(list) ? list.slice(0, 80) : [];
+  }
+
+  function formatTitleHistoryTime(value) {
+    const d = new Date(value || "");
+    if (isNaN(d.getTime())) return "";
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return mm + "." + dd + " " + hh + ":" + mi;
+  }
+
+  function titleHistoryCategoryKey(item) {
+    const label = String((item && item.categoryLabel) || "").trim();
+    const id = String((item && item.categoryId) || "").trim();
+    const type = String((item && item.categoryType) || "").trim();
+    return (type || "NONE") + "|" + (id || label || "NONE") + "|" + label;
+  }
+
+  function renderTitleHistoryPopover() {
+    const items = getTitleHistoryItems();
+    if (!items.length) {
+      return '<div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong></div><div class="oth-empty">\uC544\uC9C1 \uAE30\uB85D\uB41C \uBC29\uC81C \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
+    }
+    const groups = new Map();
+    items.forEach((item) => {
+      const key = titleHistoryCategoryKey(item);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          label: String(item.categoryLabel || "").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
+          type: String(item.categoryType || "").trim(),
+          latest: String(item.changedAt || ""),
+          items: [],
+        });
+      }
+      const group = groups.get(key);
+      if (String(item.changedAt || "") > group.latest) group.latest = String(item.changedAt || "");
+      group.items.push(item);
+    });
+    const html = Array.from(groups.values())
+      .sort((a, b) => String(b.latest || "").localeCompare(String(a.latest || "")))
+      .map((group) => {
+        const rows = group.items
+          .slice()
+          .sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || "")))
+          .map((item) => {
+            const previous = String(item.previousTitle || "").trim();
+            const title = String(item.title || "").trim();
+            const time = formatTitleHistoryTime(item.changedAt);
+            const change = previous && previous !== title
+              ? '<span class="oth-prev">' + escapeHtml(previous) + '</span><span class="oth-arrow">&rarr;</span><span class="oth-current">' + escapeHtml(title) + '</span>'
+              : '<span class="oth-current">' + escapeHtml(title) + '</span>';
+            return '<li class="oth-row"><span class="oth-time">' + escapeHtml(time) + '</span><span class="oth-change">' + change + '</span></li>';
+          }).join("");
+        const type = group.type ? '<span class="oth-type">' + escapeHtml(group.type) + '</span>' : "";
+        return '<section class="oth-group"><div class="oth-category"><span>' + escapeHtml(group.label) + '</span>' + type + '</div><ol class="oth-list">' + rows + '</ol></section>';
+      }).join("");
+    return '<div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><span>' + items.length + '\uAC1C</span></div>' + html;
+  }
+
+  function positionTitleHistoryPopover(shadow) {
+    const popover = shadow && shadow.getElementById("oth-popover");
+    if (!popover || popover.hidden) return;
+    popover.style.left = "0px";
+    popover.style.right = "auto";
+    popover.style.top = "calc(100% + 8px)";
+    requestAnimationFrame(() => {
+      const rect = popover.getBoundingClientRect();
+      const pad = 12;
+      if (rect.right > window.innerWidth - pad) {
+        popover.style.left = Math.floor(window.innerWidth - pad - rect.right) + "px";
+      }
+      if (rect.left < pad) {
+        const current = parseInt(popover.style.left || "0", 10) || 0;
+        popover.style.left = current + Math.ceil(pad - rect.left) + "px";
+      }
+      const next = popover.getBoundingClientRect();
+      if (next.bottom > window.innerHeight - pad && next.top > window.innerHeight / 2) {
+        popover.style.top = "auto";
+        popover.style.bottom = "calc(100% + 8px)";
+      } else {
+        popover.style.bottom = "auto";
+      }
+    });
+  }
+
+  function closeTitleHistoryPopover() {
+    state.titleHistoryOpen = false;
+    const host = state.titleHistoryHost;
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return;
+    const button = shadow.getElementById("oth-button");
+    const popover = shadow.getElementById("oth-popover");
+    if (button) button.setAttribute("aria-expanded", "false");
+    if (popover) popover.hidden = true;
+  }
+
+  function toggleTitleHistoryPopover() {
+    const host = state.titleHistoryHost;
+    const shadow = host && host.shadowRoot;
+    if (!shadow) return;
+    const button = shadow.getElementById("oth-button");
+    const popover = shadow.getElementById("oth-popover");
+    if (!button || !popover) return;
+    state.titleHistoryOpen = !state.titleHistoryOpen;
+    button.setAttribute("aria-expanded", String(state.titleHistoryOpen));
+    if (state.titleHistoryOpen) {
+      popover.innerHTML = renderTitleHistoryPopover();
+      popover.hidden = false;
+      positionTitleHistoryPopover(shadow);
+    } else {
+      popover.hidden = true;
+    }
+  }
+
+  function findTitleHistoryTitleAnchor() {
+    const detailsCandidates = [];
+    const primary = findDetailsAnchor();
+    if (primary) detailsCandidates.push(primary);
+    document.querySelectorAll('[class*="_details"]').forEach((details) => {
+      if (detailsCandidates.includes(details)) return;
+      if (!hasClassPrefix(details, "_details")) return;
+      if (details.closest('[class*="pzp"]')) return;
+      detailsCandidates.push(details);
+    });
+
+    for (const details of detailsCandidates) {
+      const directTitle = Array.from(details.children || []).find((child) =>
+        child.id !== "obaengal-title-history-host" && hasClassPrefix(child, "_title")
+      );
+      if (directTitle) return directTitle;
+
+      const titles = details.querySelectorAll('[class*="_title"]');
+      for (const title of titles) {
+        if (title.id === "obaengal-title-history-host" || title.closest("#obaengal-title-history-host")) continue;
+        if (hasClassPrefix(title, "_title")) return title;
+      }
+    }
+    return null;
+  }
+
+  function removeTitleHistoryHost() {
+    if (state.titleHistoryOutsideHandler) {
+      document.removeEventListener("mousedown", state.titleHistoryOutsideHandler, true);
+      state.titleHistoryOutsideHandler = null;
+    }
+    if (state.titleHistoryHost && state.titleHistoryHost.isConnected) state.titleHistoryHost.remove();
+    state.titleHistoryHost = null;
+    state.titleHistoryOpen = false;
+  }
+
+  function syncTitleHistoryButton() {
+    if (!state.channelId || !state.channel) {
+      removeTitleHistoryHost();
+      return;
+    }
+    const title = findTitleHistoryTitleAnchor();
+    if (!title) {
+      removeTitleHistoryHost();
+      return;
+    }
+    if (state.titleHistoryHost && state.titleHistoryHost.isConnected && state.titleHistoryHost.previousElementSibling === title) {
+      return;
+    }
+    removeTitleHistoryHost();
+    const host = document.createElement("span");
+    host.id = "obaengal-title-history-host";
+    host.style.display = "inline-flex";
+    host.style.verticalAlign = "middle";
+    host.style.marginLeft = "8px";
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.innerHTML = '<style>' +
+      ':host{position:relative;display:inline-flex;vertical-align:middle;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;z-index:2147483600}' +
+      '.oth-wrap{position:relative;display:inline-flex;align-items:center}' +
+      '.oth-button{height:28px;padding:0 10px;border:1px solid rgba(81,214,139,.46);border-radius:7px;background:rgba(13,18,22,.88);color:#e9fff3;font-size:12px;font-weight:700;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.18);transition:background .16s ease,border-color .16s ease,transform .16s ease}' +
+      '.oth-button:hover{background:rgba(25,35,41,.96);border-color:rgba(107,239,166,.9);transform:translateY(-1px)}' +
+      '.oth-button[aria-expanded="true"]{background:#163123;border-color:#72f0aa;color:#fff}' +
+      '.oth-popover{position:absolute;top:calc(100% + 8px);left:0;width:max-content;min-width:320px;max-width:min(520px,calc(100vw - 24px));max-height:min(420px,calc(100vh - 80px));overflow:auto;padding:12px;border:1px solid rgba(124,255,183,.42);border-radius:8px;background:rgba(12,16,20,.98);color:#f5fff9;box-shadow:0 18px 50px rgba(0,0,0,.42);box-sizing:border-box}' +
+      '.oth-popover[hidden]{display:none}' +
+      '.oth-popover::-webkit-scrollbar{width:8px}.oth-popover::-webkit-scrollbar-thumb{border-radius:999px;background:rgba(120,255,181,.36)}.oth-popover::-webkit-scrollbar-track{background:rgba(255,255,255,.05)}' +
+      '.oth-popover-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:10px;font-size:13px}.oth-popover-head span{color:#a9b8b0;font-size:11px}' +
+      '.oth-group{padding:10px 0;border-top:1px solid rgba(255,255,255,.08)}.oth-group:first-of-type{border-top:0;padding-top:0}' +
+      '.oth-category{display:flex;align-items:center;gap:7px;margin-bottom:8px;color:#91ffbd;font-size:12px;font-weight:800}.oth-type{padding:2px 5px;border-radius:999px;background:rgba(145,255,189,.13);color:#b8ffd4;font-size:10px}' +
+      '.oth-list{display:flex;flex-direction:column;gap:7px;margin:0;padding:0;list-style:none}.oth-row{display:grid;grid-template-columns:48px minmax(0,max-content);gap:8px;align-items:start;font-size:12px;line-height:1.45}' +
+      '.oth-time{color:#8f9d97;font-variant-numeric:tabular-nums}.oth-change{display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}.oth-prev{color:#aeb8b3}.oth-arrow{color:#5de894}.oth-current{color:#fff;font-weight:700}.oth-empty{padding:8px 2px;color:#aeb8b3;font-size:12px;white-space:nowrap}' +
+      '@media (max-width:520px){.oth-popover{min-width:280px}.oth-row{grid-template-columns:44px minmax(0,1fr)}.oth-change{white-space:normal}}' +
+      '</style><span class="oth-wrap"><button type="button" class="oth-button" id="oth-button" aria-expanded="false">\uC774\uC804 \uBC29\uC81C \uD655\uC778</button><div class="oth-popover" id="oth-popover" hidden></div></span>';
+    shadow.getElementById("oth-button").addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTitleHistoryPopover();
+    });
+    state.titleHistoryOutsideHandler = (event) => {
+      if (!state.titleHistoryOpen) return;
+      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      if (path.includes(host)) return;
+      closeTitleHistoryPopover();
+    };
+    document.addEventListener("mousedown", state.titleHistoryOutsideHandler, true);
+    title.insertAdjacentElement("afterend", host);
+    state.titleHistoryHost = host;
+  }
+
   function setChannelSchedulePanelOpen(open) {
     if (!state.shadow) return false;
     const button = state.shadow.getElementById("cs-channel-button");
@@ -3342,6 +3743,7 @@
     syncPageTheme();
     render();
     if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
+    syncTitleHistoryButton();
     applyPendingScheduleOpenRequest();
   }
 
@@ -3373,6 +3775,7 @@
     });
     render();
     if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
+    syncTitleHistoryButton();
     applyPendingScheduleOpenRequest();
   }
 
@@ -3403,6 +3806,7 @@
 
     render();
     if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
+    syncTitleHistoryButton();
     applyPendingScheduleOpenRequest();
   }
 
@@ -3415,6 +3819,7 @@
       document.removeEventListener("mousedown", state.scheduleOutsideHandler);
       state.scheduleOutsideHandler = null;
     }
+    removeTitleHistoryHost();
     if (state.host && state.host.isConnected) state.host.remove();
     state.host = null;
     state.shadow = null;
@@ -3439,11 +3844,7 @@
         state.deployedExtensionVersion = "";
       }
       state.fetchedAt = res.fetchedAt;
-      const testChannelId = String(CHZZK_SCHEDULE_CONFIG.testChannelId || "").trim();
-      const testSourceChannelId = String(CHZZK_SCHEDULE_CONFIG.testSourceChannelId || "").trim();
-      const dataChannelId = testChannelId && testSourceChannelId && state.channelId === testChannelId
-        ? testSourceChannelId
-        : state.channelId;
+      const dataChannelId = getCurrentDataChannelId();
       state.channel =
         (res.data.channels && dataChannelId && res.data.channels[dataChannelId]) || null;
       indexSchedule();
@@ -3544,6 +3945,7 @@
       if (state.host) {
         syncPageTheme();
         applyPendingScheduleOpenRequest();
+        syncTitleHistoryButton();
       }
 
       // 비라이브 채널은 _action 버튼 모드, 라이브 화면은 기존 인라인 모드로 자동 전환

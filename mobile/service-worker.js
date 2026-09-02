@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "obaengal-mobile-v20";
+const CACHE_NAME = "obaengal-mobile-v21";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,7 +10,7 @@ const APP_SHELL = [
   "../icons/icon128.png",
   "../icons/오뱅알.png",
 ];
-const ACTIVE_CACHE_NAME = CACHE_NAME.replace(/v\d+$/, "v1.1.0");
+const ACTIVE_CACHE_NAME = CACHE_NAME.replace(/v\d+$/, "v1.2.0");
 const CACHE_PREFIX = CACHE_NAME.replace(/v\d+$/, "");
 let legacyAutoActivate = false;
 

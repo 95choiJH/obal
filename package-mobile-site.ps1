@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $root $OutputPath }
 
-$version = "1.2.1"
+$version = "1.2.0"
 
 $mobileFiles = @(
   "index.html",

@@ -15,6 +15,31 @@ create table if not exists public.admin_settings (
   primary key (channel_id, key)
 );
 
+create table if not exists public.live_title_history (
+  id bigserial primary key,
+  channel_id text not null,
+  live_key text not null,
+  schedule_date date not null,
+  title text not null,
+  previous_title text,
+  category_label text,
+  category_id text,
+  category_type text,
+  category_poster_image_url text,
+  started_at timestamptz,
+  changed_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists live_title_history_channel_live_changed_idx
+  on public.live_title_history (channel_id, live_key, changed_at desc, id desc);
+
+create index if not exists live_title_history_channel_date_changed_idx
+  on public.live_title_history (channel_id, schedule_date, changed_at desc, id desc);
+
+create index if not exists live_title_history_channel_category_changed_idx
+  on public.live_title_history (channel_id, category_type, category_id, changed_at desc, id desc);
+
 -- Ensure optional columns used by current extension/admin code exist before policies reference them.
 alter table public.schedule add column if not exists game_images jsonb;
 alter table public.feedback add column if not exists related_link text;
@@ -27,10 +52,13 @@ alter table public.upcoming_content enable row level security;
 alter table public.feedback enable row level security;
 alter table public.admin_users enable row level security;
 alter table public.admin_settings enable row level security;
+alter table public.live_title_history enable row level security;
 revoke all on public.admin_settings from anon;
 grant select on public.admin_settings to anon;
 grant select, insert, update, delete on public.admin_settings to authenticated;
 grant all on public.admin_settings to service_role;
+grant select on public.live_title_history to anon, authenticated;
+grant all on public.live_title_history to service_role;
 
 
 -- Game image uploads used by the admin page.
@@ -138,6 +166,8 @@ drop policy if exists "admin users can update feedback status" on public.feedbac
 drop policy if exists "admin users can delete feedback" on public.feedback;
 drop policy if exists "admin users can read admin_users" on public.admin_users;
 drop policy if exists "admin users can manage admin_settings" on public.admin_settings;
+drop policy if exists "admin users can read live title history" on public.live_title_history;
+drop policy if exists "anon can read live title history" on public.live_title_history;
 
 create policy "anon can read schedule"
   on public.schedule for select
@@ -208,6 +238,16 @@ create policy "admin users can manage admin_settings"
   to authenticated
   using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()))
   with check (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
+
+create policy "anon can read live title history"
+  on public.live_title_history for select
+  to anon
+  using (true);
+
+create policy "admin users can read live title history"
+  on public.live_title_history for select
+  to authenticated
+  using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
 -- Durable rate-limit counters for public Edge Functions. The table is not
 -- directly accessible to browser clients; only the service-role-only RPC below
 -- can update it.

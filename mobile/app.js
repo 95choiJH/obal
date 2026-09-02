@@ -1,10 +1,11 @@
-﻿(() => {
+(() => {
   "use strict";
 
   const cfg = OBAENGAL_MOBILE_CONFIG;
-  const MOBILE_APP_VERSION = "v1.1.0";
+  const MOBILE_APP_VERSION = "v1.2.0";
   const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
-  const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey() };
+  const INFO_V2_PREFIX = "@info-v2:";
+  const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey(), infoExpanded: new Set() };
   let channelLoadPromise = null;
   const $ = (id) => document.getElementById(id);
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
@@ -64,12 +65,14 @@
   }
 
   function normalizePart(part) {
-    if (typeof part === "string") return { content: part, label: "", displayType: "text", members: [] };
-    if (!part || typeof part !== "object") return { content: "", label: "", displayType: "text", members: [] };
+    if (typeof part === "string") return { content: part, label: "", manualPartLabel: false, hiddenFromFront: false, displayType: "text", members: [] };
+    if (!part || typeof part !== "object") return { content: "", label: "", manualPartLabel: false, hiddenFromFront: false, displayType: "text", members: [] };
     return {
       content: part.content || "",
       label: part.label || "",
+      manualPartLabel: !!part.manualPartLabel,
       hidePartLabel: !!part.hidePartLabel,
+      hiddenFromFront: !!part.hiddenFromFront,
       displayType: part.displayType || "text",
       profile: normalizeChannelRef(part.profile),
       collab: !!part.collab,
@@ -81,9 +84,26 @@
       members: Array.isArray(part.members) ? part.members.map(normalizeChannelRef).filter(Boolean) : [],
       hostChannel: normalizeChannelRef(part.hostChannel),
       notes: normalizeNotes(part.notes),
+      autoCategory: !!part.autoCategory,
+      categoryId: String(part.categoryId || "").trim(),
+      categoryType: String(part.categoryType || "").trim(),
     };
   }
 
+  function visiblePartsForFront(parts) {
+    let visibleIndex = 0;
+    return parts
+      .map(normalizePart)
+      .filter((part) => !part.hiddenFromFront && (part.content || part.profile))
+      .map((part) => {
+      if (part.autoCategory && String(part.categoryType || "").toUpperCase() === "GAME" && !part.hidePartLabel && !part.manualPartLabel && !part.label) {
+        visibleIndex += 1;
+        return { ...part, label: String(visibleIndex) + "\uBD80" };
+      }
+      if (!part.hidePartLabel && !part.manualPartLabel) visibleIndex += 1;
+      return part;
+    });
+  }
   function normalizeNotes(value) {
     const normalize = (item) => {
       if (item && typeof item === "object") {
@@ -112,6 +132,61 @@
     };
   }
 
+  function infoSectionTitle(text) {
+    const match = String(text || "").trim().match(/^@section\s*:\s*([\s\S]+)$/i);
+    return match ? match[1].trim() : "";
+  }
+
+  function structuredInfoDataFromText(text) {
+    const raw = String(text || "").trim();
+    if (!raw.startsWith(INFO_V2_PREFIX)) return null;
+    try {
+      const parsed = JSON.parse(raw.slice(INFO_V2_PREFIX.length));
+      const items = Array.isArray(parsed.items) ? parsed.items.map((entry) => ({
+        title: String((entry && entry.title) || ""),
+        body: String((entry && entry.body) || ""),
+        collapsed: entry && entry.collapsed !== false,
+        hasBody: !entry || entry.hasBody !== false,
+      })).filter((entry) => entry.title.trim() || (entry.hasBody && entry.body.trim())) : [];
+      return { title: String((parsed && parsed.title) || ""), items };
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function structuredInfoHtml(data, infoIndex) {
+    if (!data || !data.items.length) return "";
+    const title = String(data.title || "").trim();
+    const groupTitle = title ? `<div class="mobile-info-group-title">${directiveInlineHtml(title)}</div>` : "";
+    const details = data.items.map((entry, subIndex) => {
+      const key = `${infoIndex}-${subIndex}`;
+      const hasBody = !entry || entry.hasBody !== false;
+      const defaultExpanded = entry.collapsed === false;
+      const expanded = hasBody && (state.infoExpanded.has(key) || (defaultExpanded && !state.infoExpanded.has(`closed:${key}`)));
+      const titleHtml = directiveInlineHtml(String(entry.title || "").replace(/^\s+|\s+$/g, "") || "세부 소식");
+      const body = String(entry.body || "").trim();
+      const toggleAttr = hasBody ? ` data-info-toggle="${esc(key)}" aria-expanded="${String(expanded)}" aria-label="${expanded ? "접기" : "펼치기"}"` : "";
+      const toggle = hasBody ? `<button type="button" class="mobile-info-detail-toggle" data-info-toggle="${esc(key)}" aria-expanded="${String(expanded)}" aria-label="${expanded ? "접기" : "펼치기"}">${expanded ? "▲" : "▼"}</button>` : "";
+      const bodyHtml = hasBody ? `<div class="mobile-info-detail-body"${expanded ? "" : " hidden"}>${directiveInlineHtml(body)}</div>` : "";
+      return `<div class="mobile-info-detail${hasBody ? "" : " title-only"}" data-info-detail="${esc(key)}">
+        <div class="mobile-info-detail-head"${toggleAttr}>
+          <span class="mobile-info-detail-title">${titleHtml}</span>
+          ${toggle}
+        </div>
+        ${bodyHtml}
+      </div>`;
+    }).join("");
+    return `<article class="mobile-info-card mobile-info-group"><span class="mobile-info-marker" aria-hidden="true"></span><div class="mobile-info-text">${groupTitle}${details}</div></article>`;
+  }
+
+  function infoItemHtml(item, index) {
+    const text = item && item.content ? item.content : "";
+    const structured = structuredInfoDataFromText(text);
+    if (structured) return structuredInfoHtml(structured, index);
+    const sectionTitle = infoSectionTitle(text);
+    if (sectionTitle) return `<article class="mobile-info-section-title">${directiveInlineHtml(sectionTitle)}</article>`;
+    return `<article class="mobile-info-card"><span class="mobile-info-marker" aria-hidden="true"></span><div class="mobile-info-text">${directiveInlineHtml(text)}</div></article>`;
+  }
 
   function rowToEntry(row) {
     return {
@@ -121,7 +196,7 @@
       title: row.title || "",
       titleShort: row.title_short || "",
       status: row.status || "",
-      parts: Array.isArray(row.parts) ? row.parts.map(normalizePart).filter((p) => p.content || p.profile) : [],
+      parts: Array.isArray(row.parts) ? visiblePartsForFront(row.parts) : [],
       notes: normalizeNotes(row.note),
       updatedAt: row.updated_at || row.created_at || null,
     };
@@ -223,15 +298,117 @@
     const braceOpen = braceClose >= 0 ? body.lastIndexOf("{", braceClose) : -1;
     if (braceOpen < 0 || braceClose !== body.length - 1) return null;
     return {
-      label: body.slice(0, braceOpen).trim() || "미디어",
+      label: body.slice(0, braceOpen).trim() || "\uBBF8\uB514\uC5B4",
       url: body.slice(braceOpen + 1, braceClose).trim(),
       end: close + 1,
     };
   }
 
-  function mediaTriggerHtml(label) {
-    return directiveInlineHtml(label || url || "미디어");
+  function normalizeMediaUrl(url) {
+    const raw = String(url || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (/^\/\//.test(raw)) return `https:${raw}`;
+    return "";
   }
+
+  function youtubeEmbedUrl(url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+      let id = "";
+      if (host === "youtu.be") id = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      else if (host.endsWith("youtube.com")) id = parsed.searchParams.get("v") || (parsed.pathname.match(/\/embed\/([^/?#]+)/) || [])[1] || "";
+      return id ? `https://www.youtube.com/embed/${encodeURIComponent(id)}` : "";
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  function mediaFallbackLinkHtml(url) {
+    return `<a class="mobile-media-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">\uBBF8\uB514\uC5B4 \uC5F4\uAE30</a>`;
+  }
+
+  function mediaBodyHtml(url, label) {
+    const safeUrl = normalizeMediaUrl(url);
+    const safeLabel = esc(label || "\uBBF8\uB514\uC5B4");
+    if (!safeUrl) return `<div class="mobile-media-empty">\uBBF8\uB514\uC5B4 \uC8FC\uC18C\uB97C \uD655\uC778\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.</div>`;
+    const path = new URL(safeUrl).pathname.toLowerCase();
+    const youtube = youtubeEmbedUrl(safeUrl);
+    if (youtube) return `<iframe src="${esc(youtube)}" title="${safeLabel}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    if (/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/.test(path)) return `<img src="${esc(safeUrl)}" alt="${safeLabel}" referrerpolicy="no-referrer" />`;
+    if (/\.(mp4|webm|ogg|mov|m4v)$/.test(path)) return `<video src="${esc(safeUrl)}" controls playsinline></video>`;
+    return `<img class="mobile-media-probe" src="${esc(safeUrl)}" alt="${safeLabel}" referrerpolicy="no-referrer" data-media-fallback-url="${esc(safeUrl)}" />`;
+  }
+
+  function bindMediaFallbacks(root) {
+    if (!root) return;
+    root.querySelectorAll("[data-media-fallback-url]").forEach((image) => {
+      image.addEventListener("error", () => {
+        const url = image.getAttribute("data-media-fallback-url") || "";
+        const holder = document.createElement("span");
+        holder.innerHTML = mediaFallbackLinkHtml(url);
+        image.replaceWith(holder.firstElementChild || holder);
+      }, { once: true });
+    });
+  }
+
+  function mediaTriggerHtml(media) {
+    const label = String((media && media.label) || "\uBBF8\uB514\uC5B4").trim() || "\uBBF8\uB514\uC5B4";
+    const url = normalizeMediaUrl(media && media.url);
+    return `<button type="button" class="mobile-media-trigger" data-media-url="${esc(url)}" data-media-label="${esc(label)}">${directiveInlineHtml(label)}</button>`;
+  }
+
+  function ensureMediaPopup() {
+    let popup = $("mediaPopup");
+    if (popup) return popup;
+    popup = document.createElement("div");
+    popup.id = "mediaPopup";
+    popup.className = "mobile-media-popup";
+    popup.hidden = true;
+    popup.innerHTML = `<div class="mobile-media-panel" role="dialog" aria-modal="true" aria-labelledby="mediaPopupTitle">
+      <div class="mobile-media-head">
+        <h2 id="mediaPopupTitle"></h2>
+        <button class="mobile-media-close" type="button" data-media-close aria-label="\uB2EB\uAE30">&times;</button>
+      </div>
+      <div class="mobile-media-body" id="mediaPopupBody"></div>
+      <a class="mobile-media-open" id="mediaPopupOpen" href="#" target="_blank" rel="noopener noreferrer">\uC0C8 \uD0ED\uC5D0\uC11C \uC5F4\uAE30</a>
+    </div>`;
+    document.body.appendChild(popup);
+    return popup;
+  }
+
+  function openMediaPopup(url, label) {
+    const safeUrl = normalizeMediaUrl(url);
+    const title = String(label || "\uBBF8\uB514\uC5B4").trim() || "\uBBF8\uB514\uC5B4";
+    const popup = ensureMediaPopup();
+    const titleEl = $("mediaPopupTitle");
+    const body = $("mediaPopupBody");
+    const open = $("mediaPopupOpen");
+    if (titleEl) titleEl.textContent = title;
+    if (body) {
+      body.innerHTML = mediaBodyHtml(safeUrl, title);
+      bindMediaFallbacks(body);
+    }
+    if (open) {
+      open.hidden = !safeUrl;
+      open.href = safeUrl || "#";
+    }
+    popup.hidden = false;
+    popup.classList.add("open");
+    document.body.classList.add("media-popup-open");
+  }
+
+  function closeMediaPopup() {
+    const popup = $("mediaPopup");
+    if (!popup) return;
+    const body = $("mediaPopupBody");
+    if (body) body.innerHTML = "";
+    popup.hidden = true;
+    popup.classList.remove("open");
+    document.body.classList.remove("media-popup-open");
+  }
+
   function closeInfoPopup() {
     const popup = $("infoPopup");
     if (!popup) return;
@@ -276,19 +453,27 @@
     return /:s(?:\[|\s+[^\s:]+)/i.test(String(value || ""));
   }
 
+  function directivePlainSegmentHtml(text) {
+    const raw = String(text || "");
+    if (!raw) return "";
+    if (/^[ \t\r\n]+$/.test(raw)) {
+      return esc(raw).replace(/ /g, "&nbsp;").replace(/\t/g, "&nbsp;&nbsp;").replace(/\r?\n/g, "<br>");
+    }
+    return esc(raw);
+  }
   function directiveInlineHtml(value) {
     const raw = String(value || "");
     let html = "";
     let plainStart = 0;
     let i = 0;
     const flushPlain = (end) => {
-      if (end > plainStart) html += esc(raw.slice(plainStart, end));
+      if (end > plainStart) html += directivePlainSegmentHtml(raw.slice(plainStart, end));
     };
     while (i < raw.length) {
       const media = parseMediaDirectiveAt(raw, i);
       if (media) {
         flushPlain(i);
-        html += mediaTriggerHtml(media.label);
+        html += mediaTriggerHtml(media);
         i = media.end;
         plainStart = i;
         continue;
@@ -490,7 +675,7 @@
     if (!list) return;
     const items = state.infoRows.filter((item) => item.content);
     list.innerHTML = items.length
-      ? items.map((item) => `<article class="mobile-info-card"><span class="mobile-info-marker" aria-hidden="true"></span><div class="mobile-info-text">${directiveInlineHtml(item.content)}</div></article>`).join("")
+      ? items.map(infoItemHtml).join("")
       : `<div class="empty-state"><strong>등록된 소식이 없습니다.</strong><span>관리자 페이지에서 소식이 등록되면 표시됩니다.</span></div>`;
   }
 
@@ -603,6 +788,39 @@
     $("prevMonthBtn").addEventListener("click", () => { if ($("prevMonthBtn").disabled) return; state.monthOffset -= 1; renderAll(); });
     $("nextMonthBtn").addEventListener("click", () => { if ($("nextMonthBtn").disabled) return; state.monthOffset += 1; renderAll(); });
     document.addEventListener("click", (event) => {
+      const mediaTrigger = event.target.closest && event.target.closest("[data-media-url]");
+      if (mediaTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        openMediaPopup(
+          mediaTrigger.getAttribute("data-media-url") || "",
+          mediaTrigger.getAttribute("data-media-label") || mediaTrigger.textContent || "\uBBF8\uB514\uC5B4"
+        );
+        return;
+      }
+      if (event.target.closest && event.target.closest("[data-media-close]")) {
+        closeMediaPopup();
+        return;
+      }
+      const mediaPopup = $("mediaPopup");
+      if (mediaPopup && !mediaPopup.hidden && event.target === mediaPopup) {
+        closeMediaPopup();
+        return;
+      }
+      const infoToggle = event.target.closest && event.target.closest("[data-info-toggle]");
+      if (infoToggle) {
+        const infoKey = infoToggle.getAttribute("data-info-toggle") || "";
+        const expanded = infoToggle.getAttribute("aria-expanded") === "true";
+        if (expanded) {
+          state.infoExpanded.delete(infoKey);
+          state.infoExpanded.add(`closed:${infoKey}`);
+        } else {
+          state.infoExpanded.add(infoKey);
+          state.infoExpanded.delete(`closed:${infoKey}`);
+        }
+        renderInfoSection();
+        return;
+      }
       if (event.target.closest && event.target.closest("[data-info-close]")) {
         closeInfoPopup();
         return;
@@ -619,7 +837,8 @@
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-            closeInfoPopup();
+        closeMediaPopup();
+        closeInfoPopup();
       }
     });
   }
