@@ -31,6 +31,40 @@ create table if not exists public.live_title_history (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.live_category_history (
+  id bigserial primary key,
+  channel_id text not null,
+  live_key text not null,
+  schedule_date date not null,
+  category_label text not null,
+  category_id text,
+  category_type text,
+  category_poster_image_url text,
+  previous_category_label text,
+  previous_category_id text,
+  previous_category_type text,
+  started_at timestamptz,
+  changed_at timestamptz not null default now(),
+  offset_seconds integer,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.live_session_state (
+  channel_id text primary key,
+  live_key text,
+  schedule_date date,
+  started_at timestamptz,
+  last_seen_at timestamptz,
+  ended_at timestamptz,
+  title text,
+  vod_url text,
+  vod_video_no text,
+  vod_saved_at timestamptz,
+  vod_checked_at timestamptz,
+  is_live boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists live_title_history_channel_live_changed_idx
   on public.live_title_history (channel_id, live_key, changed_at desc, id desc);
 
@@ -39,6 +73,18 @@ create index if not exists live_title_history_channel_date_changed_idx
 
 create index if not exists live_title_history_channel_category_changed_idx
   on public.live_title_history (channel_id, category_type, category_id, changed_at desc, id desc);
+
+create index if not exists live_category_history_channel_live_changed_idx
+  on public.live_category_history (channel_id, live_key, changed_at desc, id desc);
+
+create index if not exists live_category_history_channel_date_changed_idx
+  on public.live_category_history (channel_id, schedule_date, changed_at asc, id asc);
+
+create index if not exists live_category_history_channel_category_changed_idx
+  on public.live_category_history (channel_id, category_type, category_id, changed_at desc, id desc);
+
+create index if not exists live_session_state_updated_idx
+  on public.live_session_state (updated_at desc);
 
 -- Ensure optional columns used by current extension/admin code exist before policies reference them.
 alter table public.schedule add column if not exists game_images jsonb;
@@ -53,12 +99,17 @@ alter table public.feedback enable row level security;
 alter table public.admin_users enable row level security;
 alter table public.admin_settings enable row level security;
 alter table public.live_title_history enable row level security;
+alter table public.live_category_history enable row level security;
+alter table public.live_session_state enable row level security;
 revoke all on public.admin_settings from anon;
 grant select on public.admin_settings to anon;
 grant select, insert, update, delete on public.admin_settings to authenticated;
 grant all on public.admin_settings to service_role;
 grant select on public.live_title_history to anon, authenticated;
+grant select on public.live_category_history to anon, authenticated;
 grant all on public.live_title_history to service_role;
+grant all on public.live_category_history to service_role;
+grant all on public.live_session_state to service_role;
 
 
 -- Game image uploads used by the admin page.
@@ -104,51 +155,6 @@ create policy "admin users can delete game images"
     and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
   );
 
--- JSON backups created before every admin save.
-insert into storage.buckets (id, name, public)
-values ('schedule-backups', 'schedule-backups', false)
-on conflict (id) do update set public = false;
-
-drop policy if exists "admin users can read schedule backups" on storage.objects;
-drop policy if exists "admin users can upload schedule backups" on storage.objects;
-drop policy if exists "admin users can update schedule backups" on storage.objects;
-drop policy if exists "admin users can delete schedule backups" on storage.objects;
-
-create policy "admin users can read schedule backups"
-  on storage.objects for select
-  to authenticated
-  using (
-    bucket_id = 'schedule-backups'
-    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
-  );
-
-create policy "admin users can upload schedule backups"
-  on storage.objects for insert
-  to authenticated
-  with check (
-    bucket_id = 'schedule-backups'
-    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
-  );
-
-create policy "admin users can update schedule backups"
-  on storage.objects for update
-  to authenticated
-  using (
-    bucket_id = 'schedule-backups'
-    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
-  )
-  with check (
-    bucket_id = 'schedule-backups'
-    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
-  );
-
-create policy "admin users can delete schedule backups"
-  on storage.objects for delete
-  to authenticated
-  using (
-    bucket_id = 'schedule-backups'
-    and exists (select 1 from public.admin_users au where au.user_id = auth.uid())
-  );
 -- Replace broad policies from older setup docs, if they exist.
 drop policy if exists "anon can read schedule" on public.schedule;
 drop policy if exists "authenticated can read schedule" on public.schedule;
@@ -168,6 +174,8 @@ drop policy if exists "admin users can read admin_users" on public.admin_users;
 drop policy if exists "admin users can manage admin_settings" on public.admin_settings;
 drop policy if exists "admin users can read live title history" on public.live_title_history;
 drop policy if exists "anon can read live title history" on public.live_title_history;
+drop policy if exists "anon can read live category history" on public.live_category_history;
+drop policy if exists "authenticated can read live category history" on public.live_category_history;
 
 create policy "anon can read schedule"
   on public.schedule for select
@@ -248,6 +256,16 @@ create policy "admin users can read live title history"
   on public.live_title_history for select
   to authenticated
   using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
+
+create policy "anon can read live category history"
+  on public.live_category_history for select
+  to anon
+  using (true);
+
+create policy "authenticated can read live category history"
+  on public.live_category_history for select
+  to authenticated
+  using (true);
 -- Durable rate-limit counters for public Edge Functions. The table is not
 -- directly accessible to browser clients; only the service-role-only RPC below
 -- can update it.

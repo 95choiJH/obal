@@ -45,6 +45,7 @@
   const EXTENSION_COLLAPSED_KEY = "obaengal:extension-collapsed";
   const LIVE_START_NOTICE_KEY = "obaengal:live-start-notice";
   const CATEGORY_CHANGE_NOTICE_KEY = "obaengal:category-change-notice";
+  const VOD_CATEGORY_SEEK_KEY = "obaengal:vod-category-seek";
 
   function readExtensionCollapsed() {
     try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
@@ -101,8 +102,10 @@
     openScheduleRequestConsumed: false,
     schedulePanelForcedOpen: false,
     titleHistoryHost: null,
+    titleHistoryPopoverHost: null,
     titleHistoryOpen: false,
     titleHistoryOutsideHandler: null,
+    vodCategoryHost: null,
   };
 
   const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
@@ -192,7 +195,6 @@
       type: "requestAndApplyUpdate",
       targetVersion: state.deployedExtensionVersion,
     });
-    console.log("[오뱅알] 업데이트 적용 요청 결과", response);
     if (button && !response.applying) {
       button.disabled = false;
       button.textContent = response.ok ? "최신 버전" : "다시 시도";
@@ -259,7 +261,6 @@
     if (target.insidePlayer) {
       const computed = window.getComputedStyle(parent);
       if (computed.position === "static") parent.style.position = "relative";
-      host.style.position = "absolute";
       host.style.top = "16px";
       host.style.left = "50%";
       host.style.right = "auto";
@@ -1658,6 +1659,7 @@
   }
 
   function updateHistoryHtml() {
+    return "";
     const items = updateHistoryItems();
     if (!items.length) return "";
     const cards = items.map(updateHistoryCardHtml).filter(Boolean).join("");
@@ -3491,16 +3493,28 @@
 
 
   function getCurrentDataChannelId() {
-    const testChannelId = String(CHZZK_SCHEDULE_CONFIG.testChannelId || "").trim();
-    const testSourceChannelId = String(CHZZK_SCHEDULE_CONFIG.testSourceChannelId || "").trim();
-    return testChannelId && testSourceChannelId && state.channelId === testChannelId ? testSourceChannelId : state.channelId;
+    if (state.channelId) return state.channelId;
+    if (typeof isChzzkVodPage === "function" && isChzzkVodPage()) return targetChannelId();
+    return state.channelId;
   }
 
   function getTitleHistoryItems() {
     const dataChannelId = getCurrentDataChannelId();
     const histories = state.data && state.data.titleHistories;
     const list = histories && dataChannelId ? histories[dataChannelId] : [];
-    return Array.isArray(list) ? list.slice(0, 80) : [];
+    if (!Array.isArray(list)) return [];
+    const seen = new Set();
+    const unique = [];
+    for (const item of list) {
+      const title = String((item && item.title) || "").trim();
+      if (!title) continue;
+      const key = title.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(item);
+      if (unique.length >= 80) break;
+    }
+    return unique;
   }
 
   function formatTitleHistoryTime(value) {
@@ -3523,14 +3537,14 @@
   function renderTitleHistoryPopover() {
     const items = getTitleHistoryItems();
     if (!items.length) {
-      return '<div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong></div><div class="oth-empty">\uC544\uC9C1 \uAE30\uB85D\uB41C \uBC29\uC81C \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
+      return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30">&times;</button></div><div class="oth-sheet-body"><div class="oth-empty">\uC544\uC9C1 \uAE30\uB85D\uB41C \uBC29\uC81C \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div></div>';
     }
     const groups = new Map();
     items.forEach((item) => {
       const key = titleHistoryCategoryKey(item);
       if (!groups.has(key)) {
         groups.set(key, {
-          label: String(item.categoryLabel || "").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
+          label: String(item.categoryLabel || "\uCE74\uD14C\uACE0\uB9AC").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
           type: String(item.categoryType || "").trim(),
           latest: String(item.changedAt || ""),
           items: [],
@@ -3547,70 +3561,93 @@
           .slice()
           .sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || "")))
           .map((item) => {
-            const previous = String(item.previousTitle || "").trim();
             const title = String(item.title || "").trim();
             const time = formatTitleHistoryTime(item.changedAt);
-            const change = previous && previous !== title
-              ? '<span class="oth-prev">' + escapeHtml(previous) + '</span><span class="oth-arrow">&rarr;</span><span class="oth-current">' + escapeHtml(title) + '</span>'
-              : '<span class="oth-current">' + escapeHtml(title) + '</span>';
-            return '<li class="oth-row"><span class="oth-time">' + escapeHtml(time) + '</span><span class="oth-change">' + change + '</span></li>';
+            return '<li class="oth-title-row"><span class="oth-time">' + escapeHtml(time) + '</span><span class="oth-title-text">' + escapeHtml(title) + '</span></li>';
           }).join("");
         const type = group.type ? '<span class="oth-type">' + escapeHtml(group.type) + '</span>' : "";
         return '<section class="oth-group"><div class="oth-category"><span>' + escapeHtml(group.label) + '</span>' + type + '</div><ol class="oth-list">' + rows + '</ol></section>';
       }).join("");
-    return '<div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><span>' + items.length + '\uAC1C</span></div>' + html;
+    return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30">&times;</button></div><div class="oth-sheet-body">' + html + '</div>';
+  }
+
+
+  function titleHistoryPopoverStyleHtml() {
+    return '<style>' +
+      ':host{position:fixed;inset:0;z-index:2147483601;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}' +
+      '.oth-popover{position:fixed;left:50%;right:auto;top:auto;bottom:0;width:min(720px,calc(100vw - 24px));max-height:min(58vh,520px);overflow:hidden;padding:10px 14px 14px;border:1px solid rgba(124,255,183,.42);border-bottom:0;border-radius:16px 16px 0 0;background:rgba(12,16,20,.98);color:#f5fff9;box-shadow:0 -18px 52px rgba(0,0,0,.45);box-sizing:border-box;transform:translate(-50%,100%);opacity:1;animation:oth-popover-up .2s cubic-bezier(.2,.8,.2,1) forwards;pointer-events:auto}' +
+      '.oth-popover[hidden]{display:none}.oth-sheet-handle{width:42px;height:4px;margin:0 auto 10px;border-radius:999px;background:rgba(255,255,255,.24)}.oth-sheet-body{max-height:calc(min(58vh,520px) - 58px);overflow:auto;padding:0 2px 2px}.oth-sheet-body::-webkit-scrollbar{width:8px}.oth-sheet-body::-webkit-scrollbar-thumb{border-radius:999px;background:rgba(120,255,181,.36)}.oth-sheet-body::-webkit-scrollbar-track{background:rgba(255,255,255,.05)}.oth-close{appearance:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:4px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:rgba(255,255,255,.06);color:#dce7e1;font-size:18px;line-height:1;cursor:pointer}.oth-close:hover{border-color:rgba(124,255,183,.42);background:rgba(124,255,183,.12);color:#fff}@keyframes oth-popover-up{to{transform:translate(-50%,0)}}' +
+      '.oth-popover-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}.oth-popover-head strong{flex:1 1 auto}' +
+      '.oth-group{padding:10px 0;border-top:1px solid rgba(255,255,255,.08)}.oth-group:first-of-type{border-top:0;padding-top:0}' +
+      '.oth-category{display:flex;align-items:center;gap:7px;margin-bottom:8px;color:#91ffbd;font-size:12px;font-weight:800}.oth-type{padding:2px 5px;border-radius:999px;background:rgba(145,255,189,.13);color:#b8ffd4;font-size:10px}' +
+      '.oth-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}.oth-title-row{display:grid;grid-template-columns:65px minmax(0,1fr);gap:8px;align-items:start;padding:7px 9px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.035);font-size:12px;line-height:1.45}.oth-time{color:#8f9d97;font-variant-numeric:tabular-nums}.oth-title-text{color:#fff;font-weight:700;white-space:normal;overflow-wrap:anywhere}' +
+      '.oth-empty{padding:8px 2px;color:#aeb8b3;font-size:12px;white-space:nowrap}' +
+      '@media (max-width:520px){.oth-popover{width:100vw;max-width:100vw;border-left:0;border-right:0}}' +
+      '</style>';
+  }
+
+  function ensureTitleHistoryPopoverHost() {
+    if (state.titleHistoryPopoverHost && state.titleHistoryPopoverHost.isConnected) return state.titleHistoryPopoverHost;
+    const host = document.createElement("div");
+    host.id = "obaengal-title-history-popover-host";
+    host.style.position = "fixed";
+    host.style.inset = "0";
+    host.style.zIndex = "2147483601";
+    host.style.pointerEvents = "none";
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.innerHTML = titleHistoryPopoverStyleHtml() + '<div class="oth-popover" id="oth-popover" hidden></div>';
+    (document.body || document.documentElement).appendChild(host);
+    state.titleHistoryPopoverHost = host;
+    return host;
+  }
+
+  function titleHistoryPopoverShadow() {
+    const host = ensureTitleHistoryPopoverHost();
+    return host && host.shadowRoot;
   }
 
   function positionTitleHistoryPopover(shadow) {
     const popover = shadow && shadow.getElementById("oth-popover");
     if (!popover || popover.hidden) return;
-    popover.style.left = "0px";
+    popover.style.left = "50%";
     popover.style.right = "auto";
-    popover.style.top = "calc(100% + 8px)";
-    requestAnimationFrame(() => {
-      const rect = popover.getBoundingClientRect();
-      const pad = 12;
-      if (rect.right > window.innerWidth - pad) {
-        popover.style.left = Math.floor(window.innerWidth - pad - rect.right) + "px";
-      }
-      if (rect.left < pad) {
-        const current = parseInt(popover.style.left || "0", 10) || 0;
-        popover.style.left = current + Math.ceil(pad - rect.left) + "px";
-      }
-      const next = popover.getBoundingClientRect();
-      if (next.bottom > window.innerHeight - pad && next.top > window.innerHeight / 2) {
-        popover.style.top = "auto";
-        popover.style.bottom = "calc(100% + 8px)";
-      } else {
-        popover.style.bottom = "auto";
-      }
-    });
+    popover.style.top = "auto";
+    popover.style.bottom = "0";
   }
+
 
   function closeTitleHistoryPopover() {
     state.titleHistoryOpen = false;
-    const host = state.titleHistoryHost;
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return;
-    const button = shadow.getElementById("oth-button");
-    const popover = shadow.getElementById("oth-popover");
+    const buttonHost = state.titleHistoryHost;
+    const buttonShadow = buttonHost && buttonHost.shadowRoot;
+    const popoverHost = state.titleHistoryPopoverHost;
+    const popoverShadow = popoverHost && popoverHost.shadowRoot;
+    const button = buttonShadow && buttonShadow.getElementById("oth-button");
+    const popover = popoverShadow && popoverShadow.getElementById("oth-popover");
     if (button) button.setAttribute("aria-expanded", "false");
     if (popover) popover.hidden = true;
   }
 
   function toggleTitleHistoryPopover() {
     const host = state.titleHistoryHost;
-    const shadow = host && host.shadowRoot;
-    if (!shadow) return;
-    const button = shadow.getElementById("oth-button");
-    const popover = shadow.getElementById("oth-popover");
+    const buttonShadow = host && host.shadowRoot;
+    const popoverShadow = titleHistoryPopoverShadow();
+    if (!buttonShadow || !popoverShadow) return;
+    const button = buttonShadow.getElementById("oth-button");
+    const popover = popoverShadow.getElementById("oth-popover");
     if (!button || !popover) return;
     state.titleHistoryOpen = !state.titleHistoryOpen;
     button.setAttribute("aria-expanded", String(state.titleHistoryOpen));
     if (state.titleHistoryOpen) {
       popover.innerHTML = renderTitleHistoryPopover();
+      const close = popoverShadow.getElementById("oth-close");
+      if (close) close.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeTitleHistoryPopover();
+      });
       popover.hidden = false;
-      positionTitleHistoryPopover(shadow);
+      positionTitleHistoryPopover(popoverShadow);
     } else {
       popover.hidden = true;
     }
@@ -3648,7 +3685,9 @@
       state.titleHistoryOutsideHandler = null;
     }
     if (state.titleHistoryHost && state.titleHistoryHost.isConnected) state.titleHistoryHost.remove();
+    if (state.titleHistoryPopoverHost && state.titleHistoryPopoverHost.isConnected) state.titleHistoryPopoverHost.remove();
     state.titleHistoryHost = null;
+    state.titleHistoryPopoverHost = null;
     state.titleHistoryOpen = false;
   }
 
@@ -3670,7 +3709,6 @@
     host.id = "obaengal-title-history-host";
     host.style.display = "inline-flex";
     host.style.verticalAlign = "middle";
-    host.style.marginLeft = "8px";
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = '<style>' +
       ':host{position:relative;display:inline-flex;vertical-align:middle;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;z-index:2147483600}' +
@@ -3678,16 +3716,7 @@
       '.oth-button{height:28px;padding:0 10px;border:1px solid rgba(81,214,139,.46);border-radius:7px;background:rgba(13,18,22,.88);color:#e9fff3;font-size:12px;font-weight:700;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.18);transition:background .16s ease,border-color .16s ease,transform .16s ease}' +
       '.oth-button:hover{background:rgba(25,35,41,.96);border-color:rgba(107,239,166,.9);transform:translateY(-1px)}' +
       '.oth-button[aria-expanded="true"]{background:#163123;border-color:#72f0aa;color:#fff}' +
-      '.oth-popover{position:absolute;top:calc(100% + 8px);left:0;width:max-content;min-width:320px;max-width:min(520px,calc(100vw - 24px));max-height:min(420px,calc(100vh - 80px));overflow:auto;padding:12px;border:1px solid rgba(124,255,183,.42);border-radius:8px;background:rgba(12,16,20,.98);color:#f5fff9;box-shadow:0 18px 50px rgba(0,0,0,.42);box-sizing:border-box}' +
-      '.oth-popover[hidden]{display:none}' +
-      '.oth-popover::-webkit-scrollbar{width:8px}.oth-popover::-webkit-scrollbar-thumb{border-radius:999px;background:rgba(120,255,181,.36)}.oth-popover::-webkit-scrollbar-track{background:rgba(255,255,255,.05)}' +
-      '.oth-popover-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:10px;font-size:13px}.oth-popover-head span{color:#a9b8b0;font-size:11px}' +
-      '.oth-group{padding:10px 0;border-top:1px solid rgba(255,255,255,.08)}.oth-group:first-of-type{border-top:0;padding-top:0}' +
-      '.oth-category{display:flex;align-items:center;gap:7px;margin-bottom:8px;color:#91ffbd;font-size:12px;font-weight:800}.oth-type{padding:2px 5px;border-radius:999px;background:rgba(145,255,189,.13);color:#b8ffd4;font-size:10px}' +
-      '.oth-list{display:flex;flex-direction:column;gap:7px;margin:0;padding:0;list-style:none}.oth-row{display:grid;grid-template-columns:48px minmax(0,max-content);gap:8px;align-items:start;font-size:12px;line-height:1.45}' +
-      '.oth-time{color:#8f9d97;font-variant-numeric:tabular-nums}.oth-change{display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}.oth-prev{color:#aeb8b3}.oth-arrow{color:#5de894}.oth-current{color:#fff;font-weight:700}.oth-empty{padding:8px 2px;color:#aeb8b3;font-size:12px;white-space:nowrap}' +
-      '@media (max-width:520px){.oth-popover{min-width:280px}.oth-row{grid-template-columns:44px minmax(0,1fr)}.oth-change{white-space:normal}}' +
-      '</style><span class="oth-wrap"><button type="button" class="oth-button" id="oth-button" aria-expanded="false">\uC774\uC804 \uBC29\uC81C \uD655\uC778</button><div class="oth-popover" id="oth-popover" hidden></div></span>';
+      '</style><span class="oth-wrap"><button type="button" class="oth-button" id="oth-button" aria-expanded="false">\uC774\uC804 \uBC29\uC81C \uD655\uC778</button></span>';
     shadow.getElementById("oth-button").addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -3696,12 +3725,204 @@
     state.titleHistoryOutsideHandler = (event) => {
       if (!state.titleHistoryOpen) return;
       const path = typeof event.composedPath === "function" ? event.composedPath() : [];
-      if (path.includes(host)) return;
+      if (path.includes(host) || path.includes(state.titleHistoryPopoverHost)) return;
       closeTitleHistoryPopover();
     };
     document.addEventListener("mousedown", state.titleHistoryOutsideHandler, true);
     title.insertAdjacentElement("afterend", host);
     state.titleHistoryHost = host;
+  }
+
+
+  function getCategoryHistoryItems() {
+    const dataChannelId = getCurrentDataChannelId();
+    const histories = state.data && state.data.categoryHistories;
+    const list = histories && dataChannelId ? histories[dataChannelId] : [];
+    return Array.isArray(list) ? list.filter((item) => item && String(item.categoryLabel || "").trim()) : [];
+  }
+
+  function videoNoFromUrl(url) {
+    const raw = String(url || "").trim();
+    const match = raw.match(/(?:^|\/)video\/([0-9]+)/i);
+    return match ? match[1] : "";
+  }
+
+  function sameVodLink(a, b) {
+    const aNo = videoNoFromUrl(a);
+    const bNo = videoNoFromUrl(b);
+    if (aNo && bNo) return aNo === bNo;
+    const clean = (value) => String(value || "").trim().replace(/[?#].*$/, "").replace(/\/+$/, "");
+    return !!clean(a) && clean(a) === clean(b);
+  }
+
+  function currentVodScheduleMatch() {
+    const dataChannelId = getCurrentDataChannelId();
+    const channel = state.data && state.data.channels && dataChannelId ? state.data.channels[dataChannelId] : null;
+    const schedule = channel && Array.isArray(channel.schedule) ? channel.schedule : [];
+    const currentUrl = location.href;
+    for (const entry of schedule) {
+      const vods = entry && Array.isArray(entry.vods) ? entry.vods : [];
+      const vod = vods.find((item) => item && sameVodLink(item.url, currentUrl));
+      if (vod) return { entry, vod };
+    }
+    return null;
+  }
+
+  function vodCategoryGroup(scheduleEntry) {
+    const items = getCategoryHistoryItems();
+    const scheduleDate = String((scheduleEntry && scheduleEntry.date) || "").trim();
+    if (!items.length || !scheduleDate) return [];
+    const group = items.filter((item) => String(item.scheduleDate || "") === scheduleDate);
+    const seen = new Set();
+    return group.slice().sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
+      const key = String(item.categoryType || "") + "|" + String(item.categoryId || "") + "|" + String(item.categoryLabel || "").trim().toLowerCase() + "|" + String(item.offsetSeconds ?? "");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 10);
+  }
+
+  function isChzzkVodPage() {
+    return /^\/[0-9a-f]{32}\/videos(?:\/|$)?/i.test(location.pathname) || /^\/video\/[0-9]+(?:\/|$)?/i.test(location.pathname);
+  }
+
+  function formatVodOffset(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
+  }
+
+  function findLatestVodCardSlots() {
+    const detailsList = Array.from(document.querySelectorAll('[class*="_details"]')).filter((el) => {
+      if (!hasClassPrefix(el, "_details")) return false;
+      if (el.closest("#obaengal-vod-category-host")) return false;
+      if (el.closest('[class*="pzp"]')) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 120 && rect.height > 0;
+    });
+    for (const details of detailsList) {
+      const parent = details.parentElement;
+      if (!parent) continue;
+      const children = Array.from(parent.children || []);
+      const index = children.indexOf(details);
+      if (index < 0) continue;
+      const container = children.slice(index + 1).find((child) => hasClassPrefix(child, "_container"));
+      const card = details.closest("a") || parent.closest("a") || parent;
+      if (container) return { details, container, parent, card, insertBefore: container };
+      if (/^\/video\/[0-9]+(?:\/|$)?/i.test(location.pathname)) return { details, container: null, parent, card, insertAfter: details };
+    }
+
+    if (/^\/video\/[0-9]+(?:\/|$)?/i.test(location.pathname)) {
+      const title = Array.from(document.querySelectorAll('[class*="_title"]')).find((el) => {
+        if (!hasClassPrefix(el, "_title")) return false;
+        if (el.closest("#obaengal-vod-category-host") || el.closest('[class*="pzp"]')) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 120 && rect.height > 0;
+      });
+      if (title && title.parentElement) return { details: title, container: null, parent: title.parentElement, card: title.parentElement, insertAfter: title };
+
+      const player = document.querySelector(".webplayer-internal-video") || document.querySelector("video");
+      const anchor = player && (player.closest('[class*="_container"], [class*="_player"], [class*="video"]') || player.parentElement);
+      if (anchor && anchor.parentElement) return { details: anchor, container: null, parent: anchor.parentElement, card: anchor.parentElement, insertAfter: anchor };
+
+      const main = document.querySelector("main") || document.body;
+      if (main) return { details: main.firstElementChild || main, container: null, parent: main, card: main, appendTo: main };
+    }
+    return null;
+  }
+
+  function findVodCardUrl(card) {
+    const link = card && (card.matches && card.matches("a") ? card : card.querySelector && card.querySelector('a[href*="/video/"]'));
+    const href = link && link.getAttribute("href");
+    if (!href) return "";
+    try { return new URL(href, location.origin).href; } catch (_e) { return href; }
+  }
+
+  function seekVideoToOffset(offsetSeconds) {
+    const seconds = Math.max(0, Math.floor(Number(offsetSeconds) || 0));
+    const videos = Array.from(document.querySelectorAll("video"));
+    const target = videos.map((video) => ({ video, rect: video.getBoundingClientRect() })).filter((item) => item.rect.width >= 240 && item.rect.height >= 120).sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height))[0];
+    if (!target) return false;
+    try {
+      target.video.currentTime = seconds;
+      const playResult = target.video.play && target.video.play();
+      if (playResult && typeof playResult.catch === "function") playResult.catch(() => {});
+      return true;
+    } catch (_e) { return false; }
+  }
+
+  function schedulePendingVodSeek(offsetSeconds) {
+    try { sessionStorage.setItem(VOD_CATEGORY_SEEK_KEY, JSON.stringify({ offsetSeconds: Math.max(0, Math.floor(Number(offsetSeconds) || 0)), createdAt: Date.now() })); } catch (_e) {}
+  }
+
+  function applyPendingVodSeek() {
+    let payload = null;
+    try { payload = JSON.parse(sessionStorage.getItem(VOD_CATEGORY_SEEK_KEY) || "null"); } catch (_e) { payload = null; }
+    if (!payload || Date.now() - Number(payload.createdAt || 0) > 120000) return;
+    if (seekVideoToOffset(payload.offsetSeconds)) {
+      try { sessionStorage.removeItem(VOD_CATEGORY_SEEK_KEY); } catch (_e) {}
+    }
+  }
+
+  function handleVodCategoryClick(item, card) {
+    const offsetSeconds = Math.max(0, Math.floor(Number(item && item.offsetSeconds) || 0));
+    if (seekVideoToOffset(offsetSeconds)) return;
+    schedulePendingVodSeek(offsetSeconds);
+    const url = findVodCardUrl(card);
+    if (url) window.location.href = url;
+  }
+
+  function removeVodCategoryHost() {
+    if (state.vodCategoryHost && state.vodCategoryHost.isConnected) state.vodCategoryHost.remove();
+    state.vodCategoryHost = null;
+  }
+
+  function syncVodCategoryButtons() {
+    if (!isChzzkVodPage()) {
+      removeVodCategoryHost();
+      applyPendingVodSeek();
+      return;
+    }
+    const vodMatch = currentVodScheduleMatch();
+    const items = vodMatch ? vodCategoryGroup(vodMatch.entry) : [];
+    const slot = items.length ? findLatestVodCardSlots() : null;
+    if (!slot) {
+      removeVodCategoryHost();
+      return;
+    }
+    if (state.vodCategoryHost && state.vodCategoryHost.isConnected && ((slot.insertBefore && state.vodCategoryHost.previousElementSibling === slot.details && state.vodCategoryHost.nextElementSibling === slot.insertBefore) || (slot.insertAfter && state.vodCategoryHost.previousElementSibling === slot.insertAfter) || (slot.appendTo && state.vodCategoryHost.parentElement === slot.appendTo))) return;
+    removeVodCategoryHost();
+    const host = document.createElement("div");
+    host.id = "obaengal-vod-category-host";
+    host.style.display = "block";
+    const shadow = host.attachShadow({ mode: "open" });
+    const buttons = items.map((item, index) => {
+      const label = escapeHtml(String(item.categoryLabel || "\uCE74\uD14C\uACE0\uB9AC").trim());
+      const time = item.offsetSeconds === null || item.offsetSeconds === undefined ? "" : '<span class="ovc-time">' + escapeHtml(formatVodOffset(item.offsetSeconds)) + '</span>';
+      return '<button type="button" class="ovc-button" data-index="' + index + '" aria-label="' + label + ' \uC2DC\uC810\uC73C\uB85C \uC774\uB3D9">' + time + '<span class="ovc-label">' + label + '</span><span class="ovc-tip" role="tooltip">\uC774 \uC2DC\uC810\uC73C\uB85C \uC774\uB3D9</span></button>';
+    }).join("");
+    shadow.innerHTML = '<style>' +
+      ':host{display:block;margin:8px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}' +
+      '.ovc-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ovc-heading{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#d9e8df;font-size:12px;font-weight:800;line-height:1;white-space:nowrap}' +
+      '.ovc-button{appearance:none;position:relative;display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 10px;border:1px solid rgba(0,255,163,.45);border-radius:999px;background:rgba(9,14,18,.92);color:#f2fff8;font-size:12px;font-weight:750;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.18);transition:transform .14s ease,border-color .14s ease,background .14s ease}' +
+      '.ovc-button:hover{transform:translateY(-1px);border-color:rgba(108,255,190,.92);background:rgba(16,31,29,.98)}' +
+      '.ovc-time{color:#86f4bb;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}.ovc-label{display:inline-flex;min-width:0}.ovc-tip{position:absolute;left:50%;bottom:calc(100% + 8px);z-index:2;display:block;width:max-content;max-width:220px;padding:7px 9px;border:1px solid rgba(132,255,193,.38);border-radius:7px;background:rgba(8,12,16,.96);color:#effff7;font-size:11px;font-weight:700;line-height:1.35;box-shadow:0 10px 28px rgba(0,0,0,.34);opacity:0;visibility:hidden;transform:translate(-50%,4px);transition:opacity .14s ease,transform .14s ease,visibility .14s ease;pointer-events:none}.ovc-tip:after{content:"";position:absolute;left:50%;top:100%;width:8px;height:8px;background:rgba(8,12,16,.96);border-right:1px solid rgba(132,255,193,.38);border-bottom:1px solid rgba(132,255,193,.38);transform:translate(-50%,-4px) rotate(45deg)}.ovc-button:hover .ovc-tip,.ovc-button:focus-visible .ovc-tip{opacity:1;visibility:visible;transform:translate(-50%,0)}' +
+      '</style><div class="ovc-wrap"><span class="ovc-heading">\uCC55\uD130 \uC774\uB3D9</span>' + buttons + '</div>';
+    shadow.querySelectorAll(".ovc-button").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Number(button.getAttribute("data-index"));
+        handleVodCategoryClick(items[index], slot.card);
+      });
+    });
+    if (slot.insertBefore && slot.insertBefore.parentElement) slot.insertBefore.parentElement.insertBefore(host, slot.insertBefore);
+    else if (slot.insertAfter && slot.insertAfter.parentElement) slot.insertAfter.insertAdjacentElement("afterend", host);
+    else if (slot.appendTo) slot.appendTo.appendChild(host);
+    else return;
+    state.vodCategoryHost = host;
   }
 
   function setChannelSchedulePanelOpen(open) {
@@ -3744,6 +3965,7 @@
     render();
     if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
     syncTitleHistoryButton();
+    syncVodCategoryButtons();
     applyPendingScheduleOpenRequest();
   }
 
@@ -3776,6 +3998,7 @@
     render();
     if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
     syncTitleHistoryButton();
+    syncVodCategoryButtons();
     applyPendingScheduleOpenRequest();
   }
 
@@ -3807,6 +4030,7 @@
     render();
     if (state.schedulePanelForcedOpen) setChannelSchedulePanelOpen(true);
     syncTitleHistoryButton();
+    syncVodCategoryButtons();
     applyPendingScheduleOpenRequest();
   }
 
@@ -3820,6 +4044,7 @@
       state.scheduleOutsideHandler = null;
     }
     removeTitleHistoryHost();
+    removeVodCategoryHost();
     if (state.host && state.host.isConnected) state.host.remove();
     state.host = null;
     state.shadow = null;
@@ -3936,6 +4161,17 @@
       }
 
       // 3) 마운트 유지: 치지직이 DOM을 갈아끼워 host가 사라졌으면 재마운트
+      if (isChzzkVodPage()) {
+        const now = Date.now();
+        if (!state.data && now - lastLoadAttempt >= 3000) {
+          lastLoadAttempt = now;
+          refreshData(false).then(() => syncVodCategoryButtons()).catch(() => syncVodCategoryButtons());
+        } else {
+          syncVodCategoryButtons();
+        }
+        applyPendingVodSeek();
+      }
+
       if (state.host && !state.host.isConnected) {
         state.host = null;
         state.shadow = null;
@@ -3946,6 +4182,7 @@
         syncPageTheme();
         applyPendingScheduleOpenRequest();
         syncTitleHistoryButton();
+        syncVodCategoryButtons();
       }
 
       // 비라이브 채널은 _action 버튼 모드, 라이브 화면은 기존 인라인 모드로 자동 전환
@@ -3998,6 +4235,7 @@
   function startAutoRefresh() {
     setInterval(runAutoRefreshIfDue, 30000);
     setInterval(rotateNoticeIfNeeded, 3000);
+    setInterval(applyPendingVodSeek, 700);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") runAutoRefreshIfDue();
     });

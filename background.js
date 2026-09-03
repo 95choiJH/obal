@@ -279,7 +279,6 @@ async function checkDeployedUpdate() {
   let version = String(saved[AVAILABLE_UPDATE_VERSION_KEY] || "").trim();
   try {
     const result = await api.runtime.requestUpdateCheck();
-    console.log("[오뱅알] 배포 버전 확인 결과", result);
     if (result && result.status === "update_available") {
       version = String(result.version || "").trim();
       if (version) await storageSet({ [AVAILABLE_UPDATE_VERSION_KEY]: version });
@@ -298,7 +297,6 @@ async function requestAndApplyUpdate(tabId, targetVersion) {
   if (Number.isInteger(tabId)) await storageSet({ [APPLY_UPDATE_TAB_KEY]: tabId });
   const checked = await checkDeployedUpdate();
   const result = checked.result || null;
-  console.log("[오뱅알] 업데이트 확인 결과", result);
   if (!checked.version || (expectedVersion && checked.version !== expectedVersion)) {
     await storageRemove(APPLY_UPDATE_TAB_KEY);
     return { ok: true, applying: false, result };
@@ -509,6 +507,41 @@ function liveTitleHistoriesByChannel(rows) {
   for (const row of rows || []) {
     const channelId = String((row && (row.channel_id || row.channelId)) || "").trim();
     const item = normalizeLiveTitleHistory(row);
+    if (!channelId || !item) continue;
+    if (!byChannel[channelId]) byChannel[channelId] = [];
+    byChannel[channelId].push(item);
+  }
+  Object.values(byChannel).forEach((list) => {
+    list.sort((a, b) => String(b.changedAt || "").localeCompare(String(a.changedAt || "")) || String(b.id || "").localeCompare(String(a.id || "")));
+  });
+  return byChannel;
+}
+
+function normalizeLiveCategoryHistory(item) {
+  if (!item || typeof item !== "object") return null;
+  const label = String(item.category_label || item.categoryLabel || "").trim();
+  if (!label) return null;
+  const offsetSecondsValue = Number(item.offset_seconds ?? item.offsetSeconds);
+  return {
+    id: item.id,
+    liveKey: String(item.live_key || item.liveKey || "").trim(),
+    scheduleDate: String(item.schedule_date || item.scheduleDate || "").trim(),
+    categoryLabel: label,
+    categoryId: String(item.category_id || item.categoryId || "").trim(),
+    categoryType: String(item.category_type || item.categoryType || "").trim().toUpperCase(),
+    categoryPosterImageUrl: String(item.category_poster_image_url || item.categoryPosterImageUrl || "").trim(),
+    previousCategoryLabel: String(item.previous_category_label || item.previousCategoryLabel || "").trim(),
+    startedAt: String(item.started_at || item.startedAt || "").trim(),
+    changedAt: String(item.changed_at || item.changedAt || "").trim(),
+    offsetSeconds: Number.isFinite(offsetSecondsValue) ? Math.max(0, Math.floor(offsetSecondsValue)) : null,
+  };
+}
+
+function liveCategoryHistoriesByChannel(rows) {
+  const byChannel = {};
+  for (const row of rows || []) {
+    const channelId = String((row && (row.channel_id || row.channelId)) || "").trim();
+    const item = normalizeLiveCategoryHistory(row);
     if (!channelId || !item) continue;
     if (!byChannel[channelId]) byChannel[channelId] = [];
     byChannel[channelId].push(item);
@@ -736,6 +769,13 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
 
+  let categoryHistories = {};
+  try {
+    const categoryHistoryRows = await fetchTable(c.liveCategoryHistoryTableName || "live_category_history", "changed_at.desc,id.desc");
+    categoryHistories = liveCategoryHistoriesByChannel(categoryHistoryRows);
+  } catch (e) {
+  }
+
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
   let gnimtiContentByChannel = {};
@@ -744,7 +784,7 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 1, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -766,7 +806,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 1 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

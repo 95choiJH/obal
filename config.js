@@ -25,6 +25,7 @@ const CHZZK_SCHEDULE_CONFIG = {
 
   // 방제목 변경 기록 테이블 이름
   liveTitleHistoryTableName: "live_title_history",
+  liveCategoryHistoryTableName: "live_category_history",
 
   // 캐시 유지 시간(분). 이 시간 안에는 네트워크 요청 없이 캐시를 사용합니다.
   cacheTtlMinutes: 10,
@@ -32,13 +33,9 @@ const CHZZK_SCHEDULE_CONFIG = {
   // 치지직 페이지가 열려 있을 때 일정과 소식을 자동으로 다시 불러오는 주기(분)
   autoRefreshMinutes: 1,
 
-  // 임시 UI 테스트: 아래 채널에서는 testSourceChannelId의 일정 데이터를 표시합니다.
-  // 테스트 종료 후 testChannelId를 빈 문자열로 바꾸면 비활성화됩니다.
-  testChannelId: "a7e175625fdea5a7d98428302b7aa57f",
-  testSourceChannelId: "0dad8baf12a436f722faa8e5001c5011",
-
   // (선택) 인라인 삽입 위치를 직접 지정하고 싶을 때 CSS 선택자를 입력.
   // 비워두면 자동 탐색합니다. 예: '[class*="_information_1lz65"]'
-  anchorSelector: "",
+
+    anchorSelector: "",
 };
 

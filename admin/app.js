@@ -25,6 +25,7 @@
   let activeAdminMenu = "schedule";
   let selectedScheduleDate = "";
   let scheduleMonthOffset = 0;
+  let openScheduleTitleHistoryDate = "";
   let original = "";     // 원본 스냅샷 (dirty 판정용)
   let deletedIds = [];    // 저장 시 삭제할 기존 일정 행 id
   let deletedInfoIds = []; // 저장 시 삭제할 기존 소식/예정 컨텐츠 행 id
@@ -106,55 +107,6 @@
     setTimeout(() => t.classList.remove("show"), 2200);
   }
 
-  function backupTimestamp() {
-    return new Date().toISOString().replace(/[:.]/g, "-");
-  }
-
-  function backupDraftRows() {
-    return rows.map((r) => ({
-      ...r,
-      parts: (r.parts || []).map((p) => ({
-        ...p,
-        notes: normalizeNotes(p.notes || p.note),
-      })),
-      notes: normalizeNotes(r.notes || r.note),
-    }));
-  }
-
-  async function createScheduleBackup(reason) {
-    const infoTable = cfg.upcomingContentTableName || "upcoming_content";
-    const [{ data: scheduleData, error: scheduleError }, { data: infoData, error: infoError }] = await Promise.all([
-      sb.from(cfg.tableName).select("*").order("date", { ascending: true }),
-      sb.from(infoTable).select("*").order("sort_order", { ascending: true }).order("id", { ascending: true }),
-    ]);
-    if (scheduleError) throw scheduleError;
-    if (infoError) throw infoError;
-
-    const payload = {
-      version: 1,
-      reason: reason || "before-save",
-      createdAt: new Date().toISOString(),
-      channelId: cfg.channelId,
-      tables: {
-        [cfg.tableName]: scheduleData || [],
-        [infoTable]: infoData || [],
-      },
-      draft: {
-        rows: backupDraftRows(),
-        info: info.map((item) => ({ ...item })),
-        deletedIds: [...deletedIds],
-        deletedInfoIds: [...deletedInfoIds],
-      },
-    };
-
-    const filePath = cfg.channelId + "/" + backupTimestamp() + "-" + (reason || "before-save") + ".json";
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
-    const { error: uploadError } = await sb.storage
-      .from("schedule-backups")
-      .upload(filePath, blob, { contentType: "application/json;charset=utf-8", upsert: false });
-    if (uploadError) throw uploadError;
-    return filePath;
-  }
 
   // ---- 로그인 ----
   async function doLogin() {
@@ -289,7 +241,7 @@
       .eq("channel_id", cfg.channelId)
       .order("changed_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(100);
+      .limit(500);
     if (error) {
       liveTitleHistory = [];
       liveTitleHistoryLoadError = error.message || String(error);
@@ -550,8 +502,8 @@
     if (!selectedScheduleDate) selectedScheduleDate = rows.find((row) => row.date === todayKey()) ? todayKey() : ((rows[0] && rows[0].date) || todayKey());
 
     if (list) {
-      const addHeader = '<div class="schedule-group-head"><p class="group-label">\uc77c\uc815</p><button type="button" class="add-btn schedule-add-btn" data-addrow="1">+ \ub0a0\uc9dc</button></div>';
-      list.innerHTML = addHeader + scheduleCalendarHtml() + selectedScheduleDetailHtml();
+      const scheduleHeader = '<div class="schedule-group-head"><p class="group-label">\uc77c\uc815</p></div>';
+      list.innerHTML = scheduleHeader + scheduleCalendarHtml() + selectedScheduleDetailHtml();
       bindCards();
     }
 
@@ -578,7 +530,7 @@
         '<div class="settings-row">' +
           '<div class="settings-copy">' +
             '<div class="settings-title">자동 카테고리/부 생성</div>' +
-            '<div class="settings-desc">방송 카테고리를 감지해 게임 목록과 부 제목을 자동으로 반영합니다. 방제목 변경 기록은 이 설정과 별도로 저장됩니다.</div>' +
+            '<div class="settings-desc">방송 카테고리를 감지해 게임 목록과 부 제목을 자동으로 반영합니다. 방제목 변경 기록은 일정 탭에서 날짜별로 확인할 수 있습니다.</div>' +
           '</div>' +
           '<button type="button" class="settings-toggle" data-setting-auto-live-sync="1" aria-pressed="' + (enabled ? 'true' : 'false') + '">' +
             '<span class="toggle-label">' + (enabled ? 'ON' : 'OFF') + '</span>' +
@@ -586,37 +538,8 @@
           '</button>' +
         '</div>' +
         warning +
-      '</div>' +
-      liveTitleHistoryHtml();
+      '</div>';
     bindSettingsCards();
-  }
-
-  function liveTitleHistoryHtml() {
-    const error = liveTitleHistoryLoadError
-      ? '<div class="settings-warning">방제목 변경 기록을 불러올 수 없습니다. 운영 DB에 live_title_history 테이블과 RLS를 적용했는지 확인하세요.</div>'
-      : '';
-    const items = liveTitleHistory.length
-      ? liveTitleHistory.map((item) => {
-        const previous = item.previous_title ? '<div class="live-title-history-prev">이전: ' + esc(item.previous_title) + '</div>' : '';
-        const category = item.category_label ? '<span class="live-title-history-category">' + esc(item.category_label) + (item.category_type ? ' <b>' + esc(item.category_type) + '</b>' : '') + '</span>' : '<span class="live-title-history-category muted">카테고리 없음</span>';
-        return '<article class="live-title-history-item">' +
-          '<div class="live-title-history-main">' + esc(item.title || '') + '</div>' +
-          '<div class="live-title-history-meta">' + category + '<span>' + esc(item.schedule_date || '') + ' · ' + esc(formatHistoryDateTime(item.changed_at)) + '</span></div>' +
-          previous +
-        '</article>';
-      }).join("")
-      : '<div class="empty live-title-history-empty">아직 기록된 방제목 변경이 없습니다.</div>';
-    return '<div class="card settings-card live-title-history-card">' +
-      '<div class="settings-row live-title-history-head">' +
-        '<div class="settings-copy">' +
-          '<div class="settings-title">방제목 변경 기록</div>' +
-          '<div class="settings-desc">라이브 중 방제목이 바뀌면 마지막 기록과 비교해 자동으로 누적됩니다.</div>' +
-        '</div>' +
-        '<button type="button" class="add-btn small" data-live-title-history-refresh="1">새로고침</button>' +
-      '</div>' +
-      error +
-      '<div class="live-title-history-list">' + items + '</div>' +
-    '</div>';
   }
 
   function bindSettingsCards() {
@@ -625,13 +548,6 @@
         adminSettings.autoLiveCategorySync = !adminSettings.autoLiveCategorySync;
         renderSettings();
         markDirty();
-      };
-    });
-    document.querySelectorAll("[data-live-title-history-refresh]").forEach((el) => {
-      el.onclick = async () => {
-        el.disabled = true;
-        await loadLiveTitleHistory();
-        renderSettings();
       };
     });
   }
@@ -935,6 +851,13 @@
     return !!(data && (String(data.title || "").trim() || String(data.body || "").trim()));
   }
 
+  function defaultUpdateHistoryData() {
+    return {
+      title: "v1.0.0",
+      body: "이번 업데이트에서는 사용자가 확인할 주요 변경사항을 정리했습니다.\n\nNEW\n\n• 추가된 기능 제목: \n• 세부사항: \n\n개선\n\n• 개선된 내용: \n• 세부사항: \n\n수정\n\n• 수정된 내용: \n• 세부사항: ",
+    };
+  }
+
   function renderInfo() {
     sortInfoForVisibility();
     const list = $("infoList");
@@ -1048,9 +971,15 @@
   function bindUpdateHistoryCards() {
     document.querySelectorAll("[data-add-update]").forEach((el) => {
       el.onclick = () => {
-        info.push({ id: null, content: updateHistoryContent({ title: "", body: "" }), hidden: true });
+        const data = defaultUpdateHistoryData();
+        info.push({ id: null, content: updateHistoryContent(data), hidden: true });
+        const index = info.length - 1;
         renderUpdates();
         markDirty();
+        requestAnimationFrame(() => {
+          const input = document.querySelector('[data-update-title="' + index + '"]');
+          if (input) input.focus();
+        });
       };
     });
     document.querySelectorAll("[data-update-title]").forEach((el) => {
@@ -1065,6 +994,20 @@
     });
     document.querySelectorAll("[data-update-body]").forEach((el) => {
       const i = +el.getAttribute("data-update-body");
+      el.onkeydown = (event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+        event.preventDefault();
+        const start = el.selectionStart || 0;
+        const end = el.selectionEnd || start;
+        const before = el.value.slice(0, start);
+        const after = el.value.slice(end);
+        const insert = "\n• ";
+        el.value = before + insert + after;
+        const pos = before.length + insert.length;
+        el.selectionStart = pos;
+        el.selectionEnd = pos;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      };
       el.oninput = () => {
         const data = parseUpdateHistoryData(info[i]);
         data.body = el.value;
@@ -1339,6 +1282,83 @@
     markDirty();
   }
 
+
+  function titleHistoryItemsForDate(date) {
+    const key = String(date || "").trim();
+    if (!key) return [];
+    return liveTitleHistory
+      .filter((item) => String((item && item.schedule_date) || "").trim() === key)
+      .sort((a, b) => String(a.changed_at || "").localeCompare(String(b.changed_at || "")) || String(a.id || "").localeCompare(String(b.id || "")));
+  }
+
+  function titleHistoryCategoryKey(item) {
+    const label = String((item && item.category_label) || "").trim();
+    const id = String((item && item.category_id) || "").trim();
+    const type = String((item && item.category_type) || "").trim();
+    return (type || "NONE") + "|" + (id || label || "NONE") + "|" + label;
+  }
+
+  function titleHistoryGroupedHtml(items, includeDate) {
+    if (liveTitleHistoryLoadError) {
+      return '<div class="settings-warning live-title-history-inline-warning">\uBC29\uC81C\uBAA9 \uBCC0\uACBD \uAE30\uB85D\uC744 \uBD88\uB7EC\uC62C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
+    }
+    if (!items.length) {
+      return '<div class="empty live-title-history-empty">\uC774 \uC77C\uC815\uC5D0 \uAE30\uB85D\uB41C \uC774\uC804 \uBC29\uC81C\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
+    }
+    const groups = new Map();
+    items.forEach((item) => {
+      const key = titleHistoryCategoryKey(item);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          label: String(item.category_label || "").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
+          type: String(item.category_type || "").trim(),
+          latest: String(item.changed_at || ""),
+          items: [],
+        });
+      }
+      const group = groups.get(key);
+      if (String(item.changed_at || "") > group.latest) group.latest = String(item.changed_at || "");
+      group.items.push(item);
+    });
+    return Array.from(groups.values())
+      .sort((a, b) => String(b.latest || "").localeCompare(String(a.latest || "")))
+      .map((group) => {
+        const category = '<div class="live-title-history-category-row"><span class="live-title-history-category">' + esc(group.label) + (group.type ? ' <b>' + esc(group.type) + '</b>' : '') + '</span></div>';
+        const seenTitles = new Set();
+        const rowsHtml = group.items.map((item) => {
+          const titleText = String((item && item.title) || "").trim();
+          const titleKey = titleText.toLowerCase();
+          const omitted = !!titleKey && seenTitles.has(titleKey);
+          if (titleKey) seenTitles.add(titleKey);
+          const previous = item.previous_title ? '<div class="live-title-history-prev">이전: ' + esc(item.previous_title) + '</div>' : '';
+          const meta = (includeDate ? esc(item.schedule_date || '') + ' · ' : '') + esc(formatHistoryDateTime(item.changed_at));
+          const omittedBadge = omitted ? '<span class="live-title-history-omitted">생략</span>' : '';
+          return '<article class="live-title-history-item' + (omitted ? ' is-omitted' : '') + '">' +
+            '<div class="live-title-history-main">' + esc(titleText) + '</div>' +
+            '<div class="live-title-history-meta"><span>' + meta + '</span>' + omittedBadge + '</div>' +
+            previous +
+          '</article>';
+        }).join("");
+        return '<section class="live-title-history-group">' + category + rowsHtml + '</section>';
+      }).join("");
+  }
+
+  function scheduleTitleHistoryButtonHtml(r, i) {
+    const date = String((r && r.date) || "").trim();
+    const count = titleHistoryItemsForDate(date).length;
+    const open = openScheduleTitleHistoryDate === date;
+    return '<button type="button" class="add-btn small schedule-title-history-btn' + (open ? ' on' : '') + '" data-schedule-title-history="' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '">이전 방제' + (count ? ' ' + count : '') + '</button>';
+  }
+
+  function scheduleTitleHistoryPanelHtml(r) {
+    const date = String((r && r.date) || "").trim();
+    if (!date || openScheduleTitleHistoryDate !== date) return "";
+    return '<div class="schedule-title-history-panel schedule-editor-section">' +
+      '<div class="schedule-editor-section-head">\uC774\uC804 \uBC29\uC81C \uD655\uC778</div>' +
+      '<div class="live-title-history-list schedule-title-history-list">' + titleHistoryGroupedHtml(titleHistoryItemsForDate(date), false) + '</div>' +
+    '</div>';
+  }
+
   function cardHtml(r, i) {
     const off = r.status === "off";
     const cafeTime = !!r.cafe_time;
@@ -1348,6 +1368,7 @@
         '<div class="card off" data-i="' + i + '">' +
           '<div class="card-head">' +
             '<input class="card-date" type="date" data-f="date" data-i="' + i + '" value="' + esc(r.date) + '" />' +
+            scheduleTitleHistoryButtonHtml(r, i) +
             '<span class="grow"></span>' +
             '<button type="button" class="flag-toggle cafe-time-toggle' + (cafeTime ? " on" : "") + '" data-cafetoggle="' + i + '">카페타임</button>' +
             '<button type="button" class="flag-toggle video-time-toggle' + (videoTime ? " on" : "") + '" data-videotoggle="' + i + '">영도타임</button>' +
@@ -1355,6 +1376,7 @@
             '<div class="toggle on" data-toggle="' + i + '"><div class="knob"></div></div>' +
             deleteBtn(i) +
           "</div>" +
+          scheduleTitleHistoryPanelHtml(r) +
           notesListHtml(r, i, true) +
         "</div>"
       );
@@ -1363,13 +1385,15 @@
       '<div class="card" data-i="' + i + '">' +
         '<div class="card-head">' +
           '<input class="card-date" type="date" data-f="date" data-i="' + i + '" value="' + esc(r.date) + '" />' +
-          '<span class="grow"></span>' +
+          scheduleTitleHistoryButtonHtml(r, i) +
+            '<span class="grow"></span>' +
           '<button type="button" class="flag-toggle cafe-time-toggle' + (cafeTime ? " on" : "") + '" data-cafetoggle="' + i + '">카페타임</button>' +
           '<button type="button" class="flag-toggle video-time-toggle' + (videoTime ? " on" : "") + '" data-videotoggle="' + i + '">영도타임</button>' +
           '<span class="toggle-label">휴방</span>' +
           '<div class="toggle" data-toggle="' + i + '"><div class="knob"></div></div>' +
           deleteBtn(i) +
         "</div>" +
+        scheduleTitleHistoryPanelHtml(r) +
         '<div class="row">' +
           '<input class="time" type="text" data-f="start_time" data-i="' + i + '" value="' + esc(r.start_time) + '" placeholder="시간" />' +
         "</div>" +
@@ -1377,7 +1401,6 @@
         gameImagesListHtml(r, i) +
         vodsListHtml(r, i) +
         notesListHtml(r, i, false) +
-        '<p class="hint">시간을 비우면 "시간 미정"으로 표시됩니다</p>' +
       "</div>"
     );
   }
@@ -1394,15 +1417,13 @@
         '<button type="button" class="icon-btn" data-del-note="' + i + '-' + ni + '" aria-label="메모 삭제">' + trashSvg() + '</button>' +
       '</div>'
     ).join("");
-    return '<div class="notes-wrap schedule-editor-section"><div class="schedule-editor-section-head">' + (isOff ? "휴방 메모" : "메모") + '</div>' + items +
-      '<button type="button" class="add-btn small" data-add-note="' + i + '">+ 메모 추가</button></div>';
+    return '<div class="notes-wrap schedule-editor-section"><div class="schedule-editor-section-head"><span>' + (isOff ? "휴방 메모" : "메모") + '</span><button type="button" class="add-btn small section-add-btn" data-add-note="' + i + '">+ 메모</button></div>' + items + '</div>';
   }
   function partsListHtml(r, i) {
     const parts = r.parts || [];
     const itemsHtml = parts.map((p, pi) => partItemHtml(i, p, pi, parts.length)).join("");
     return (
-      '<div class="parts-wrap schedule-editor-section"><div class="schedule-editor-section-head">컨텐츠</div>' + itemsHtml +
-        '<button class="add-btn small" data-addpart="' + i + '">+ 부 추가</button>' +
+      '<div class="parts-wrap schedule-editor-section"><div class="schedule-editor-section-head"><span>컨텐츠</span><button class="add-btn small section-add-btn" data-addpart="' + i + '">+ 부</button></div>' + itemsHtml +
       "</div>"
     );
   }
@@ -1413,8 +1434,7 @@
     const images = r.gameImages || [];
     const itemsHtml = images.map((g, gi) => gameImageItemHtml(i, g, gi)).join("");
     return (
-      '<div class="game-images-wrap schedule-editor-section"><div class="schedule-editor-section-head">게임</div>' + itemsHtml +
-        '<button class="add-btn small" data-addgameimg="' + i + '">+ \uAC8C\uC784 \uCD94\uAC00</button>' +
+      '<div class="game-images-wrap schedule-editor-section"><div class="schedule-editor-section-head"><span>게임</span><button class="add-btn small section-add-btn" data-addgameimg="' + i + '">+ 게임</button></div>' + itemsHtml +
       "</div>"
     );
   }
@@ -1732,8 +1752,7 @@
     const vods = r.vods || [];
     const itemsHtml = vods.map((v, vi) => vodItemHtml(i, v, vi)).join("");
     return (
-      '<div class="vods-wrap schedule-editor-section"><div class="schedule-editor-section-head">다시보기</div>' +        itemsHtml +
-        '<button class="add-btn small" data-addvod="' + i + '">+ 다시보기 추가</button>' +
+      '<div class="vods-wrap schedule-editor-section"><div class="schedule-editor-section-head"><span>다시보기</span><button class="add-btn small section-add-btn" data-addvod="' + i + '">+ 다시보기</button></div>' + itemsHtml +
       "</div>"
     );
   }
@@ -1803,8 +1822,7 @@
         '</div>' +
       '</div>'
     ).join("");
-    return '<div class="part-notes-wrap"><div class="schedule-editor-section-head">부 메모</div>' + items +
-      '<button type="button" class="add-btn small" data-add-part-note="' + i + '-' + pi + '">+ 부 메모 추가</button></div>';
+    return '<div class="part-notes-wrap"><div class="schedule-editor-section-head"><span>부 메모</span><button type="button" class="add-btn small section-add-btn" data-add-part-note="' + i + '-' + pi + '">+ 메모</button></div>' + items + '</div>';
   }
   function partItemHtml(i, p, pi, partCount) {
     const collabOn = !!p.collab;
@@ -1818,8 +1836,10 @@
     const inputValue = p.displayType === "profile" ? ":s " + p.content : p.displayType === "tag" ? ":t " + p.content : p.content;
     const manualPartLabelOn = !!p.manualPartLabel;
     const partLabelValue = manualPartLabelOn ? (p.label || autoPartLabelFor(rows[i], pi)) : autoPartLabelFor(rows[i], pi);
+    const partHeaderBadges = (speculativeOn ? '<span class="part-header-badge">예상</span>' : '') + (hiddenFromFrontOn ? '<span class="part-header-badge muted">숨김</span>' : '');
     let html =
       '<div class="part-item">' +
+        '<div class="part-item-head"><div class="part-item-title"><span>' + esc(partLabelValue) + '</span>' + partHeaderBadges + '</div><div class="part-tools-row"><div class="part-tool-actions">' + partMoveButtons(i, pi, partCount) + deletePartBtn(i, pi) + '</div></div></div>' +
         '<div class="part-title-row">' +
           '<input type="text" data-pf="content" data-i="' + i + '" data-pi="' + pi + '" value="' + esc(inputValue) + '" placeholder="컨텐츠명" />' +
           '<div class="part-label-control">' +
@@ -1828,9 +1848,6 @@
           '</div>' +
         '</div>' +
         '<div class="directive-preview" data-directive-preview="' + i + '-' + pi + '">' + directivePreviewHtml(inputValue, p.profile) + '</div>' +
-        '<div class="part-tools-row">' +
-          '<div class="part-tool-actions">' + partMoveButtons(i, pi, partCount) + deletePartBtn(i, pi) + '</div>' +
-        '</div>' +
         '<div class="flag-toggles part-option-toggles">' +
           '<button class="flag-toggle' + (collabOn ? " on" : "") + '" data-collabtoggle="' + i + '-' + pi + '">합방</button>' +
           '<button class="flag-toggle' + (officialOn ? " on" : "") + '" data-officialtoggle="' + i + '-' + pi + '">공방</button>' +
@@ -3652,8 +3669,13 @@
     document.querySelectorAll("[data-add-selected-date]").forEach((el) => {
       el.onclick = () => addRow(selectedScheduleDate || todayKey());
     });
-    document.querySelectorAll("[data-addrow]").forEach((el) => {
-      el.onclick = addRow;
+    document.querySelectorAll("[data-schedule-title-history]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-schedule-title-history");
+        const date = rows[i] && rows[i].date;
+        openScheduleTitleHistoryDate = openScheduleTitleHistoryDate === date ? "" : (date || "");
+        render();
+      };
     });
     document.querySelectorAll("[data-f]").forEach((el) => {
       const i = +el.getAttribute("data-i");
@@ -4096,13 +4118,6 @@
     btn.innerHTML = '<span class="spin"></span>';
 
     try {
-      let backupWarning = "";
-      try {
-        await createScheduleBackup("before-save");
-      } catch (backupError) {
-        backupWarning = (backupError && backupError.message) || String(backupError || "");
-        console.warn("Schedule backup failed", backupError);
-      }
 
       // 1) 삭제 처리
       if (deletedIds.length) {
@@ -4217,7 +4232,7 @@
 
       await saveAdminSettings();
 
-      toast(backupWarning ? "\uc800\uc7a5\ub418\uc5c8\uc9c0\ub9cc \ubc31\uc5c5\uc740 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4" : "\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4");
+      toast("\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4");
       rows.forEach((row) => { delete row._newlyAdded; });
       rows.sort(compareScheduleDate);
       await loadAll();
@@ -4268,7 +4283,6 @@
         const menu = button.getAttribute("data-admin-menu");
         setActiveAdminMenu(menu);
         if (menu === "feedback") loadFeedback();
-        if (menu === "settings") loadLiveTitleHistory().then(renderSettings);
       };
     });
     document.querySelectorAll("[data-feedback-filter]").forEach((button) => {
