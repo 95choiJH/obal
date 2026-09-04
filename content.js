@@ -81,6 +81,7 @@
     liveStartNoticeEnabled: readNotificationSetting(LIVE_START_NOTICE_KEY),
     categoryChangeNoticeEnabled: readNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY),
     selectedGame: "",
+    gameRankTranslate: 0,
     noticeIndex: 0,
     deployedExtensionVersion: "",
     updateCheckAttempted: false,
@@ -106,12 +107,16 @@
     titleHistoryOpen: false,
     titleHistoryOutsideHandler: null,
     vodCategoryHost: null,
+    vodCategoryInfoPopover: null,
+    vodCategoryInfoHideTimer: null,
   };
 
   const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
   const PAGE_SIZE = 5;
   const INFO_V2_PREFIX = "@info-v2:";
   const LIVE_START_CHECK_INTERVAL = 10000;
+  const LIVE_START_HIDDEN_TOAST_MAX_AGE = 3 * 60 * 1000;
+  const NEW_TAG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
   // 치지직 DOM 앵커 후보 (실제 확장프로그램들이 사용하는 클래스 접두어 기반)
   // 위에서부터 순서대로 시도하고, 모두 실패하면 플로팅 모드로 폴백
@@ -261,6 +266,7 @@
     if (target.insidePlayer) {
       const computed = window.getComputedStyle(parent);
       if (computed.position === "static") parent.style.position = "relative";
+      host.style.position = "absolute";
       host.style.top = "16px";
       host.style.left = "50%";
       host.style.right = "auto";
@@ -288,8 +294,8 @@
     const category = String(categoryName || "").trim();
     host.shadowRoot.innerHTML =
       '<style>' +
-      ':host{all:initial}.toast{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(18,20,25,.98),rgba(28,31,38,.96)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#a78bfa,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f4f5f6;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.4);transform:translateX(-18px);opacity:0;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:1;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#d7dee7;font-weight:800}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{grid-column:2;appearance:none;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.09);color:#f8fafc;height:30px;padding:0 10px;font:900 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}.watch-btn:hover{border-color:rgba(125,211,252,.58);background:rgba(56,189,248,.2);color:#fff}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateX(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateX(-18px);opacity:0}}' +
-      '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button>';
+      ':host{all:initial}.toast{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(18,20,25,.98),rgba(28,31,38,.96)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#a78bfa,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f4f5f6;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.4);transform:translateX(-18px);opacity:0;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:1;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#d7dee7;font-weight:800}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{grid-column:2;appearance:none;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.09);color:#f8fafc;height:30px;padding:0 10px;font:900 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}.watch-btn:hover{border-color:rgba(125,211,252,.58);background:rgba(56,189,248,.2);color:#fff}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{grid-column:3;appearance:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:-2px;border:1px solid rgba(255,255,255,.14);border-radius:7px;background:rgba(255,255,255,.06);color:#cfd8e3;font:900 17px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13);color:#fff}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateX(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateX(-18px);opacity:0}}' +
+      '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button><button type="button" class="close-btn" id="obaengal-live-start-close" aria-label="닫기">&times;</button></div>';
     const avatar = host.shadowRoot.getElementById("obaengal-live-start-avatar");
     if (avatar) {
       if (imageUrl) {
@@ -321,10 +327,12 @@
     }
     const toast = host.shadowRoot.getElementById("obaengal-live-start-toast");
     const watchButton = host.shadowRoot.getElementById("obaengal-live-start-watch");
+    const closeButton = host.shadowRoot.getElementById("obaengal-live-start-close");
     const goTarget = () => { window.location.href = "https://chzzk.naver.com/" + encodeURIComponent(targetChannelId()); };
-    if (watchButton) watchButton.addEventListener("click", goTarget);
+    if (watchButton) watchButton.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); goTarget(); });
     clearTimeout(host._obaengalLiveToastTimer);
     clearTimeout(host._obaengalLiveToastRemoveTimer);
+    clearTimeout(host._obaengalLiveToastHiddenExpireTimer);
     const hideToast = () => {
       if (!host || !host.isConnected || !toast) return;
       toast.classList.add("is-exiting");
@@ -334,24 +342,53 @@
     };
     const startTimer = () => {
       clearTimeout(host._obaengalLiveToastTimer);
-      host._obaengalLiveToastTimer = setTimeout(hideToast, 3150);
+      host._obaengalLiveToastTimer = setTimeout(hideToast, 5000);
     };
+    if (closeButton) closeButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearTimeout(host._obaengalLiveToastTimer);
+      clearTimeout(host._obaengalLiveToastRemoveTimer);
+      clearTimeout(host._obaengalLiveToastHiddenExpireTimer);
+      hideToast();
+    });
     if (toast) {
       toast.addEventListener("mouseenter", () => {
         clearTimeout(host._obaengalLiveToastTimer);
         clearTimeout(host._obaengalLiveToastRemoveTimer);
+        clearTimeout(host._obaengalLiveToastHiddenExpireTimer);
         toast.classList.remove("is-exiting");
       });
       toast.addEventListener("mouseleave", startTimer);
     }
-    startTimer();
+    if (document.visibilityState === "visible") {
+      startTimer();
+    } else {
+      const createdAt = Date.now();
+      const expireHiddenToast = () => {
+        document.removeEventListener("visibilitychange", startTimerWhenVisible);
+        if (host && host.isConnected) host.remove();
+      };
+      const startTimerWhenVisible = () => {
+        if (document.visibilityState !== "visible") return;
+        document.removeEventListener("visibilitychange", startTimerWhenVisible);
+        clearTimeout(host._obaengalLiveToastHiddenExpireTimer);
+        if (Date.now() - createdAt > LIVE_START_HIDDEN_TOAST_MAX_AGE) {
+          if (host && host.isConnected) host.remove();
+          return;
+        }
+        startTimer();
+      };
+      document.addEventListener("visibilitychange", startTimerWhenVisible);
+      host._obaengalLiveToastHiddenExpireTimer = setTimeout(expireHiddenToast, LIVE_START_HIDDEN_TOAST_MAX_AGE);
+    }
   }
 
   let liveStartCheckInFlight = false;
   let lastLiveStartCheckAt = 0;
 
   async function checkTargetLiveStartToast(force) {
-    if (document.visibilityState !== "visible" || liveStartCheckInFlight) return;
+    if (liveStartCheckInFlight) return;
     const currentChannelId = getChannelIdFromUrl();
     const target = targetChannelId();
     if (!currentChannelId || !target || currentChannelId.toLowerCase() === target.toLowerCase()) return;
@@ -622,9 +659,18 @@
     .cs-month-cell .cs-part-tag { font-size: 12px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
     .cs-game-summary { margin: 10px 0 0; }
-    .cs-game-stats { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-    .cs-game-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #222327; color: #c9cacd; padding: 7px 8px; cursor: pointer; text-align: left; }
+    .cs-game-stats { position: relative; z-index: 1; min-width: 0; overflow: hidden; cursor: grab; user-select: none; touch-action: pan-y; }
+    .cs-game-stats:not(.swiper-initialized) { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.42) rgba(9,10,12,0.62); }
+    .cs-game-stats .swiper-wrapper { position: relative; z-index: 1; display: flex; align-items: stretch; width: 100%; height: 100%; box-sizing: content-box; transform: translate3d(0,0,0); transition-property: transform; transition-timing-function: var(--swiper-wrapper-transition-timing-function, initial); }
+    .cs-game-stats .swiper-slide { position: relative; display: block; flex-shrink: 0; width: min(210px, calc(42% - 4px)); min-width: 150px; height: auto; transition-property: transform; }
+    .cs-game-stats.swiper-grabbing { cursor: grabbing; }
+    .cs-game-stats:not(.swiper-initialized)::-webkit-scrollbar { height: 8px; }
+    .cs-game-stats:not(.swiper-initialized)::-webkit-scrollbar-track { border-radius: 999px; background: rgba(255,255,255,0.05); }
+    .cs-game-stats:not(.swiper-initialized)::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(0,255,163,0.34); }
+    .cs-game-stat { width: 100%; height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #222327; color: #c9cacd; padding: 7px 8px; cursor: pointer; text-align: left; touch-action: manipulation; }
     .cs-game-stat:hover, .cs-game-stat.cs-selected { border-color: #00c878; background: rgba(0,200,120,0.14); color: #efeff1; }
+    .cs-game-stat.cs-muted { opacity: 0.48; }
+    .cs-game-stat.cs-muted:hover { opacity: 0.78; }
     .cs-game-stat-main { min-width: 0; display: flex; align-items: center; gap: 7px; }
     .cs-game-rank { flex: 0 0 auto; color: #00FFA3; font-size: 12px; font-weight: 800; }
     .cs-game-stat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
@@ -662,6 +708,7 @@
       font-size: 12px; font-weight: 500; border-radius: 8px; padding: 4px 6px;
       box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cs-part-tag-collab { color: #c4b5fd; background: rgba(167,139,250,0.22); }
+    .cs-part-tag-official { color: #93c5fd; background: rgba(59,130,246,0.16); border: 1px solid rgba(147,197,253,0.28); }
     .cs-part-tag-speculative { color: #e8c268; background: rgba(232,194,104,0.14);
       border: 1px solid rgba(232,194,104,0.28); }
     .cs-part-text { flex: 1 1 auto; min-width: 0; color: #c9cacd; font-size: 14px; font-weight: 500;
@@ -869,6 +916,7 @@
     .cs-pop-icon { display: inline-flex; align-items: center; gap: 3px;
       color: #9d9ea3; font-size: 12px; line-height: 1.5; }
     .cs-pop-icon-collab { color: #c4b5fd; }
+    .cs-pop-icon-official { color: #93c5fd; }
     .cs-pop-icon-speculative { color: #e8c268; }
     .cs-pop-part-label { flex: 0 0 auto; min-width: 30px; justify-content: center; padding: 3px 7px; border-radius: 999px; font-weight: 800; line-height: 1.1; color: #7dffcf; background: rgba(0,255,163,0.12); }
     .cs-pop-part-text { font-weight: 800; color: #F2F3F5; }
@@ -880,16 +928,14 @@
     .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     .cs-pop-note-box { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px;
       padding: 8px 10px; background: #1f2023; border: 1px solid #3a3c40; border-radius: 8px; }
+    .cs-pop-note-box.cs-pop-main-note { position: relative; display: block; margin-top: 12px; padding: 10px 12px 10px 14px; background: rgba(0,255,163,0.06); border-color: rgba(0,255,163,0.24); border-left: 3px solid #00FFA3; }
+    .cs-pop-note-head { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: #7dffcf; font-size: 11px; font-weight: 900; letter-spacing: 0; }
     .cs-pop-note-list { min-width: max-content; display: flex; flex-direction: column; gap: 6px; }
     .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.65;
       white-space: pre; overflow-wrap: normal; word-break: normal; display: flex; align-items: center; }
 
-    .cs-pop-detail-layout { display: grid; grid-template-columns: max-content minmax(156px, 240px); align-items: stretch; gap: 8px; margin-top: 8px; }
-    .cs-pop-detail-main { min-width: 0; }
-    .cs-pop-detail-layout > .cs-pop-note-box { box-sizing: border-box; width: 100%; min-width: 0; margin-top: 0; }
-    .cs-pop-detail-layout > .cs-pop-note-box .cs-pop-note-list { min-width: 0; }
-    .cs-pop-detail-layout > .cs-pop-note-box .cs-pop-note-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; }
-    .cs-pop-detail-main > .cs-pop-parts-box:first-child { margin-top: 0; }
+    .cs-pop-note-box .cs-pop-note-list { min-width: 0; }
+    .cs-pop-note-box .cs-pop-note-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; }
     .cs-pop-parts-box { margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
     .cs-pop-part { min-width: 0; padding: 8px; border: 1px solid rgba(157,158,163,0.18); border-radius: 7px; background: rgba(0,0,0,0.18); }
     .cs-pop-part .cs-pop-row { margin-bottom: 0; }
@@ -943,7 +989,7 @@
     .cs-info-detail-head[data-info-toggle] { margin: -5px -6px; padding: 5px 6px; border-radius: 6px; cursor: pointer; transition: background 0.14s ease, color 0.14s ease; }
     .cs-info-detail-head[data-info-toggle]:hover { background: rgba(0,255,163,0.07); }
     .cs-info-detail-head[data-info-toggle]:hover .cs-info-detail-title { color: #ffffff; }
-    .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 400; line-height: 1.35; white-space: pre-line; overflow-wrap: anywhere; }
+    .cs-info-detail-title { flex: 1 1 auto; min-width: 0; color: #efeff1; font-size: 13px; font-weight: 400; line-height: 1.95; white-space: pre-line; overflow-wrap: anywhere; }
     .cs-info-detail-toggle { flex: 0 0 auto; width: 24px; height: 24px; border: 1px solid rgba(143,255,213,0.22); border-radius: 6px; background: rgba(255,255,255,0.04); color: #d7f7ea; font-size: 13px; font-weight: 900; line-height: 1; cursor: pointer; }
     .cs-info-detail-toggle:hover { background: rgba(0,255,163,0.1); color: #ffffff; }
     .cs-info-detail-body { display: block; padding: 8px 0 0 13px; color: #c9cacd; font-size: 13px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
@@ -1160,6 +1206,7 @@
     :host(.cs-light-theme) .cs-cell.cs-cell-off .cs-cell-title { color: #506070; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.72); }
     :host(.cs-light-theme) .cs-part-tag { color: #008f43; background: rgba(0,199,90,0.1); }
     :host(.cs-light-theme) .cs-part-tag-collab { color: #7557c9; background: rgba(117,87,201,0.12); }
+    :host(.cs-light-theme) .cs-part-tag-official { color: #2563eb; background: rgba(37,99,235,0.09); border-color: rgba(37,99,235,0.2); }
     :host(.cs-light-theme) .cs-part-tag-speculative { color: #9a6b00; background: rgba(232,194,104,0.2); }
     :host(.cs-light-theme) .cs-cell-muted .cs-part-tag { color: #969ba1; background: #e9ebed; border-color: transparent; }
     :host(.cs-light-theme) .cs-part-memo-icon { color: #8b9097; }
@@ -1171,6 +1218,7 @@
     :host(.cs-light-theme) .cs-game-stat { background: #ffffff; border-color: #d8dadd; }
     :host(.cs-light-theme) .cs-game-stat { color: #33373c; }
     :host(.cs-light-theme) .cs-game-stat:hover, :host(.cs-light-theme) .cs-game-stat.cs-selected { background: rgba(3,169,80,0.1); border-color: #03a950; }
+    :host(.cs-light-theme) .cs-game-stat.cs-muted { opacity: 0.5; }
     :host(.cs-light-theme) .cs-game-chip { color: #33373c; background: rgba(3,169,80,0.08); border-color: rgba(3,169,80,0.24); }
     :host(.cs-light-theme) .cs-game-chip.cs-selected { color: #ffffff; background: #03a950; border-color: #03a950; }
     :host(.cs-light-theme) .cs-game-chip.cs-muted { color: #9ca1a8; background: #eef0f2; border-color: #d8dadd; }
@@ -1228,7 +1276,8 @@
     :host(.cs-light-theme) .cs-pop-date { color: #1e2024; }
     :host(.cs-light-theme) .cs-pop-text { color: #2f343a; }
     :host(.cs-light-theme) .cs-pop-row .cs-cell-time,
-    :host(.cs-light-theme) .cs-pop-icon:not(.cs-pop-icon-collab):not(.cs-pop-icon-speculative) { color: #008a43; }
+    :host(.cs-light-theme) .cs-pop-icon:not(.cs-pop-icon-collab):not(.cs-pop-icon-official):not(.cs-pop-icon-speculative) { color: #008a43; }
+    :host(.cs-light-theme) .cs-pop-icon-official { color: #2563eb; }
     :host(.cs-light-theme) .cs-pop-part-label { color: #007a3a; background: rgba(3,169,80,0.12); }
     :host(.cs-light-theme) .cs-pop-part-text { color: #F2F3F5; }
     :host(.cs-light-theme) .cs-tag-tone, :host(.cs-light-theme) .cs-part-tag.cs-tag-tone, :host(.cs-light-theme) .cs-text-badge.cs-tag-tone { color: var(--cs-tag-light-color); background: var(--cs-tag-light-bg); border-color: var(--cs-tag-light-border); }
@@ -1253,7 +1302,7 @@
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 35px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 12px; }
-      .cs-game-stats { grid-template-columns: 1fr; }
+      .cs-game-stats .swiper-slide { width: min(190px, calc(78vw - 24px)); }
       .cs-gnimti-popup { padding: 14px; }
       .cs-gnimti-dialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
       .cs-gnimti-tabs { left: 10px; right: 42px; bottom: 8px; max-width: none; gap: 4px; }
@@ -1329,19 +1378,26 @@
   function gameSummaryHtml(monthBase) {
     const summary = monthGameStats(monthBase);
     if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">이번 달 게임 없음</div></div>';
-    const visible = summary.stats.slice(0, 5);
-    const statsHtml = visible.map((item, idx) =>
-      '<button type="button" class="cs-game-stat' + (item.label === state.selectedGame ? " cs-selected" : "") + '" data-game-filter="' + escapeHtml(item.label) + '">' +
-      '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + (idx + 1) + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
-      '<span class="cs-game-stat-count">' + item.count + '일 방송</span></button>'
-    ).join("");
-    return '<div class="cs-game-summary"><div class="cs-game-stats">' + statsHtml + '</div></div>';
+    let previousCount = null;
+    let previousRank = 0;
+    const statsHtml = summary.stats.map((item, idx) => {
+      const count = Number(item.count || 0);
+      const rank = previousCount === count ? previousRank : idx + 1;
+      previousCount = count;
+      previousRank = rank;
+      const statClass = item.label === state.selectedGame ? " cs-selected" : (state.selectedGame ? " cs-muted" : "");
+      return '<div class="swiper-slide"><button type="button" class="cs-game-stat' + statClass + '" data-game-filter="' + escapeHtml(item.label) + '">' +
+        '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + rank + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
+        '<span class="cs-game-stat-count">' + item.count + '일 방송</span></button></div>';
+    }).join("");
+    return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div></div>';
   }
 
   function compactCellContentHtml(entry) {
     if (entry.parts && entry.parts.length) {
       return entry.parts.map((p, idx) => {
         const tagClass = p.speculative ? "cs-part-tag cs-part-tag-speculative" :
+          p.official && !p.collab ? "cs-part-tag cs-part-tag-official" :
           isSpecialPart(p) ? "cs-part-tag cs-part-tag-collab" : "cs-part-tag";
         const tagLabel = partDisplayLabel(p, idx);
         const firstTag = firstPartTag(p);
@@ -1911,7 +1967,7 @@
     const fixed = {
       "언급": [44, 232, 184, 104, 154, 107, 0],
       "합방": [205, 125, 211, 252, 3, 105, 161],
-      "공방": [222, 191, 96, 165, 37, 99, 235],
+      "공방": [210, 147, 197, 253, 37, 99, 235],
       "타방송": [252, 216, 180, 254, 109, 40, 217],
       "광고": [14, 251, 146, 60, 194, 65, 12],
       "야방": [27, 251, 146, 60, 194, 93, 22],
@@ -1958,14 +2014,27 @@
     return flags.length ? flags[0] : "";
   }
 
-  function isNewTagText(text) {
-    return String(text || "").trim().toLowerCase() === "new";
+  function parseNewTagText(text) {
+    const value = String(text || "").trim();
+    const match = value.match(/^new(?:@(\d+))?$/i);
+    if (!match) return null;
+    const createdAt = match[1] ? Number(match[1]) : 0;
+    return { createdAt: Number.isFinite(createdAt) ? createdAt : 0 };
   }
+
+  function shouldRenderNewTag(text) {
+    const parsed = parseNewTagText(text);
+    if (!parsed) return false;
+    if (!parsed.createdAt) return true;
+    return Date.now() - parsed.createdAt < NEW_TAG_MAX_AGE_MS;
+  }
+
   function renderDirectiveToken(kind, text, profiles, options) {
-    const profile = profiles[text] || { channelId: "", channelName: text, channelImageUrl: "" };
-    if (kind === "t" && isNewTagText(text)) {
-      return '<span class="cs-new-tag" aria-label="새 업데이트">NEW</span>';
+    const newTag = kind === "t" ? parseNewTagText(text) : null;
+    if (newTag) {
+      return shouldRenderNewTag(text) ? '<span class="cs-new-tag" aria-label="새 업데이트">NEW</span>' : "";
     }
+    const profile = profiles[text] || { channelId: "", channelName: text, channelImageUrl: "" };
     if (options && options.infoMode) {
       if (kind === "t") return '<span class="cs-info-tag">' + styledTextHtml(text) + "</span>";
       return infoProfileTextHtml(profile, options && options.disableProfileLinks);
@@ -2148,6 +2217,7 @@
       return entry.parts
         .map((p, idx) => {
           const tagClass = p.speculative ? "cs-part-tag cs-part-tag-speculative" :
+            p.official && !p.collab ? "cs-part-tag cs-part-tag-official" :
             isSpecialPart(p) ? "cs-part-tag cs-part-tag-collab" : "cs-part-tag";
           const tagLabel = partDisplayLabel(p, idx);
           const firstTag = firstPartTag(p);
@@ -2204,9 +2274,27 @@
     const feedbackCount = s.getElementById("cs-feedback-count");
     const feedbackSubmit = s.getElementById("cs-feedback-submit");
 
-    if (prev) prev.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset -= 1; else state.pageOffset -= 1; render(); });
-    if (next) next.addEventListener("click", () => { if (state.monthExpanded) state.monthOffset += 1; else state.pageOffset += 1; render(); });
-    if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; } render(); });
+    if (prev) prev.addEventListener("click", () => {
+      if (state.monthExpanded) {
+        state.monthOffset -= 1;
+        state.selectedGame = "";
+        state.gameRankTranslate = 0;
+      } else {
+        state.pageOffset -= 1;
+      }
+      render();
+    });
+    if (next) next.addEventListener("click", () => {
+      if (state.monthExpanded) {
+        state.monthOffset += 1;
+        state.selectedGame = "";
+        state.gameRankTranslate = 0;
+      } else {
+        state.pageOffset += 1;
+      }
+      render();
+    });
+    if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; } render(); });
     if (extensionCollapse) extensionCollapse.addEventListener("click", () => {
       closePopover();
       state.settingsOpen = false;
@@ -2231,9 +2319,87 @@
       saveNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY, state.categoryChangeNoticeEnabled);
       render();
     });
-    if (gameToggle) gameToggle.addEventListener("click", () => { closePopover(); state.gameOnly = !state.gameOnly; render(); });
+    if (gameToggle) gameToggle.addEventListener("click", () => {
+      closePopover();
+      state.gameOnly = !state.gameOnly;
+      if (!state.gameOnly) {
+        state.selectedGame = "";
+        state.gameRankTranslate = 0;
+      }
+      render();
+    });
+    const gameRankSwiper = s.querySelector('[data-game-rank-swiper="1"]');
+    const SwiperCtor = typeof Swiper === "function" ? Swiper : (typeof window !== "undefined" && typeof window.Swiper === "function" ? window.Swiper : null);
+    if (gameRankSwiper && SwiperCtor) {
+      const gameRankInstance = new SwiperCtor(gameRankSwiper, {
+        slidesPerView: "auto",
+        spaceBetween: 6,
+        freeMode: {
+          enabled: true,
+          momentum: true,
+          momentumRatio: 1,
+          momentumVelocityRatio: 1,
+          momentumBounce: false,
+          sticky: false,
+          minimumVelocity: 0.01,
+        },
+        grabCursor: true,
+        watchOverflow: true,
+        resistanceRatio: 0,
+        threshold: 0,
+        touchRatio: 1,
+        longSwipes: false,
+        normalizeSlideIndex: false,
+        roundLengths: false,
+        speed: 220,
+        preventClicks: true,
+        preventClicksPropagation: true,
+        touchStartPreventDefault: false,
+        on: {
+          sliderFirstMove: () => { gameRankSwiper.dataset.swiping = "1"; },
+          setTranslate: (swiper, translate) => {
+            if (Number.isFinite(translate)) state.gameRankTranslate = translate;
+          },
+          touchEnd: (swiper) => {
+            if (swiper && Number.isFinite(swiper.translate)) state.gameRankTranslate = swiper.translate;
+            if (gameRankSwiper.dataset.swiping === "1") {
+              gameRankSwiper.dataset.suppressClick = "1";
+              setTimeout(() => { delete gameRankSwiper.dataset.suppressClick; delete gameRankSwiper.dataset.swiping; }, 180);
+            }
+          },
+        },
+      });
+      if (Number.isFinite(state.gameRankTranslate) && state.gameRankTranslate) {
+        requestAnimationFrame(() => {
+          if (!gameRankInstance || typeof gameRankInstance.setTranslate !== "function") return;
+          const minTranslate = typeof gameRankInstance.maxTranslate === "function" ? gameRankInstance.maxTranslate() : state.gameRankTranslate;
+          const maxTranslate = typeof gameRankInstance.minTranslate === "function" ? gameRankInstance.minTranslate() : 0;
+          const translate = Math.max(minTranslate, Math.min(maxTranslate, state.gameRankTranslate));
+          gameRankInstance.setTranslate(translate);
+          if (typeof gameRankInstance.updateProgress === "function") gameRankInstance.updateProgress(translate);
+          if (typeof gameRankInstance.updateActiveIndex === "function") gameRankInstance.updateActiveIndex();
+          if (typeof gameRankInstance.updateSlidesClasses === "function") gameRankInstance.updateSlidesClasses();
+        });
+      }
+      gameRankSwiper.addEventListener("click", (event) => {
+        if (gameRankSwiper.dataset.suppressClick !== "1") return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }, true);
+    }
     s.querySelectorAll("[data-game-filter]").forEach((el) => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (event) => {
+        const swiperRoot = el.closest('[data-game-rank-swiper="1"]');
+        if (swiperRoot && swiperRoot.dataset.suppressClick === "1") {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (swiperRoot && swiperRoot.swiper && Number.isFinite(swiperRoot.swiper.translate)) {
+          state.gameRankTranslate = swiperRoot.swiper.translate;
+        }
         const label = el.getAttribute("data-game-filter") || "";
         state.selectedGame = state.selectedGame === label ? "" : label;
         closePopover();
@@ -2578,11 +2744,12 @@
         '<span class="cs-pop-text">' + timeText + "</span></div>";
     }
 
-    // 부메모는 각 세부 일정 카드 안에 유지하고, 전체 메모만 상세정보 옆으로 분리한다.
+    // 부메모는 각 세부 일정 카드 안에 유지하고, 전체 메모는 상세 일정 아래 단독 섹션으로 노출한다.
     if (!isOff && entry.parts && entry.parts.length) {
       detailHtml += '<div class="cs-pop-parts-box">' + entry.parts
         .map((p, idx) => {
           const iconClass = p.speculative ? "cs-pop-icon cs-pop-icon-speculative" :
+            p.official && !p.collab ? "cs-pop-icon cs-pop-icon-official" :
             isSpecialPart(p) ? "cs-pop-icon cs-pop-icon-collab" : "cs-pop-icon";
           const firstTag = firstPartTag(p);
           const tagToneAttr = tagToneStyleAttr(firstTag);
@@ -2623,17 +2790,13 @@
     }
 
     const notesHtml = notes.length
-      ? '<div class="cs-pop-note-box"><span class="cs-pop-icon">✎</span>' +
+      ? '<section class="cs-pop-note-box cs-pop-main-note" aria-label="\uBA54\uBAA8"><div class="cs-pop-note-head"><span class="cs-pop-icon">&#9998;</span><span>\uBA54\uBAA8</span></div>' +
         '<div class="cs-pop-note-list">' + notes.map((note) =>
           '<div class="cs-pop-note-text">' + directiveHtml(note, { tagTone: true }) + "</div>"
-        ).join("") + "</div></div>"
+        ).join("") + "</div></section>"
       : "";
 
-    if (detailHtml && notesHtml) {
-      html += '<div class="cs-pop-detail-layout"><div class="cs-pop-detail-main">' + detailHtml + "</div>" + notesHtml + "</div>";
-    } else {
-      html += detailHtml + notesHtml;
-    }
+    html += detailHtml + notesHtml;
     body.innerHTML = html;
     popover.style.width = "max-content";
     state.activePopoverDate = key;
@@ -3498,14 +3661,31 @@
     return state.channelId;
   }
 
+  function liveKeyFromVod(vod) {
+    return String((vod && (vod.liveKey || vod.live_key)) || "").trim();
+  }
+
+  function titleHistoryItemsForVodMatch(list, vodMatch) {
+    if (!Array.isArray(list) || !vodMatch || !vodMatch.entry) return [];
+    const liveKey = liveKeyFromVod(vodMatch.vod);
+    const scheduleDate = String((vodMatch.entry && vodMatch.entry.date) || "").trim();
+    return list.filter((item) => {
+      if (!item) return false;
+      if (liveKey) return String(item.liveKey || item.live_key || "").trim() === liveKey;
+      return !!scheduleDate && String(item.scheduleDate || item.schedule_date || "").trim() === scheduleDate;
+    });
+  }
+
   function getTitleHistoryItems() {
     const dataChannelId = getCurrentDataChannelId();
     const histories = state.data && state.data.titleHistories;
     const list = histories && dataChannelId ? histories[dataChannelId] : [];
     if (!Array.isArray(list)) return [];
+    const vodMatch = (typeof isChzzkVodPage === "function" && isChzzkVodPage()) ? currentVodScheduleMatch() : null;
+    const scopedList = vodMatch ? titleHistoryItemsForVodMatch(list, vodMatch) : list;
     const seen = new Set();
     const unique = [];
-    for (const item of list) {
+    for (const item of scopedList) {
       const title = String((item && item.title) || "").trim();
       if (!title) continue;
       const key = title.toLowerCase();
@@ -3697,7 +3877,7 @@
       return;
     }
     const title = findTitleHistoryTitleAnchor();
-    if (!title) {
+    if (!title || !getTitleHistoryItems().length) {
       removeTitleHistoryHost();
       return;
     }
@@ -3762,19 +3942,60 @@
     const currentUrl = location.href;
     for (const entry of schedule) {
       const vods = entry && Array.isArray(entry.vods) ? entry.vods : [];
-      const vod = vods.find((item) => item && sameVodLink(item.url, currentUrl));
-      if (vod) return { entry, vod };
+      const vodIndex = vods.findIndex((item) => item && sameVodLink(item.url, currentUrl));
+      if (vodIndex >= 0) return { entry, vod: vods[vodIndex], vodIndex };
     }
     return null;
   }
 
-  function vodCategoryGroup(scheduleEntry) {
+  function categoryHistoryLiveKey(item) {
+    return String((item && (item.liveKey || item.live_key)) || "").trim();
+  }
+
+  function categoryGroupsByLiveKey(items) {
+    const groups = [];
+    const byKey = new Map();
+    items.slice().sort((a, b) =>
+      String(a.changedAt || "").localeCompare(String(b.changedAt || "")) ||
+      String(a.id || "").localeCompare(String(b.id || ""))
+    ).forEach((item) => {
+      const key = categoryHistoryLiveKey(item);
+      if (!key) return;
+      if (!byKey.has(key)) {
+        const group = { liveKey: key, items: [] };
+        byKey.set(key, group);
+        groups.push(group);
+      }
+      byKey.get(key).items.push(item);
+    });
+    return groups;
+  }
+
+  function dateCategoryGroupForVod(items, vodMatch, scheduleDate) {
+    const dateItems = items.filter((item) => String(item.scheduleDate || item.schedule_date || "").trim() === scheduleDate);
+    if (!dateItems.length) return [];
+    const groups = categoryGroupsByLiveKey(dateItems);
+    if (!groups.length) return dateItems;
+    const vods = vodMatch && vodMatch.entry && Array.isArray(vodMatch.entry.vods) ? vodMatch.entry.vods : [];
+    const vodIndex = Number(vodMatch && vodMatch.vodIndex);
+    if (Number.isInteger(vodIndex) && vods.length > 1) {
+      return groups[vodIndex] ? groups[vodIndex].items : [];
+    }
+    return groups.length === 1 ? groups[0].items : [];
+  }
+
+  function vodCategoryGroup(vodMatch) {
     const items = getCategoryHistoryItems();
+    const scheduleEntry = vodMatch && vodMatch.entry;
+    const vod = vodMatch && vodMatch.vod;
+    const liveKey = liveKeyFromVod(vod);
     const scheduleDate = String((scheduleEntry && scheduleEntry.date) || "").trim();
-    if (!items.length || !scheduleDate) return [];
-    const group = items.filter((item) => String(item.scheduleDate || "") === scheduleDate);
+    if (!items.length || (!liveKey && !scheduleDate)) return [];
+    const scopedGroup = liveKey
+      ? items.filter((item) => item && categoryHistoryLiveKey(item) === liveKey)
+      : dateCategoryGroupForVod(items, vodMatch, scheduleDate);
     const seen = new Set();
-    return group.slice().sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
+    return scopedGroup.slice().sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
       const key = String(item.categoryType || "") + "|" + String(item.categoryId || "") + "|" + String(item.categoryLabel || "").trim().toLowerCase() + "|" + String(item.offsetSeconds ?? "");
       if (seen.has(key)) return false;
       seen.add(key);
@@ -3874,7 +4095,49 @@
     if (url) window.location.href = url;
   }
 
+  function removeVodCategoryInfoPopover() {
+    clearTimeout(state.vodCategoryInfoHideTimer);
+    state.vodCategoryInfoHideTimer = null;
+    if (state.vodCategoryInfoPopover && state.vodCategoryInfoPopover.isConnected) state.vodCategoryInfoPopover.remove();
+    state.vodCategoryInfoPopover = null;
+  }
+
+  function showVodCategoryInfoPopover(anchor) {
+    clearTimeout(state.vodCategoryInfoHideTimer);
+    let pop = state.vodCategoryInfoPopover;
+    if (!pop || !pop.isConnected) {
+      pop = document.createElement("div");
+      pop.id = "obaengal-vod-category-info-popover";
+      pop.setAttribute("role", "tooltip");
+      pop.textContent = "\uBC29\uC1A1 \uC911 \uC2A4\uD2B8\uB9AC\uBA38\uAC00 \uCE74\uD14C\uACE0\uB9AC\uB97C \uBCC0\uACBD\uD588\uB358 \uC2DC\uC810\uC744 \uAE30\uC900\uC73C\uB85C \uCC55\uD130\uAC00 \uC0DD\uC131\uB429\uB2C8\uB2E4.";
+      pop.style.cssText = "position:fixed;z-index:2147483647;box-sizing:border-box;width:max-content;max-width:min(300px,calc(100vw - 24px));padding:8px 10px;border:1px solid rgba(132,255,193,.42);border-radius:7px;background:rgba(8,12,16,.98);color:#effff7;font:700 11px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.38);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .14s ease,transform .14s ease;";
+      document.body.appendChild(pop);
+      state.vodCategoryInfoPopover = pop;
+    }
+    const rect = anchor.getBoundingClientRect();
+    pop.style.opacity = "0";
+    pop.style.left = "0px";
+    pop.style.top = "0px";
+    requestAnimationFrame(() => {
+      if (!pop || !pop.isConnected) return;
+      const margin = 12;
+      const popRect = pop.getBoundingClientRect();
+      const left = Math.max(margin, Math.min(window.innerWidth - popRect.width - margin, rect.left + rect.width / 2 - popRect.width / 2));
+      const top = rect.top >= popRect.height + margin + 8 ? rect.top - popRect.height - 8 : rect.bottom + 8;
+      pop.style.left = left + "px";
+      pop.style.top = Math.max(margin, Math.min(window.innerHeight - popRect.height - margin, top)) + "px";
+      pop.style.opacity = "1";
+      pop.style.transform = "translateY(0)";
+    });
+  }
+
+  function hideVodCategoryInfoPopover() {
+    clearTimeout(state.vodCategoryInfoHideTimer);
+    state.vodCategoryInfoHideTimer = setTimeout(removeVodCategoryInfoPopover, 80);
+  }
+
   function removeVodCategoryHost() {
+    removeVodCategoryInfoPopover();
     if (state.vodCategoryHost && state.vodCategoryHost.isConnected) state.vodCategoryHost.remove();
     state.vodCategoryHost = null;
   }
@@ -3886,7 +4149,7 @@
       return;
     }
     const vodMatch = currentVodScheduleMatch();
-    const items = vodMatch ? vodCategoryGroup(vodMatch.entry) : [];
+    const items = vodMatch ? vodCategoryGroup(vodMatch) : [];
     const slot = items.length ? findLatestVodCardSlots() : null;
     if (!slot) {
       removeVodCategoryHost();
@@ -3905,11 +4168,22 @@
     }).join("");
     shadow.innerHTML = '<style>' +
       ':host{display:block;margin:8px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}' +
-      '.ovc-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ovc-heading{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#d9e8df;font-size:12px;font-weight:800;line-height:1;white-space:nowrap}' +
+      '.ovc-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ovc-heading-group{position:relative;display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:0 7px 0 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#d9e8df;font-size:12px;font-weight:800;line-height:1;white-space:nowrap}.ovc-info{appearance:none;display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:1px solid rgba(217,232,223,.34);border-radius:50%;background:rgba(255,255,255,.06);color:#aee8ce;font-size:11px;font-weight:900;line-height:1;cursor:default}.ovc-info:hover,.ovc-info:focus-visible{border-color:rgba(134,244,187,.82);background:rgba(0,255,163,.14);color:#effff7;outline:none}' +
       '.ovc-button{appearance:none;position:relative;display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 10px;border:1px solid rgba(0,255,163,.45);border-radius:999px;background:rgba(9,14,18,.92);color:#f2fff8;font-size:12px;font-weight:750;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.18);transition:transform .14s ease,border-color .14s ease,background .14s ease}' +
       '.ovc-button:hover{transform:translateY(-1px);border-color:rgba(108,255,190,.92);background:rgba(16,31,29,.98)}' +
       '.ovc-time{color:#86f4bb;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}.ovc-label{display:inline-flex;min-width:0}.ovc-tip{position:absolute;left:50%;bottom:calc(100% + 8px);z-index:2;display:block;width:max-content;max-width:220px;padding:7px 9px;border:1px solid rgba(132,255,193,.38);border-radius:7px;background:rgba(8,12,16,.96);color:#effff7;font-size:11px;font-weight:700;line-height:1.35;box-shadow:0 10px 28px rgba(0,0,0,.34);opacity:0;visibility:hidden;transform:translate(-50%,4px);transition:opacity .14s ease,transform .14s ease,visibility .14s ease;pointer-events:none}.ovc-tip:after{content:"";position:absolute;left:50%;top:100%;width:8px;height:8px;background:rgba(8,12,16,.96);border-right:1px solid rgba(132,255,193,.38);border-bottom:1px solid rgba(132,255,193,.38);transform:translate(-50%,-4px) rotate(45deg)}.ovc-button:hover .ovc-tip,.ovc-button:focus-visible .ovc-tip{opacity:1;visibility:visible;transform:translate(-50%,0)}' +
-      '</style><div class="ovc-wrap"><span class="ovc-heading">\uCC55\uD130 \uC774\uB3D9</span>' + buttons + '</div>';
+      '</style><div class="ovc-wrap"><span class="ovc-heading-group"><span class="ovc-heading">\uCC55\uD130 \uC774\uB3D9</span><button type="button" class="ovc-info" aria-label="\uCC55\uD130 \uC0DD\uC131 \uAE30\uC900" tabindex="0">i</button></span>' + buttons + '</div>';
+    const infoButton = shadow.querySelector(".ovc-info");
+    if (infoButton) {
+      infoButton.addEventListener("mouseenter", () => showVodCategoryInfoPopover(infoButton));
+      infoButton.addEventListener("mouseleave", hideVodCategoryInfoPopover);
+      infoButton.addEventListener("focus", () => showVodCategoryInfoPopover(infoButton));
+      infoButton.addEventListener("blur", hideVodCategoryInfoPopover);
+      infoButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    }
     shadow.querySelectorAll(".ovc-button").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();

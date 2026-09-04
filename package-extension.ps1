@@ -10,6 +10,7 @@ $zip = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { J
 
 $allowedFiles = @(
   "manifest.json",
+  "vendor\swiper\swiper-bundle.min.js",
   "background.js",
   "content.js",
   "config.js",

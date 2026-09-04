@@ -1880,6 +1880,21 @@
     return html;
   }
 
+  function newTagDirectiveText() {
+    return ":t[New@" + Date.now() + "]";
+  }
+
+  function parseNewTagDirectiveLabel(text) {
+    const value = String(text || "").trim();
+    const match = value.match(/^new@(\d+)$/i);
+    return match ? { label: "New", createdAt: match[1] } : null;
+  }
+
+  function directivePreviewLabel(text) {
+    const parsed = parseNewTagDirectiveLabel(text);
+    return parsed ? parsed.label : String(text || "").trim();
+  }
+
   function directivePreviewHtml(raw, savedProfile) {
     const value = (raw || "").trim();
     const whole = value.match(/^:(s|t)(?:\[([^\]]+)\]|\s+(.+))$/i);
@@ -1892,7 +1907,7 @@
       ? [{ 1: whole[1], 2: whole[2] || whole[3] }]
       : Array.from(value.matchAll(/:(s|t)(?:\[([^\]]+)\]|\s+([^\s:]+))/gi), (m) => ({ 1: m[1], 2: m[2] || m[3] }));
     if (!matches.length && !mediaMatches.length && !popupMatches.length && !installMatches.length && !hasFeedback) return '<span class="directive-help">명령어를 완성하세요. 예: :s 닉네임 · :m[텍스트{URL}]</span>';
-    const previews = matches.map((match) => '<span class="directive-applied">' + esc(match[2].trim()) + '</span>');
+    const previews = matches.map((match) => '<span class="directive-applied">' + esc(directivePreviewLabel(match[2])) + '</span>');
     mediaMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
     popupMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
     installMatches.forEach((match) => previews.push('<span class="directive-applied">' + esc(match[1].trim()) + '</span>'));
@@ -2143,7 +2158,10 @@
       const url = cleanInlineDirectiveInput(urlInput ? urlInput.value : "", ["]", "}"]);
       return ":m[" + label + "{" + url + "}]";
     }
-    const label = cleanInlineDirectiveInput(rawLabel, []);
+    let label = cleanInlineDirectiveInput(rawLabel, []);
+    if (kind === "t" && token.dataset.newTagCreatedAt && label.trim().toLowerCase() === "new") {
+      label = "New@" + token.dataset.newTagCreatedAt;
+    }
     return ":" + kind + "[" + label + "]";
   }
 
@@ -2232,7 +2250,9 @@
     label.spellcheck = false;
     label.dataset.tokenLabel = "1";
     label.dataset.placeholder = item.kind === "m" || item.kind === "p" ? "\uD45C\uC2DC \uD14D\uC2A4\uD2B8" : "\uD14D\uC2A4\uD2B8";
-    renderDirectiveLabelEditor(label, item.label || "", source, editor);
+    const newTagLabel = item.kind === "t" ? parseNewTagDirectiveLabel(item.label) : null;
+    if (newTagLabel) token.dataset.newTagCreatedAt = newTagLabel.createdAt;
+    renderDirectiveLabelEditor(label, newTagLabel ? newTagLabel.label : (item.label || ""), source, editor);
     label.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); openDirectiveTokenEditPopup(source, editor, token); });
     token.appendChild(label);
 
@@ -2878,15 +2898,19 @@
         const draft = setupPopupDirectiveEditor(popup, '[data-tag-editor="1"]', selected, "태그 텍스트", { allowInserts: true });
         const newTag = popup.querySelector('[data-tag-new="1"]');
         if (newTag) newTag.onclick = () => {
-          if (context && context.token) applyDirectiveTokenEdit(context, ":t[New]");
-          else replaceEditorSelection(source, editor, ":t[New]");
+          if (context && context.token) applyDirectiveTokenEdit(context, newTagDirectiveText());
+          else replaceEditorSelection(source, editor, newTagDirectiveText());
           closeDirectiveInsertPopup();
         };        const apply = popup.querySelector('[data-popup-apply="1"]');
         apply.onclick = () => {
           const text = cleanDirectiveValue(popupEditorValue(draft), [], { preserveWhitespace: true });
           if (!text.trim()) { draft.editor.focus(); return; }
-          if (context && context.token) applyDirectiveTokenEdit(context, ":t[" + text + "]");
-          else replaceEditorSelection(source, editor, ":t[" + text + "]");
+          let rawTag = ":t[" + text + "]";
+          if (context && context.token && context.token.dataset.newTagCreatedAt && text.trim().toLowerCase() === "new") {
+            rawTag = ":t[New@" + context.token.dataset.newTagCreatedAt + "]";
+          }
+          if (context && context.token) applyDirectiveTokenEdit(context, rawTag);
+          else replaceEditorSelection(source, editor, rawTag);
           closeDirectiveInsertPopup();
         };
         draft.editor.focus();
@@ -3625,7 +3649,16 @@
   }
   function normalizeVod(v) {
     if (!v || typeof v !== "object") return null;
-    return { url: v.url || "", label: v.label || "방송 다시보기" };
+    const item = { url: v.url || "", label: v.label || "방송 다시보기" };
+    const liveKey = String(v.liveKey || v.live_key || "").trim();
+    const startedAt = String(v.startedAt || v.started_at || "").trim();
+    const endedAt = String(v.endedAt || v.ended_at || "").trim();
+    const videoNo = String(v.videoNo || v.video_no || "").trim();
+    if (liveKey) item.liveKey = liveKey;
+    if (startedAt) item.startedAt = startedAt;
+    if (endedAt) item.endedAt = endedAt;
+    if (videoNo) item.videoNo = videoNo;
+    return item;
   }
 
   function normalizeNoteItem(item) {
@@ -4165,10 +4198,21 @@
           }))
           .filter((g) => g.label || g.url);
         const cleanVods = (r.vods || [])
-          .map((v) => ({
-            url: (v.url || "").trim(),
-            label: (v.label || "").trim() || "방송 다시보기",
-          }))
+          .map((v) => {
+            const item = {
+              url: (v.url || "").trim(),
+              label: (v.label || "").trim() || "방송 다시보기",
+            };
+            const liveKey = String(v.liveKey || v.live_key || "").trim();
+            const startedAt = String(v.startedAt || v.started_at || "").trim();
+            const endedAt = String(v.endedAt || v.ended_at || "").trim();
+            const videoNo = String(v.videoNo || v.video_no || "").trim();
+            if (liveKey) item.liveKey = liveKey;
+            if (startedAt) item.startedAt = startedAt;
+            if (endedAt) item.endedAt = endedAt;
+            if (videoNo) item.videoNo = videoNo;
+            return item;
+          })
           .filter((v) => v.url);
         const payload = {
           channel_id: cfg.channelId,

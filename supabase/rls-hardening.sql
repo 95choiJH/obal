@@ -50,7 +50,8 @@ create table if not exists public.live_category_history (
 );
 
 create table if not exists public.live_session_state (
-  channel_id text primary key,
+  id bigserial primary key,
+  channel_id text not null,
   live_key text,
   schedule_date date,
   started_at timestamptz,
@@ -85,6 +86,17 @@ create index if not exists live_category_history_channel_category_changed_idx
 
 create index if not exists live_session_state_updated_idx
   on public.live_session_state (updated_at desc);
+
+create unique index if not exists live_session_state_channel_live_key_idx
+  on public.live_session_state (channel_id, live_key)
+  where live_key is not null;
+
+create index if not exists live_session_state_channel_live_updated_idx
+  on public.live_session_state (channel_id, is_live, updated_at desc);
+
+create index if not exists live_session_state_pending_vod_idx
+  on public.live_session_state (channel_id, ended_at asc, updated_at asc)
+  where is_live = false and (vod_saved_at is null or vod_url is null);
 
 -- Ensure optional columns used by current extension/admin code exist before policies reference them.
 alter table public.schedule add column if not exists game_images jsonb;

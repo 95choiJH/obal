@@ -28,6 +28,7 @@
         "https://chzzk.naver.com/*"
       ],
       "js": [
+        "vendor/swiper/swiper-bundle.min.js",
         "config.js",
         "content.js"
       ],

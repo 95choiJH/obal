@@ -5,6 +5,7 @@
   const MOBILE_APP_VERSION = "v1.2.0";
   const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
   const INFO_V2_PREFIX = "@info-v2:";
+  const NEW_TAG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
   const state = { channelId: "", channelName: "", rows: [], infoRows: [], updatedAt: null, monthOffset: 0, selectedDate: todayKey(), infoExpanded: new Set() };
   let channelLoadPromise = null;
   const $ = (id) => document.getElementById(id);
@@ -461,6 +462,28 @@
     }
     return esc(raw);
   }
+
+  function parseNewTagText(text) {
+    const value = String(text || "").trim();
+    const match = value.match(/^new(?:@(\d+))?$/i);
+    if (!match) return null;
+    const createdAt = match[1] ? Number(match[1]) : 0;
+    return { createdAt: Number.isFinite(createdAt) ? createdAt : 0 };
+  }
+
+  function shouldRenderNewTag(text) {
+    const parsed = parseNewTagText(text);
+    if (!parsed) return false;
+    if (!parsed.createdAt) return true;
+    return Date.now() - parsed.createdAt < NEW_TAG_MAX_AGE_MS;
+  }
+
+  function renderInlineTagHtml(text) {
+    const value = String(text || "").trim();
+    const newTag = parseNewTagText(value);
+    if (newTag) return shouldRenderNewTag(value) ? '<span class="schedule-inline-tag schedule-tag-tone">NEW</span>' : "";
+    return hasStreamerDirective(value) ? directiveInlineHtml(value) : '<span class="schedule-inline-tag schedule-tag-tone"' + tagToneStyleAttr(value) + '>' + directiveInlineHtml(value) + '</span>';
+  }
   function directiveInlineHtml(value) {
     const raw = String(value || "");
     let html = "";
@@ -498,7 +521,7 @@
           flushPlain(i);
           const text = raw.slice(i + 3, end).trim();
           if (bracket[1].toLowerCase() === "t") {
-            html += hasStreamerDirective(text) ? directiveInlineHtml(text) : `<span class="schedule-inline-tag schedule-tag-tone"${tagToneStyleAttr(text)}>${directiveInlineHtml(text)}</span>`;
+            html += renderInlineTagHtml(text);
           } else {
             html += streamerBadgeHtml(text);
           }
@@ -511,7 +534,7 @@
       if (inline) {
         flushPlain(i);
         html += inline[1].toLowerCase() === "t"
-          ? `<span class="schedule-inline-tag schedule-tag-tone"${tagToneStyleAttr(inline[2].trim())}>${esc(inline[2].trim())}</span>`
+          ? renderInlineTagHtml(inline[2].trim())
           : streamerBadgeHtml(inline[2].trim());
         i += inline[0].length;
         plainStart = i;

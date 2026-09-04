@@ -320,6 +320,7 @@ async function loadAutoLiveCategorySyncEnabled(channelId: string, supabaseUrl: s
   }
 }
 type LiveSessionState = {
+  id?: number;
   channel_id: string;
   live_key: string | null;
   schedule_date: string | null;
@@ -335,26 +336,67 @@ type LiveSessionState = {
   updated_at: string | null;
 };
 
-async function loadLiveSessionState(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
+const LIVE_SESSION_STATE_SELECT = "id,channel_id,live_key,schedule_date,started_at,last_seen_at,ended_at,title,vod_url,vod_video_no,vod_saved_at,vod_checked_at,is_live,updated_at";
+
+async function loadLatestLiveSessionState(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
   const query = "/rest/v1/" + LIVE_SESSION_STATE_TABLE +
-    "?select=channel_id,live_key,schedule_date,started_at,last_seen_at,ended_at,title,vod_url,vod_video_no,vod_saved_at,vod_checked_at,is_live,updated_at&channel_id=eq." + encodeURIComponent(channelId) +
-    "&limit=1";
+    "?select=" + LIVE_SESSION_STATE_SELECT + "&channel_id=eq." + encodeURIComponent(channelId) +
+    "&order=updated_at.desc&limit=1";
   const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
   return rows && rows[0] ? rows[0] : null;
 }
 
+async function loadActiveLiveSessionState(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
+  const query = "/rest/v1/" + LIVE_SESSION_STATE_TABLE +
+    "?select=" + LIVE_SESSION_STATE_SELECT + "&channel_id=eq." + encodeURIComponent(channelId) +
+    "&is_live=eq.true&order=updated_at.desc&limit=1";
+  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function loadLiveSessionStateByKey(channelId: string, liveKey: string, supabaseUrl: string, serviceRoleKey: string) {
+  const key = String(liveKey || "").trim();
+  if (!key) return null;
+  const query = "/rest/v1/" + LIVE_SESSION_STATE_TABLE +
+    "?select=" + LIVE_SESSION_STATE_SELECT + "&channel_id=eq." + encodeURIComponent(channelId) +
+    "&live_key=eq." + encodeURIComponent(key) + "&limit=1";
+  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function loadPendingVodSessions(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
+  const query = "/rest/v1/" + LIVE_SESSION_STATE_TABLE +
+    "?select=" + LIVE_SESSION_STATE_SELECT + "&channel_id=eq." + encodeURIComponent(channelId) +
+    "&is_live=eq.false&or=(vod_saved_at.is.null,vod_url.is.null)&order=ended_at.asc.nullslast,updated_at.asc&limit=8";
+  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
+  return Array.isArray(rows) ? rows : [];
+}
+
 async function updateLiveSessionState(channelId: string, state: Partial<LiveSessionState>, supabaseUrl: string, serviceRoleKey: string) {
   const now = new Date().toISOString();
-  await supabaseFetch("/rest/v1/" + LIVE_SESSION_STATE_TABLE + "?on_conflict=channel_id", {
+  const liveKey = String(state.live_key || "").trim();
+  const existing = state.id
+    ? { id: state.id } as LiveSessionState
+    : liveKey
+      ? await loadLiveSessionStateByKey(channelId, liveKey, supabaseUrl, serviceRoleKey)
+      : await loadLatestLiveSessionState(channelId, supabaseUrl, serviceRoleKey);
+  const payload = { channel_id: channelId, ...state, updated_at: now };
+  if (existing && existing.id) {
+    await supabaseFetch("/rest/v1/" + LIVE_SESSION_STATE_TABLE + "?id=eq." + encodeURIComponent(String(existing.id)), {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }, supabaseUrl, serviceRoleKey);
+    return;
+  }
+  await supabaseFetch("/rest/v1/" + LIVE_SESSION_STATE_TABLE, {
     method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify({ channel_id: channelId, ...state, updated_at: now }),
+    body: JSON.stringify(payload),
   }, supabaseUrl, serviceRoleKey);
 }
 
 async function markLiveSessionEndedIfNeeded(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
   try {
-    const previous = await loadLiveSessionState(channelId, supabaseUrl, serviceRoleKey);
+    const previous = await loadActiveLiveSessionState(channelId, supabaseUrl, serviceRoleKey);
     if (!previous || previous.is_live === false) return { updated: false, reason: previous ? "already-ended" : "empty", session: previous || null };
     const endedAt = new Date().toISOString();
     await updateLiveSessionState(channelId, {
@@ -382,8 +424,9 @@ async function resolveLiveSession(channelId: string, currentDate: string, curren
   const normalizedLiveKey = String(currentLiveKey || currentStartedAt || currentDate || "live").trim();
   const startedMs = timestampMs(currentStartedAt) || Date.now();
   try {
-    const previous = await loadLiveSessionState(channelId, supabaseUrl, serviceRoleKey);
-    const sameLive = !!previous && !!previous.live_key && previous.live_key === normalizedLiveKey;
+    const sameLiveSession = await loadLiveSessionStateByKey(channelId, normalizedLiveKey, supabaseUrl, serviceRoleKey);
+    const previous = sameLiveSession || await loadLatestLiveSessionState(channelId, supabaseUrl, serviceRoleKey);
+    const sameLive = !!sameLiveSession;
     let effectiveDate = currentDate;
     let effectiveLiveKey = normalizedLiveKey;
     let continued = false;
@@ -392,7 +435,6 @@ async function resolveLiveSession(channelId: string, currentDate: string, curren
     const endedMs = timestampMs(endedAt);
     if (!sameLive && previous && previous.is_live === false && previous.schedule_date && previous.live_key && endedMs && startedMs >= endedMs && startedMs - endedMs <= LIVE_CONTINUATION_WINDOW_MS) {
       effectiveDate = previous.schedule_date;
-      effectiveLiveKey = previous.live_key;
       continued = true;
     }
     await updateLiveSessionState(channelId, {
@@ -555,7 +597,7 @@ async function recordLiveCategoryChange(
   const changedAt = new Date().toISOString();
   const startedMs = chzzkTimestampMs(startedAt, offsetHours);
   const changedMs = timestampMs(changedAt);
-  const offsetSeconds = startedMs && changedMs >= startedMs ? Math.floor((changedMs - startedMs) / 1000) : null;
+  const offsetSeconds = latest ? (startedMs && changedMs >= startedMs ? Math.floor((changedMs - startedMs) / 1000) : null) : 0;
   await supabaseFetch("/rest/v1/" + LIVE_CATEGORY_HISTORY_TABLE, {
     method: "POST",
     body: JSON.stringify({
@@ -609,7 +651,17 @@ function normalizeVodItem(item: unknown) {
   const source = item as Record<string, unknown>;
   const url = String(source.url || "").trim();
   const label = String(source.label || "").trim() || "방송 다시보기";
-  return url ? { url, label } : null;
+  if (!url) return null;
+  const vod = { url, label } as Record<string, string>;
+  const liveKey = String(source.liveKey || source.live_key || "").trim();
+  const startedAt = String(source.startedAt || source.started_at || "").trim();
+  const endedAt = String(source.endedAt || source.ended_at || "").trim();
+  const videoNo = String(source.videoNo || source.video_no || "").trim();
+  if (liveKey) vod.liveKey = liveKey;
+  if (startedAt) vod.startedAt = startedAt;
+  if (endedAt) vod.endedAt = endedAt;
+  if (videoNo) vod.videoNo = videoNo;
+  return vod;
 }
 
 function sameVodUrl(a: string, b: string) {
@@ -689,7 +741,7 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
   try {
     const vod = await findReplayVodForSession(channelId, session, offsetHours);
     if (!vod) {
-      await updateLiveSessionState(channelId, { vod_checked_at: checkedAt }, supabaseUrl, serviceRoleKey);
+      await updateLiveSessionState(channelId, { id: session.id, live_key: session.live_key || null, vod_checked_at: checkedAt }, supabaseUrl, serviceRoleKey);
       return { synced: false, reason: "vod-not-ready", checkedAt };
     }
 
@@ -699,7 +751,15 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
     const existing = rows && rows[0];
     const vods = (existing && Array.isArray(existing.vods) ? existing.vods : []).map(normalizeVodItem).filter(Boolean) as NonNullable<ReturnType<typeof normalizeVodItem>>[];
     const alreadyExists = vods.some((item) => sameVodUrl(item.url, vod.url));
-    const nextVods = alreadyExists ? vods : [...vods, { url: vod.url, label: vod.label || "방송 다시보기" }];
+    const autoVod = normalizeVodItem({
+      url: vod.url,
+      label: vod.label || "방송 다시보기",
+      liveKey: session.live_key || "",
+      startedAt: session.started_at || "",
+      endedAt: session.ended_at || session.last_seen_at || "",
+      videoNo: vod.videoNo || "",
+    }) || { url: vod.url, label: vod.label || "방송 다시보기" };
+    const nextVods = alreadyExists ? vods : [...vods, autoVod];
     const payload = { vods: nextVods, updated_at: new Date().toISOString() };
     if (existing) {
       await supabaseFetch("/rest/v1/schedule?id=eq." + encodeURIComponent(String(existing.id)), {
@@ -714,6 +774,8 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
     }
     const savedAt = new Date().toISOString();
     await updateLiveSessionState(channelId, {
+      id: session.id,
+      live_key: session.live_key || null,
       vod_url: vod.url,
       vod_video_no: vod.videoNo,
       vod_saved_at: savedAt,
@@ -722,7 +784,7 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
     return { synced: !alreadyExists, reason: alreadyExists ? "already-present" : "added", url: vod.url, label: vod.label, videoNo: vod.videoNo, date: session.schedule_date };
   } catch (error) {
     console.warn("replay vod sync failed", error);
-    await updateLiveSessionState(channelId, { vod_checked_at: checkedAt }, supabaseUrl, serviceRoleKey);
+    await updateLiveSessionState(channelId, { id: session.id, live_key: session.live_key || null, vod_checked_at: checkedAt }, supabaseUrl, serviceRoleKey);
     return { synced: false, reason: "write-failed", error: String((error && (error as Error).message) || error) };
   }
 }
@@ -833,7 +895,24 @@ Deno.serve(async (req) => {
       : null;
     const endState = current.live ? null : await markLiveSessionEndedIfNeeded(channelId, supabaseUrl, serviceRoleKey);
     const endedSession = endState && "session" in endState ? (endState.session as LiveSessionState | null) : null;
-    const vodSync = current.live ? null : await syncReplayVodToSchedule(channelId, endedSession, offsetHours, supabaseUrl, serviceRoleKey);
+    const pendingVodSessions = current.live ? [] : await loadPendingVodSessions(channelId, supabaseUrl, serviceRoleKey);
+    const vodSyncResults = [] as Array<Record<string, unknown>>;
+    if (!current.live) {
+      const seenSessionIds = new Set<string>();
+      for (const pendingSession of pendingVodSessions) {
+        const sessionId = String(pendingSession.id || pendingSession.live_key || "");
+        if (sessionId && seenSessionIds.has(sessionId)) continue;
+        if (sessionId) seenSessionIds.add(sessionId);
+        vodSyncResults.push(await syncReplayVodToSchedule(channelId, pendingSession, offsetHours, supabaseUrl, serviceRoleKey));
+      }
+      if (endedSession) {
+        const endedSessionId = String(endedSession.id || endedSession.live_key || "");
+        if (!endedSessionId || !seenSessionIds.has(endedSessionId)) {
+          vodSyncResults.push(await syncReplayVodToSchedule(channelId, endedSession, offsetHours, supabaseUrl, serviceRoleKey));
+        }
+      }
+    }
+    const vodSync = current.live ? null : vodSyncResults;
     const date = session ? session.date : rawDate;
     const liveKeyForHistory = session ? session.liveKey : (current.liveKey || "");
     const titleHistory = current.live

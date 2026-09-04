@@ -418,10 +418,19 @@ function normalizeGameImage(item) {
   const categoryType = String(item.categoryType || "").trim().toUpperCase();
   return (label || url) ? { url, label, categoryId, categoryType, posterImageUrl } : null;
 }
-// vods 항목을 {url, label} 형태로 정규화. label이 없으면 "방송 다시보기"가 기본값.
+// vods 항목을 정규화. 자동 저장된 다시보기는 liveKey 메타데이터를 보존한다.
 function normalizeVod(v) {
   if (!v || typeof v !== "object" || !v.url) return null;
-  return { url: v.url, label: v.label || "방송 다시보기" };
+  const item = { url: v.url, label: v.label || "방송 다시보기" };
+  const liveKey = String(v.liveKey || v.live_key || "").trim();
+  const startedAt = String(v.startedAt || v.started_at || "").trim();
+  const endedAt = String(v.endedAt || v.ended_at || "").trim();
+  const videoNo = String(v.videoNo || v.video_no || "").trim();
+  if (liveKey) item.liveKey = liveKey;
+  if (startedAt) item.startedAt = startedAt;
+  if (endedAt) item.endedAt = endedAt;
+  if (videoNo) item.videoNo = videoNo;
+  return item;
 }
 
 function normalizeNoteItem(item) {
@@ -784,7 +793,7 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 1, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 2, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -806,7 +815,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 1 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 
