@@ -419,15 +419,21 @@ async function markLiveSessionEndedIfNeeded(channelId: string, supabaseUrl: stri
   }
 }
 
-async function resolveLiveSession(channelId: string, currentDate: string, currentLiveKey: string, currentStartedAt: string, currentTitle: string, supabaseUrl: string, serviceRoleKey: string) {
+async function resolveLiveSession(channelId: string, currentDate: string, currentLiveKey: string, currentStartedAt: string, currentTitle: string, offsetHours: number, supabaseUrl: string, serviceRoleKey: string) {
   const now = new Date().toISOString();
   const normalizedLiveKey = String(currentLiveKey || currentStartedAt || currentDate || "live").trim();
-  const startedMs = timestampMs(currentStartedAt) || Date.now();
+  // CHZZK returns openDate without a timezone suffix. Interpret it in the
+  // configured channel timezone before comparing it with UTC timestamps from
+  // Postgres; treating it as UTC makes a post-midnight restart appear earlier
+  // than the previous session's ended_at value.
+  const startedMs = chzzkTimestampMs(currentStartedAt, offsetHours) || Date.now();
   try {
     const sameLiveSession = await loadLiveSessionStateByKey(channelId, normalizedLiveKey, supabaseUrl, serviceRoleKey);
     const previous = sameLiveSession || await loadLatestLiveSessionState(channelId, supabaseUrl, serviceRoleKey);
     const sameLive = !!sameLiveSession;
-    let effectiveDate = currentDate;
+    // Once a live key has been assigned to a schedule date, keep that mapping
+    // stable on subsequent cron runs.
+    let effectiveDate = sameLive && previous && previous.schedule_date ? previous.schedule_date : currentDate;
     let effectiveLiveKey = normalizedLiveKey;
     let continued = false;
     let endedAt = previous && previous.ended_at ? previous.ended_at : "";
@@ -670,6 +676,14 @@ function sameVodUrl(a: string, b: string) {
   return !!left && !!right && left === right;
 }
 
+function numberVodLabels(vods: NonNullable<ReturnType<typeof normalizeVodItem>>[]) {
+  const multiple = vods.length > 1;
+  return vods.map((vod, index) => ({
+    ...vod,
+    label: multiple ? `방송 다시보기${index + 1}` : "방송 다시보기",
+  }));
+}
+
 async function fetchLatestReplayVideos(channelId: string) {
   const url = "https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(channelId) +
     "/videos?sortType=LATEST&pagingType=PAGE&page=0&size=8&publishDateAt=&videoType=REPLAY";
@@ -728,8 +742,7 @@ async function findReplayVodForSession(channelId: string, session: LiveSessionSt
       console.warn("video detail lookup failed", videoNo, error);
     }
     if (!videoMatchesEndedSession(video, detail, session, offsetHours)) continue;
-    const label = videoTitleFromItem(video) || (detail ? videoTitleFromItem(detail) : "") || "방송 다시보기";
-    return { videoNo, url: "https://chzzk.naver.com/video/" + encodeURIComponent(videoNo), label };
+    return { videoNo, url: "https://chzzk.naver.com/video/" + encodeURIComponent(videoNo) };
   }
   return null;
 }
@@ -753,13 +766,13 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
     const alreadyExists = vods.some((item) => sameVodUrl(item.url, vod.url));
     const autoVod = normalizeVodItem({
       url: vod.url,
-      label: vod.label || "방송 다시보기",
+      label: "방송 다시보기",
       liveKey: session.live_key || "",
       startedAt: session.started_at || "",
       endedAt: session.ended_at || session.last_seen_at || "",
       videoNo: vod.videoNo || "",
-    }) || { url: vod.url, label: vod.label || "방송 다시보기" };
-    const nextVods = alreadyExists ? vods : [...vods, autoVod];
+    }) || { url: vod.url, label: "방송 다시보기" };
+    const nextVods = numberVodLabels(alreadyExists ? vods : [...vods, autoVod]);
     const payload = { vods: nextVods, updated_at: new Date().toISOString() };
     if (existing) {
       await supabaseFetch("/rest/v1/schedule?id=eq." + encodeURIComponent(String(existing.id)), {
@@ -781,7 +794,8 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
       vod_saved_at: savedAt,
       vod_checked_at: checkedAt,
     }, supabaseUrl, serviceRoleKey);
-    return { synced: !alreadyExists, reason: alreadyExists ? "already-present" : "added", url: vod.url, label: vod.label, videoNo: vod.videoNo, date: session.schedule_date };
+    const savedVod = nextVods.find((item) => sameVodUrl(item.url, vod.url));
+    return { synced: !alreadyExists, reason: alreadyExists ? "already-present" : "added", url: vod.url, label: savedVod ? savedVod.label : autoVod.label, videoNo: vod.videoNo, date: session.schedule_date };
   } catch (error) {
     console.warn("replay vod sync failed", error);
     await updateLiveSessionState(channelId, { id: session.id, live_key: session.live_key || null, vod_checked_at: checkedAt }, supabaseUrl, serviceRoleKey);
@@ -874,7 +888,7 @@ Deno.serve(async (req) => {
       const startedAt = String(body.startedAt || "");
       const rawDate = String(body.date || dateKeyFromTimestamp(startedAt, offsetHours) || currentDateKey(offsetHours));
       const testTitle = String(body.liveTitle || body.title || "").trim();
-      const session = await resolveLiveSession(channelId, rawDate, String(body.liveKey || startedAt || rawDate), startedAt, testTitle, supabaseUrl, serviceRoleKey);
+      const session = await resolveLiveSession(channelId, rawDate, String(body.liveKey || startedAt || rawDate), startedAt, testTitle, offsetHours, supabaseUrl, serviceRoleKey);
       const date = session.date;
       const testCategory = testCategories[0] || null;
       const titleHistory = testTitle
@@ -891,28 +905,29 @@ Deno.serve(async (req) => {
     const current = await currentLiveCategory(channelId, offsetHours);
     const rawDate = current.date || currentDateKey(offsetHours);
     const session = current.live
-      ? await resolveLiveSession(channelId, rawDate, current.liveKey || "", current.startedAt || "", current.title || "", supabaseUrl, serviceRoleKey)
+      ? await resolveLiveSession(channelId, rawDate, current.liveKey || "", current.startedAt || "", current.title || "", offsetHours, supabaseUrl, serviceRoleKey)
       : null;
     const endState = current.live ? null : await markLiveSessionEndedIfNeeded(channelId, supabaseUrl, serviceRoleKey);
     const endedSession = endState && "session" in endState ? (endState.session as LiveSessionState | null) : null;
-    const pendingVodSessions = current.live ? [] : await loadPendingVodSessions(channelId, supabaseUrl, serviceRoleKey);
+    // A newly started live must not block replay discovery for an earlier,
+    // already-ended session. Pending rows are explicitly filtered to
+    // is_live=false, so they are safe to process while another live is active.
+    const pendingVodSessions = await loadPendingVodSessions(channelId, supabaseUrl, serviceRoleKey);
     const vodSyncResults = [] as Array<Record<string, unknown>>;
-    if (!current.live) {
-      const seenSessionIds = new Set<string>();
-      for (const pendingSession of pendingVodSessions) {
-        const sessionId = String(pendingSession.id || pendingSession.live_key || "");
-        if (sessionId && seenSessionIds.has(sessionId)) continue;
-        if (sessionId) seenSessionIds.add(sessionId);
-        vodSyncResults.push(await syncReplayVodToSchedule(channelId, pendingSession, offsetHours, supabaseUrl, serviceRoleKey));
-      }
-      if (endedSession) {
-        const endedSessionId = String(endedSession.id || endedSession.live_key || "");
-        if (!endedSessionId || !seenSessionIds.has(endedSessionId)) {
-          vodSyncResults.push(await syncReplayVodToSchedule(channelId, endedSession, offsetHours, supabaseUrl, serviceRoleKey));
-        }
+    const seenSessionIds = new Set<string>();
+    for (const pendingSession of pendingVodSessions) {
+      const sessionId = String(pendingSession.id || pendingSession.live_key || "");
+      if (sessionId && seenSessionIds.has(sessionId)) continue;
+      if (sessionId) seenSessionIds.add(sessionId);
+      vodSyncResults.push(await syncReplayVodToSchedule(channelId, pendingSession, offsetHours, supabaseUrl, serviceRoleKey));
+    }
+    if (endedSession) {
+      const endedSessionId = String(endedSession.id || endedSession.live_key || "");
+      if (!endedSessionId || !seenSessionIds.has(endedSessionId)) {
+        vodSyncResults.push(await syncReplayVodToSchedule(channelId, endedSession, offsetHours, supabaseUrl, serviceRoleKey));
       }
     }
-    const vodSync = current.live ? null : vodSyncResults;
+    const vodSync = vodSyncResults;
     const date = session ? session.date : rawDate;
     const liveKeyForHistory = session ? session.liveKey : (current.liveKey || "");
     const titleHistory = current.live

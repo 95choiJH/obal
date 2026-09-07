@@ -1,4 +1,4 @@
-// content.js — 치지직 페이지에 일정 그리드를 주입
+﻿// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -294,7 +294,7 @@
     const category = String(categoryName || "").trim();
     host.shadowRoot.innerHTML =
       '<style>' +
-      ':host{all:initial}.toast{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(18,20,25,.98),rgba(28,31,38,.96)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#a78bfa,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f4f5f6;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.4);transform:translateX(-18px);opacity:0;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:1;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#d7dee7;font-weight:800}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{grid-column:2;appearance:none;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.09);color:#f8fafc;height:30px;padding:0 10px;font:900 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}.watch-btn:hover{border-color:rgba(125,211,252,.58);background:rgba(56,189,248,.2);color:#fff}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{grid-column:3;appearance:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:-2px;border:1px solid rgba(255,255,255,.14);border-radius:7px;background:rgba(255,255,255,.06);color:#cfd8e3;font:900 17px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13);color:#fff}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateX(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateX(-18px);opacity:0}}' +
+      ':host{all:initial}.toast{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(18,20,25,.98),rgba(28,31,38,.96)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#a78bfa,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f4f5f6;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.4);transform:translateX(-18px);opacity:0;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:1;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#d7dee7;font-weight:800}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{grid-column:2;appearance:none;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.09);color:#f8fafc;height:30px;padding:0 10px;font:900 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}.watch-btn:hover{border-color:rgba(125,211,252,.58);background:rgba(56,189,248,.2);color:#fff}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{grid-column:3;appearance:none;display:inline-flex;align-items:flex-start;justify-content:center;width:24px;height:24px;margin-left:-2px;border:1px solid rgba(255,255,255,.14);border-radius:7px;background:rgba(255,255,255,.06);color:#cfd8e3;font:900 17px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13);color:#fff}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateX(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateX(-18px);opacity:0}}' +
       '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button><button type="button" class="close-btn" id="obaengal-live-start-close" aria-label="닫기">&times;</button></div>';
     const avatar = host.shadowRoot.getElementById("obaengal-live-start-avatar");
     if (avatar) {
@@ -387,28 +387,56 @@
   let liveStartCheckInFlight = false;
   let lastLiveStartCheckAt = 0;
 
-  async function checkTargetLiveStartToast(force) {
-    if (liveStartCheckInFlight) return;
+  function getLiveNotificationContext() {
     const currentChannelId = getChannelIdFromUrl();
+    const isWatchingVod = /^\/video\/[0-9]+(?:\/|$)/i.test(location.pathname);
     const target = targetChannelId();
-    if (!currentChannelId || !target || currentChannelId.toLowerCase() === target.toLowerCase()) return;
+    return {
+      eligible: !!target && (isWatchingVod || (!!currentChannelId && currentChannelId.toLowerCase() !== target.toLowerCase())),
+      currentChannelId, isWatchingVod, pageVisible: document.visibilityState === "visible",
+      liveStartNoticeEnabled: state.liveStartNoticeEnabled,
+      categoryChangeNoticeEnabled: state.categoryChangeNoticeEnabled,
+    };
+  }
+
+  function displayTargetLiveNotification(result) {
+    if (!getLiveNotificationContext().eligible) return;
+    if (result && result.notify && (result.notificationType === "categoryChange" ? state.categoryChangeNoticeEnabled : state.liveStartNoticeEnabled)) {
+      const suffix = result.notificationType === "categoryChange" && result.categoryName
+        ? "님이 카테고리를 변경하였습니다. " + result.categoryName
+        : "님이 방송을 시작했습니다";
+      showLiveStartToast(result.channelName || "따효니", result.channelImageUrl || "", suffix, result.notificationType === "categoryChange" ? result.categoryName : "");
+    }
+  }
+
+  async function checkTargetLiveStartToast(force, testScenario) {
+    if (liveStartCheckInFlight) {
+      if (testScenario) console.warn("[오뱅알 테스트] 조회 중입니다. 잠시 후 다시 실행하세요.");
+      return;
+    }
+    const currentChannelId = getChannelIdFromUrl();
+    const isWatchingVod = /^\/video\/[0-9]+(?:\/|$)/i.test(location.pathname);
+    const target = targetChannelId();
+    if (!target || (!isWatchingVod && (!currentChannelId || currentChannelId.toLowerCase() === target.toLowerCase()))) {
+      if (testScenario) console.warn("[오뱅알 테스트] 타스트리머 채널 또는 다시보기에서 실행하세요.");
+      return;
+    }
     const now = Date.now();
     if (!force && now - lastLiveStartCheckAt < LIVE_START_CHECK_INTERVAL) return;
     lastLiveStartCheckAt = now;
     liveStartCheckInFlight = true;
     try {
       const result = await sendRuntimeMessage({
-        type: "checkTargetLiveStart",
+        type: testScenario ? "simulateTargetLiveStart" : "checkTargetLiveStart",
+        scenario: testScenario,
         currentChannelId,
+        isWatchingVod,
+        pageVisible: document.visibilityState === "visible",
         liveStartNoticeEnabled: state.liveStartNoticeEnabled,
         categoryChangeNoticeEnabled: state.categoryChangeNoticeEnabled,
       });
-      if (result && result.notify && (result.notificationType === "categoryChange" ? state.categoryChangeNoticeEnabled : state.liveStartNoticeEnabled)) {
-        const suffix = result.notificationType === "categoryChange" && result.categoryName
-          ? "님이 카테고리를 변경하였습니다. " + result.categoryName
-          : "\uB2D8\uC774 \uBC29\uC1A1\uC744 \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4";
-        showLiveStartToast(result.channelName || "\uB530\uD6A8\uB2C8", result.channelImageUrl || "", suffix, result.notificationType === "categoryChange" ? result.categoryName : "");
-      }
+      if (testScenario || (result && result.simulation)) console.info("[오뱅알 테스트] 감지 결과 (서버 방송 응답은 모의 데이터)", result);
+      displayTargetLiveNotification(result);
     } catch (_e) {
     } finally {
       liveStartCheckInFlight = false;
@@ -416,6 +444,16 @@
   }
 
   function startLiveStartWatcher() {
+    api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message && message.type === "getLiveNotificationContext") {
+        sendResponse(getLiveNotificationContext());
+      }
+      if (message && message.type === "targetLiveNotification") {
+        if (message.result && message.result.simulation) console.info("[오뱅알 테스트] 백그라운드 감지 결과", message.result);
+        displayTargetLiveNotification(message.result);
+        sendResponse({ ok: true });
+      }
+    });
     setTimeout(() => checkTargetLiveStartToast(true), 2500);
     setInterval(() => checkTargetLiveStartToast(false), LIVE_START_CHECK_INTERVAL);
     document.addEventListener("visibilitychange", () => {
@@ -444,6 +482,9 @@
       }
       if (data.type === "obaengal:test-live-start-check") {
         checkTargetLiveStartToast(true);
+      }
+      if (data.type === "obaengal:test-live-start-simulation") {
+        checkTargetLiveStartToast(true, data.scenario === "multi-tab" ? "multi-tab" : data.scenario === "recovery" ? "recovery" : "offline-to-live");
       }
     });
   }
@@ -1526,8 +1567,8 @@
       "</div>";
     const settingsPanelHtml = state.settingsOpen
       ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
-        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송에서 방송 시작 알림</span><button type="button" class="cs-settings-switch' + (state.liveStartNoticeEnabled ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(state.liveStartNoticeEnabled) + '" aria-label="방송 시작 알림"></button></div>' +
-        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송에서 카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (state.categoryChangeNoticeEnabled ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(state.categoryChangeNoticeEnabled) + '" aria-label="카테고리 변경 알림"></button></div>' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 방송 시작 알림</span><button type="button" class="cs-settings-switch' + (state.liveStartNoticeEnabled ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(state.liveStartNoticeEnabled) + '" aria-label="방송 시작 알림"></button></div>' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (state.categoryChangeNoticeEnabled ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(state.categoryChangeNoticeEnabled) + '" aria-label="카테고리 변경 알림"></button></div>' +
         "</div>"
       : "";
 
@@ -3676,19 +3717,38 @@
     });
   }
 
+  function titleHistoryItemsForCurrentLive(list) {
+    if (!Array.isArray(list) || !list.length) return [];
+    const latest = list.find((item) => item && String(item.liveKey || item.live_key || "").trim());
+    if (!latest) return [];
+    const liveKey = String(latest.liveKey || latest.live_key || "").trim();
+    return list.filter((item) => item && String(item.liveKey || item.live_key || "").trim() === liveKey);
+  }
+
+  function currentLiveTitleText(scopedList) {
+    const anchor = findTitleHistoryTitleAnchor();
+    const visibleTitle = String((anchor && anchor.textContent) || "").replace(/\s+/g, " ").trim();
+    if (visibleTitle) return visibleTitle;
+    const latest = Array.isArray(scopedList) ? scopedList[0] : null;
+    return String((latest && latest.title) || "").replace(/\s+/g, " ").trim();
+  }
+
   function getTitleHistoryItems() {
     const dataChannelId = getCurrentDataChannelId();
     const histories = state.data && state.data.titleHistories;
     const list = histories && dataChannelId ? histories[dataChannelId] : [];
     if (!Array.isArray(list)) return [];
     const vodMatch = (typeof isChzzkVodPage === "function" && isChzzkVodPage()) ? currentVodScheduleMatch() : null;
-    const scopedList = vodMatch ? titleHistoryItemsForVodMatch(list, vodMatch) : list;
+    const scopedList = vodMatch ? titleHistoryItemsForVodMatch(list, vodMatch) : titleHistoryItemsForCurrentLive(list);
+    const currentTitleKey = vodMatch ? "" : currentLiveTitleText(scopedList).toLowerCase();
     const seen = new Set();
     const unique = [];
     for (const item of scopedList) {
+      if (item && (item.hidden === true || item.categoryHidden === true || item.category_hidden === true)) continue;
       const title = String((item && item.title) || "").trim();
       if (!title) continue;
-      const key = title.toLowerCase();
+      const key = title.replace(/\s+/g, " ").trim().toLowerCase();
+      if (currentTitleKey && key === currentTitleKey) continue;
       if (seen.has(key)) continue;
       seen.add(key);
       unique.push(item);
@@ -3918,7 +3978,7 @@
     const dataChannelId = getCurrentDataChannelId();
     const histories = state.data && state.data.categoryHistories;
     const list = histories && dataChannelId ? histories[dataChannelId] : [];
-    return Array.isArray(list) ? list.filter((item) => item && String(item.categoryLabel || "").trim()) : [];
+    return Array.isArray(list) ? list.filter((item) => item && item.hidden !== true && String(item.categoryLabel || "").trim()) : [];
   }
 
   function videoNoFromUrl(url) {

@@ -31,6 +31,9 @@ const ADMIN_CONFIG = {
   // 방제목 변경 기록 테이블 이름
   liveTitleHistoryTableName: "live_title_history",
 
+  // 다시보기 챕터 미리보기용 카테고리 변경 기록 테이블
+  liveCategoryHistoryTableName: "live_category_history",
+
   // 그님티 이미지 업로드용 공개 Storage 버킷
   gnimtiImageBucketName: "game-images",
 };

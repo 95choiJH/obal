@@ -12,6 +12,7 @@
   const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
   const GNIMTI_CONTENT_SETTING_KEY = "gnimti_content";
   const LIVE_TITLE_HISTORY_TABLE = cfg.liveTitleHistoryTableName || "live_title_history";
+  const LIVE_CATEGORY_HISTORY_TABLE = cfg.liveCategoryHistoryTableName || "live_category_history";
   const GNIMTI_IMAGE_BUCKET = cfg.gnimtiImageBucketName || "game-images";
 
   // ---- 상태 ----
@@ -22,6 +23,8 @@
   let feedbackTypeFilter = "all";
   let liveTitleHistory = [];
   let liveTitleHistoryLoadError = "";
+  let liveCategoryHistory = [];
+  let liveCategoryHistoryLoadError = "";
   let activeAdminMenu = "schedule";
   let selectedScheduleDate = "";
   let scheduleMonthOffset = 0;
@@ -177,6 +180,7 @@
     info = infoError ? [] : (infoData || []).map((u) => ({ id: u.id, content: u.content || "", hidden: !!u.hidden }));
     await loadAdminSettings();
     await loadLiveTitleHistory();
+    await loadLiveCategoryHistory();
 
     deletedIds = [];
     deletedInfoIds = [];
@@ -220,6 +224,10 @@
     return LIVE_TITLE_HISTORY_TABLE;
   }
 
+  function liveCategoryHistoryTableName() {
+    return LIVE_CATEGORY_HISTORY_TABLE;
+  }
+
   function formatHistoryDateTime(value) {
     if (!value) return "";
     const date = new Date(value);
@@ -237,7 +245,7 @@
     liveTitleHistoryLoadError = "";
     const { data, error } = await sb
       .from(liveTitleHistoryTableName())
-      .select("id,channel_id,live_key,schedule_date,title,previous_title,category_label,category_id,category_type,category_poster_image_url,started_at,changed_at,created_at")
+      .select("id,channel_id,live_key,schedule_date,title,previous_title,category_label,category_id,category_type,category_poster_image_url,hidden,category_hidden,started_at,changed_at,created_at")
       .eq("channel_id", cfg.channelId)
       .order("changed_at", { ascending: false })
       .order("id", { ascending: false })
@@ -249,6 +257,24 @@
       return;
     }
     liveTitleHistory = data || [];
+  }
+
+  async function loadLiveCategoryHistory() {
+    liveCategoryHistoryLoadError = "";
+    const { data, error } = await sb
+      .from(liveCategoryHistoryTableName())
+      .select("id,channel_id,live_key,schedule_date,category_label,category_id,category_type,offset_seconds,hidden,started_at,changed_at")
+      .eq("channel_id", cfg.channelId)
+      .order("changed_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(1000);
+    if (error) {
+      liveCategoryHistory = [];
+      liveCategoryHistoryLoadError = error.message || String(error);
+      console.warn("[admin] 다시보기 챕터 기록 로드 실패:", error);
+      return;
+    }
+    liveCategoryHistory = data || [];
   }
 
   function autoLiveCategorySyncEnabledFromValue(value) {
@@ -1310,8 +1336,10 @@
       const key = titleHistoryCategoryKey(item);
       if (!groups.has(key)) {
         groups.set(key, {
+          key,
           label: String(item.category_label || "").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
           type: String(item.category_type || "").trim(),
+          hidden: !!item.category_hidden,
           latest: String(item.changed_at || ""),
           items: [],
         });
@@ -1323,19 +1351,20 @@
     return Array.from(groups.values())
       .sort((a, b) => String(b.latest || "").localeCompare(String(a.latest || "")))
       .map((group) => {
-        const category = '<div class="live-title-history-category-row"><span class="live-title-history-category">' + esc(group.label) + (group.type ? ' <b>' + esc(group.type) + '</b>' : '') + '</span></div>';
+        const category = '<div class="live-title-history-category-row' + (group.hidden ? ' is-hidden' : '') + '"><span class="live-title-history-category">' + esc(group.label) + (group.type ? ' <b>' + esc(group.type) + '</b>' : '') + '</span><button type="button" class="add-btn small live-title-history-toggle" data-title-category-hidden="' + esc(group.key) + '">' + (group.hidden ? '복원' : '카테고리 생략') + '</button></div>';
         const seenTitles = new Set();
         const rowsHtml = group.items.map((item) => {
           const titleText = String((item && item.title) || "").trim();
           const titleKey = titleText.toLowerCase();
-          const omitted = !!titleKey && seenTitles.has(titleKey);
+          const duplicate = !!titleKey && seenTitles.has(titleKey);
+          const omitted = !!item.hidden;
           if (titleKey) seenTitles.add(titleKey);
           const previous = item.previous_title ? '<div class="live-title-history-prev">이전: ' + esc(item.previous_title) + '</div>' : '';
           const meta = (includeDate ? esc(item.schedule_date || '') + ' · ' : '') + esc(formatHistoryDateTime(item.changed_at));
-          const omittedBadge = omitted ? '<span class="live-title-history-omitted">생략</span>' : '';
+          const omittedBadge = (omitted || duplicate) ? '<span class="live-title-history-omitted">' + (omitted ? '생략됨' : '중복') + '</span>' : '';
           return '<article class="live-title-history-item' + (omitted ? ' is-omitted' : '') + '">' +
             '<div class="live-title-history-main">' + esc(titleText) + '</div>' +
-            '<div class="live-title-history-meta"><span>' + meta + '</span>' + omittedBadge + '</div>' +
+            '<div class="live-title-history-meta"><span>' + meta + '</span>' + omittedBadge + '<button type="button" class="add-btn small live-title-history-toggle" data-title-history-hidden="' + esc(item.id) + '">' + (omitted ? '복원' : '방제 생략') + '</button></div>' +
             previous +
           '</article>';
         }).join("");
@@ -1347,7 +1376,53 @@
     const date = String((r && r.date) || "").trim();
     const count = titleHistoryItemsForDate(date).length;
     const open = openScheduleTitleHistoryDate === date;
-    return '<button type="button" class="add-btn small schedule-title-history-btn' + (open ? ' on' : '') + '" data-schedule-title-history="' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '">이전 방제' + (count ? ' ' + count : '') + '</button>';
+    return '<button type="button" class="add-btn small schedule-title-history-btn' + (open ? ' on' : '') + '" data-schedule-title-history="' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '">방송 기록' + (count ? ' ' + count : '') + '</button>';
+  }
+
+  function formatChapterOffset(value) {
+    const total = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+  }
+
+  function parseChapterOffset(value) {
+    const match = String(value || "").trim().match(/^(\d+):([0-5]\d):([0-5]\d)$/);
+    if (!match) return null;
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  }
+
+  function chapterPreviewHtml(date) {
+    if (liveCategoryHistoryLoadError) {
+      return '<div class="settings-warning live-title-history-inline-warning">다시보기 챕터 기록을 불러올 수 없습니다.</div>';
+    }
+    const items = liveCategoryHistory.filter((item) => String((item && item.schedule_date) || "").trim() === date);
+    if (!items.length) return '<div class="empty live-title-history-empty">아직 생성될 다시보기 챕터가 없습니다.</div>';
+    const sessions = new Map();
+    items.forEach((item) => {
+      const liveKey = String(item.live_key || item.started_at || date).trim();
+      if (!sessions.has(liveKey)) sessions.set(liveKey, []);
+      sessions.get(liveKey).push(item);
+    });
+    return Array.from(sessions.values()).map((session, sessionIndex) => {
+      const seen = new Set();
+      const chapters = session.filter((item) => {
+        const key = [item.category_type || "", item.category_id || "", item.category_label || "", Number(item.offset_seconds) || 0].join("|").toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 10);
+      const heading = sessions.size > 1 ? '<div class="chapter-preview-session">다시보기 ' + (sessionIndex + 1) + '</div>' : '';
+      const rowsHtml = chapters.map((item) => '<li class="chapter-preview-row' + (item.hidden ? ' is-hidden' : '') + '">' +
+        '<input class="chapter-preview-time" type="text" inputmode="numeric" data-chapter-time="' + esc(item.id) + '" value="' + esc(formatChapterOffset(item.offset_seconds)) + '" aria-label="챕터 시작 시간" />' +
+        '<input class="chapter-preview-title" type="text" data-chapter-title="' + esc(item.id) + '" value="' + esc(item.category_label || "") + '" placeholder="챕터 제목" aria-label="챕터 제목" />' +
+        (item.category_type ? '<b>' + esc(item.category_type) + '</b>' : '') +
+        '<button type="button" class="flag-toggle chapter-hidden-toggle' + (item.hidden ? ' on' : '') + '" data-chapter-hidden="' + esc(item.id) + '">' + (item.hidden ? '숨김됨' : '노출') + '</button>' +
+        '<button type="button" class="add-btn small" data-chapter-save="' + esc(item.id) + '">저장</button>' +
+      '</li>').join("");
+      return '<section class="chapter-preview-session-wrap">' + heading + '<ol class="chapter-preview-list">' + rowsHtml + '</ol></section>';
+    }).join("");
   }
 
   function scheduleTitleHistoryPanelHtml(r) {
@@ -1356,6 +1431,8 @@
     return '<div class="schedule-title-history-panel schedule-editor-section">' +
       '<div class="schedule-editor-section-head">\uC774\uC804 \uBC29\uC81C \uD655\uC778</div>' +
       '<div class="live-title-history-list schedule-title-history-list">' + titleHistoryGroupedHtml(titleHistoryItemsForDate(date), false) + '</div>' +
+      '<div class="schedule-editor-section-head chapter-preview-head">다시보기 챕터 미리보기</div>' +
+      '<div class="chapter-preview">' + chapterPreviewHtml(date) + '</div>' +
     '</div>';
   }
 
@@ -3707,6 +3784,73 @@
         const i = +el.getAttribute("data-schedule-title-history");
         const date = rows[i] && rows[i].date;
         openScheduleTitleHistoryDate = openScheduleTitleHistoryDate === date ? "" : (date || "");
+        render();
+      };
+    });
+    document.querySelectorAll("[data-title-history-hidden]").forEach((el) => {
+      el.onclick = async () => {
+        const item = liveTitleHistory.find((entry) => String(entry.id) === el.getAttribute("data-title-history-hidden"));
+        if (!item) return;
+        const hidden = !item.hidden;
+        el.disabled = true;
+        const { error } = await sb.from(liveTitleHistoryTableName()).update({ hidden }).eq("id", item.id).eq("channel_id", cfg.channelId);
+        if (error) { toast("방제 생략 설정 저장 실패: " + error.message); el.disabled = false; return; }
+        item.hidden = hidden;
+        toast(hidden ? "이전 방제를 생략했습니다." : "이전 방제를 복원했습니다.");
+        render();
+      };
+    });
+    document.querySelectorAll("[data-title-category-hidden]").forEach((el) => {
+      el.onclick = async () => {
+        const key = el.getAttribute("data-title-category-hidden") || "";
+        const items = titleHistoryItemsForDate(openScheduleTitleHistoryDate).filter((item) => titleHistoryCategoryKey(item) === key);
+        if (!items.length) return;
+        const hidden = !items.every((item) => !!item.category_hidden);
+        el.disabled = true;
+        const { error } = await sb.from(liveTitleHistoryTableName()).update({ category_hidden: hidden }).in("id", items.map((item) => item.id)).eq("channel_id", cfg.channelId);
+        if (error) { toast("카테고리 생략 설정 저장 실패: " + error.message); el.disabled = false; return; }
+        items.forEach((item) => { item.category_hidden = hidden; });
+        toast(hidden ? "카테고리를 생략했습니다." : "카테고리를 복원했습니다.");
+        render();
+      };
+    });
+    document.querySelectorAll("[data-chapter-time]").forEach((el) => {
+      el.oninput = () => {
+        const item = liveCategoryHistory.find((entry) => String(entry.id) === el.getAttribute("data-chapter-time"));
+        const seconds = parseChapterOffset(el.value);
+        if (item && seconds !== null) item.offset_seconds = seconds;
+      };
+    });
+    document.querySelectorAll("[data-chapter-title]").forEach((el) => {
+      el.oninput = () => {
+        const item = liveCategoryHistory.find((entry) => String(entry.id) === el.getAttribute("data-chapter-title"));
+        if (item) item.category_label = el.value;
+      };
+    });
+    document.querySelectorAll("[data-chapter-hidden]").forEach((el) => {
+      el.onclick = () => {
+        const item = liveCategoryHistory.find((entry) => String(entry.id) === el.getAttribute("data-chapter-hidden"));
+        if (!item) return;
+        item.hidden = !item.hidden;
+        render();
+      };
+    });
+    document.querySelectorAll("[data-chapter-save]").forEach((el) => {
+      el.onclick = async () => {
+        const id = el.getAttribute("data-chapter-save");
+        const item = liveCategoryHistory.find((entry) => String(entry.id) === id);
+        const input = document.querySelector('[data-chapter-time="' + id + '"]');
+        const titleInput = document.querySelector('[data-chapter-title="' + id + '"]');
+        const seconds = parseChapterOffset(input && input.value);
+        if (!item || seconds === null) { toast("시간은 시:분:초 형식으로 입력해 주세요."); return; }
+        const title = String((titleInput && titleInput.value) || "").trim();
+        if (!title) { toast("챕터 제목을 입력해 주세요."); return; }
+        el.disabled = true;
+        const { error } = await sb.from(liveCategoryHistoryTableName()).update({ category_label: title, offset_seconds: seconds, hidden: !!item.hidden }).eq("id", item.id).eq("channel_id", cfg.channelId);
+        if (error) { toast("챕터 저장 실패: " + error.message); el.disabled = false; return; }
+        item.offset_seconds = seconds;
+        item.category_label = title;
+        toast("챕터 설정이 저장되었습니다.");
         render();
       };
     });

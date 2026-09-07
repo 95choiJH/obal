@@ -552,8 +552,22 @@
   .schedule-title-history-panel { margin: 0 0 10px; background: rgba(0,255,163,0.035); }
   .schedule-title-history-list { margin-top: 0; gap: 10px; }
   .live-title-history-group { display: flex; flex-direction: column; gap: 7px; }
-  .live-title-history-category-row { display: flex; align-items: center; margin-bottom: -2px; }
+  .live-title-history-category-row { display: flex; align-items: center; gap: 7px; margin-bottom: -2px; }
+  .live-title-history-category-row.is-hidden { opacity: 0.58; }
+  .live-title-history-toggle { margin-left: auto; min-height: 22px; padding: 0 7px; font-size: 10px; }
   .live-title-history-inline-warning { margin-top: 0; }
+  .chapter-preview-head { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .chapter-preview { margin-top: 8px; }
+  .chapter-preview-session-wrap + .chapter-preview-session-wrap { margin-top: 10px; }
+  .chapter-preview-session { margin-bottom: 5px; color: var(--text-dim); font-size: 11px; font-weight: 900; }
+  .chapter-preview-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .chapter-preview-row { display: grid; grid-template-columns: 76px minmax(0,1fr) auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,0.025); }
+  .chapter-preview-row.is-hidden { opacity: 0.58; border-style: dashed; }
+  .chapter-preview-time { width: 76px; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--mint); font-size: 11px; font-weight: 900; font-variant-numeric: tabular-nums; text-align: center; }
+  .chapter-preview-title { min-width: 0; width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 800; }
+  .chapter-preview-row b { color: var(--text-mute); font-size: 9px; }
+  .chapter-hidden-toggle { min-width: 48px; }
+  @media (max-width: 680px) { .chapter-preview-row { grid-template-columns: 76px minmax(0,1fr) auto; } .chapter-preview-row .chapter-hidden-toggle { grid-column: 2; } }
   @media (max-width: 560px) { .settings-row { align-items: flex-start; } }
   .topbar { position: sticky; top: 0; }
   .editor-columns { min-width: 0; }
@@ -736,7 +750,7 @@
 
 <script src="config.js?v=20260712-feedback-drawer"></script>
 <script src="vendor/supabase-2.45.4.min.js"></script>
-<script src="app.js?v=20260902-title-category-history"></script>
+<script src="app.js?v=20260904-chapter-title-editing"></script>
 </body>
 </html>
 

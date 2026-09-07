@@ -26,6 +26,8 @@ create table if not exists public.live_title_history (
   category_id text,
   category_type text,
   category_poster_image_url text,
+  hidden boolean not null default false,
+  category_hidden boolean not null default false,
   started_at timestamptz,
   changed_at timestamptz not null default now(),
   created_at timestamptz not null default now()
@@ -46,8 +48,16 @@ create table if not exists public.live_category_history (
   started_at timestamptz,
   changed_at timestamptz not null default now(),
   offset_seconds integer,
+  hidden boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+alter table public.live_title_history
+  add column if not exists hidden boolean not null default false,
+  add column if not exists category_hidden boolean not null default false;
+
+alter table public.live_category_history
+  add column if not exists hidden boolean not null default false;
 
 create table if not exists public.live_session_state (
   id bigserial primary key,
@@ -118,7 +128,9 @@ grant select on public.admin_settings to anon;
 grant select, insert, update, delete on public.admin_settings to authenticated;
 grant all on public.admin_settings to service_role;
 grant select on public.live_title_history to anon, authenticated;
-grant select on public.live_category_history to anon, authenticated;
+grant update on public.live_title_history to authenticated;
+grant select on public.live_category_history to anon;
+grant select, update on public.live_category_history to authenticated;
 grant all on public.live_title_history to service_role;
 grant all on public.live_category_history to service_role;
 grant all on public.live_session_state to service_role;
@@ -185,9 +197,11 @@ drop policy if exists "admin users can delete feedback" on public.feedback;
 drop policy if exists "admin users can read admin_users" on public.admin_users;
 drop policy if exists "admin users can manage admin_settings" on public.admin_settings;
 drop policy if exists "admin users can read live title history" on public.live_title_history;
+drop policy if exists "admin users can update live title history" on public.live_title_history;
 drop policy if exists "anon can read live title history" on public.live_title_history;
 drop policy if exists "anon can read live category history" on public.live_category_history;
 drop policy if exists "authenticated can read live category history" on public.live_category_history;
+drop policy if exists "admin users can update live category history" on public.live_category_history;
 
 create policy "anon can read schedule"
   on public.schedule for select
@@ -269,6 +283,12 @@ create policy "admin users can read live title history"
   to authenticated
   using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
 
+create policy "admin users can update live title history"
+  on public.live_title_history for update
+  to authenticated
+  using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()))
+  with check (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
+
 create policy "anon can read live category history"
   on public.live_category_history for select
   to anon
@@ -278,6 +298,12 @@ create policy "authenticated can read live category history"
   on public.live_category_history for select
   to authenticated
   using (true);
+
+create policy "admin users can update live category history"
+  on public.live_category_history for update
+  to authenticated
+  using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()))
+  with check (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
 -- Durable rate-limit counters for public Edge Functions. The table is not
 -- directly accessible to browser clients; only the service-role-only RPC below
 -- can update it.
