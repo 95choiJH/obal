@@ -9,6 +9,9 @@ const LIVE_TITLE_HISTORY_TABLE = "live_title_history";
 const LIVE_CATEGORY_HISTORY_TABLE = "live_category_history";
 const LIVE_SESSION_STATE_TABLE = "live_session_state";
 const LIVE_CONTINUATION_WINDOW_MS = 2 * 60 * 60 * 1000;
+const VOD_RECENT_RETRY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const VOD_RECENT_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+const VOD_OLD_RETRY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -364,12 +367,23 @@ async function loadLiveSessionStateByKey(channelId: string, liveKey: string, sup
   return rows && rows[0] ? rows[0] : null;
 }
 
-async function loadPendingVodSessions(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
+function shouldRetryPendingVodSession(session: LiveSessionState, offsetHours: number, nowMs: number) {
+  if (!session || (session.vod_saved_at && session.vod_url)) return false;
+  const checkedMs = timestampMs(session.vod_checked_at || "");
+  if (!checkedMs) return true;
+  const endedMs = chzzkTimestampMs(session.ended_at || session.last_seen_at || session.started_at || "", offsetHours);
+  const recent = !!endedMs && nowMs - endedMs <= VOD_RECENT_RETRY_WINDOW_MS;
+  const cooldown = recent ? VOD_RECENT_RETRY_COOLDOWN_MS : VOD_OLD_RETRY_COOLDOWN_MS;
+  return nowMs - checkedMs >= cooldown;
+}
+
+async function loadPendingVodSessions(channelId: string, offsetHours: number, supabaseUrl: string, serviceRoleKey: string) {
   const query = "/rest/v1/" + LIVE_SESSION_STATE_TABLE +
     "?select=" + LIVE_SESSION_STATE_SELECT + "&channel_id=eq." + encodeURIComponent(channelId) +
-    "&is_live=eq.false&or=(vod_saved_at.is.null,vod_url.is.null)&order=ended_at.asc.nullslast,updated_at.asc&limit=8";
+    "&is_live=eq.false&or=(vod_saved_at.is.null,vod_url.is.null)&order=ended_at.desc.nullslast,updated_at.desc&limit=24";
   const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
-  return Array.isArray(rows) ? rows : [];
+  const nowMs = Date.now();
+  return Array.isArray(rows) ? rows.filter((session) => shouldRetryPendingVodSession(session, offsetHours, nowMs)).slice(0, 8) : [];
 }
 
 async function updateLiveSessionState(channelId: string, state: Partial<LiveSessionState>, supabaseUrl: string, serviceRoleKey: string) {
@@ -652,13 +666,15 @@ async function safeRecordLiveCategoryChange(
   }
 }
 
-function normalizeVodItem(item: unknown) {
+type VodItem = { url: string; label: string; liveKey?: string; startedAt?: string; endedAt?: string; videoNo?: string };
+
+function normalizeVodItem(item: unknown): VodItem | null {
   if (!item || typeof item !== "object") return null;
   const source = item as Record<string, unknown>;
   const url = String(source.url || "").trim();
   const label = String(source.label || "").trim() || "방송 다시보기";
   if (!url) return null;
-  const vod = { url, label } as Record<string, string>;
+  const vod: VodItem = { url, label };
   const liveKey = String(source.liveKey || source.live_key || "").trim();
   const startedAt = String(source.startedAt || source.started_at || "").trim();
   const endedAt = String(source.endedAt || source.ended_at || "").trim();
@@ -676,7 +692,7 @@ function sameVodUrl(a: string, b: string) {
   return !!left && !!right && left === right;
 }
 
-function numberVodLabels(vods: NonNullable<ReturnType<typeof normalizeVodItem>>[]) {
+function numberVodLabels(vods: VodItem[]): VodItem[] {
   const multiple = vods.length > 1;
   return vods.map((vod, index) => ({
     ...vod,
@@ -747,6 +763,76 @@ async function findReplayVodForSession(channelId: string, session: LiveSessionSt
   return null;
 }
 
+function recentReplayScheduleDate(video: Record<string, unknown>, detail: Record<string, unknown> | null, offsetHours: number) {
+  const liveOpenDate = detail ? String(detail.liveOpenDate || "").trim() : "";
+  const date = dateKeyFromTimestamp(liveOpenDate, offsetHours);
+  if (date) return { date, startedAt: liveOpenDate };
+  const publishMs = videoPublishMs(video, offsetHours);
+  if (!publishMs) return { date: "", startedAt: "" };
+  return { date: new Date(publishMs + offsetHours * 60 * 60 * 1000).toISOString().slice(0, 10), startedAt: "" };
+}
+
+async function appendReplayVodToSchedule(channelId: string, date: string, vod: { videoNo: string; url: string; startedAt?: string }, supabaseUrl: string, serviceRoleKey: string) {
+  if (!date || !vod.url) return { synced: false, reason: "invalid-vod" };
+  const query = "/rest/v1/schedule?select=id,vods&channel_id=eq." + encodeURIComponent(channelId) +
+    "&date=eq." + encodeURIComponent(date) + "&limit=1";
+  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as Array<{ id: number; vods: unknown }>;
+  const existing = rows && rows[0];
+  const vods = (existing && Array.isArray(existing.vods) ? existing.vods : []).map(normalizeVodItem).filter(Boolean) as VodItem[];
+  if (vods.some((item) => sameVodUrl(item.url, vod.url))) {
+    return { synced: false, reason: "already-present", url: vod.url, videoNo: vod.videoNo, date };
+  }
+  const autoVod = normalizeVodItem({
+    url: vod.url,
+    label: "방송 다시보기",
+    liveKey: vod.startedAt || "",
+    startedAt: vod.startedAt || "",
+    videoNo: vod.videoNo || "",
+  }) || { url: vod.url, label: "방송 다시보기", videoNo: vod.videoNo };
+  const nextVods = numberVodLabels([...vods, autoVod]);
+  const payload = { vods: nextVods, updated_at: new Date().toISOString() };
+  if (existing) {
+    await supabaseFetch("/rest/v1/schedule?id=eq." + encodeURIComponent(String(existing.id)), {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }, supabaseUrl, serviceRoleKey);
+  } else {
+    await supabaseFetch("/rest/v1/schedule", {
+      method: "POST",
+      body: JSON.stringify({ channel_id: channelId, date, ...payload }),
+    }, supabaseUrl, serviceRoleKey);
+  }
+  const savedVod = nextVods.find((item) => sameVodUrl(item.url, vod.url));
+  return { synced: true, reason: "added", url: vod.url, label: savedVod ? savedVod.label : autoVod.label, videoNo: vod.videoNo, date };
+}
+
+async function syncRecentReplayVodsToSchedule(channelId: string, offsetHours: number, supabaseUrl: string, serviceRoleKey: string) {
+  const results = [] as Array<Record<string, unknown>>;
+  const videos = await fetchLatestReplayVideos(channelId);
+  const nowMs = Date.now();
+  for (const video of videos) {
+    const videoNo = videoNoFromItem(video);
+    if (!videoNo) continue;
+    const publishMs = videoPublishMs(video, offsetHours);
+    if (publishMs && nowMs - publishMs > 14 * 24 * 60 * 60 * 1000) continue;
+    let detail: Record<string, unknown> | null = null;
+    try {
+      detail = await fetchVideoDetail(videoNo) as Record<string, unknown>;
+    } catch (error) {
+      console.warn("recent replay detail lookup failed", videoNo, error);
+    }
+    const replayDate = recentReplayScheduleDate(video, detail, offsetHours);
+    if (!replayDate.date) continue;
+    const result = await appendReplayVodToSchedule(channelId, replayDate.date, {
+      videoNo,
+      url: "https://chzzk.naver.com/video/" + encodeURIComponent(videoNo),
+      startedAt: replayDate.startedAt,
+    }, supabaseUrl, serviceRoleKey);
+    results.push(result);
+    if (results.filter((item) => item.synced === true).length >= 3) break;
+  }
+  return results;
+}
 async function syncReplayVodToSchedule(channelId: string, session: LiveSessionState | null, offsetHours: number, supabaseUrl: string, serviceRoleKey: string) {
   if (!session || !session.schedule_date) return { synced: false, reason: "no-ended-session" };
   if (session.vod_saved_at && session.vod_url) return { synced: false, reason: "already-saved", url: session.vod_url };
@@ -762,7 +848,7 @@ async function syncReplayVodToSchedule(channelId: string, session: LiveSessionSt
       "&date=eq." + encodeURIComponent(session.schedule_date) + "&limit=1";
     const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as Array<{ id: number; vods: unknown }>;
     const existing = rows && rows[0];
-    const vods = (existing && Array.isArray(existing.vods) ? existing.vods : []).map(normalizeVodItem).filter(Boolean) as NonNullable<ReturnType<typeof normalizeVodItem>>[];
+    const vods = (existing && Array.isArray(existing.vods) ? existing.vods : []).map(normalizeVodItem).filter(Boolean) as VodItem[];
     const alreadyExists = vods.some((item) => sameVodUrl(item.url, vod.url));
     const autoVod = normalizeVodItem({
       url: vod.url,
@@ -912,7 +998,7 @@ Deno.serve(async (req) => {
     // A newly started live must not block replay discovery for an earlier,
     // already-ended session. Pending rows are explicitly filtered to
     // is_live=false, so they are safe to process while another live is active.
-    const pendingVodSessions = await loadPendingVodSessions(channelId, supabaseUrl, serviceRoleKey);
+    const pendingVodSessions = await loadPendingVodSessions(channelId, offsetHours, supabaseUrl, serviceRoleKey);
     const vodSyncResults = [] as Array<Record<string, unknown>>;
     const seenSessionIds = new Set<string>();
     for (const pendingSession of pendingVodSessions) {
@@ -927,7 +1013,8 @@ Deno.serve(async (req) => {
         vodSyncResults.push(await syncReplayVodToSchedule(channelId, endedSession, offsetHours, supabaseUrl, serviceRoleKey));
       }
     }
-    const vodSync = vodSyncResults;
+    const recentVodBackfill = await syncRecentReplayVodsToSchedule(channelId, offsetHours, supabaseUrl, serviceRoleKey);
+    const vodSync = [...vodSyncResults, ...recentVodBackfill];
     const date = session ? session.date : rawDate;
     const liveKeyForHistory = session ? session.liveKey : (current.liveKey || "");
     const titleHistory = current.live

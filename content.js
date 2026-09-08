@@ -1,4 +1,4 @@
-﻿// content.js — 치지직 페이지에 일정 그리드를 주입
+// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -46,6 +46,7 @@
   const LIVE_START_NOTICE_KEY = "obaengal:live-start-notice";
   const CATEGORY_CHANGE_NOTICE_KEY = "obaengal:category-change-notice";
   const VOD_CATEGORY_SEEK_KEY = "obaengal:vod-category-seek";
+  const TARGET_LIVE_NOTICE_QC_KEY = "obaengal:target-live-notice-qc";
 
   function readExtensionCollapsed() {
     try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
@@ -57,14 +58,22 @@
     catch (_) { /* 저장소 접근이 제한된 페이지에서는 현재 세션 상태만 사용 */ }
   }
 
-  function readNotificationSetting(key) {
-    try { return localStorage.getItem(key) !== "0"; }
-    catch (_) { return true; }
+  function readNotificationSetting(key, defaultValue) {
+    try {
+      const value = localStorage.getItem(key);
+      if (value === null) return defaultValue !== false;
+      return value !== "0";
+    } catch (_) { return defaultValue !== false; }
   }
 
   function saveNotificationSetting(key, enabled) {
     try { localStorage.setItem(key, enabled ? "1" : "0"); }
     catch (_) { /* 저장소 접근이 제한된 페이지에서는 현재 세션 상태만 사용 */ }
+  }
+
+  function readTargetLiveNoticeQcEnabled() {
+    try { return localStorage.getItem(TARGET_LIVE_NOTICE_QC_KEY) === "1"; }
+    catch (_) { return false; }
   }
   const state = {
     data: null,          // schedule.json 전체
@@ -78,8 +87,11 @@
     monthOffset: 0,
     gameOnly: false,
     settingsOpen: false,
-    liveStartNoticeEnabled: readNotificationSetting(LIVE_START_NOTICE_KEY),
-    categoryChangeNoticeEnabled: readNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY),
+    liveStartNoticeEnabled: readNotificationSetting(LIVE_START_NOTICE_KEY, false),
+    categoryChangeNoticeEnabled: readNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY, false),
+    targetLiveNotificationsEnabled: true,
+    targetLiveNotificationsPublicEnabled: false,
+    targetLiveNotificationsQcEnabled: readTargetLiveNoticeQcEnabled(),
     selectedGame: "",
     gameRankTranslate: 0,
     noticeIndex: 0,
@@ -387,6 +399,22 @@
   let liveStartCheckInFlight = false;
   let lastLiveStartCheckAt = 0;
 
+
+  function targetLiveNotificationsAvailable() {
+    return state.targetLiveNotificationsEnabled !== false && (state.targetLiveNotificationsPublicEnabled === true || state.targetLiveNotificationsQcEnabled === true);
+  }
+
+  function targetLiveNotificationSettingsVisible() {
+    return state.targetLiveNotificationsPublicEnabled === true;
+  }
+
+  function effectiveLiveStartNoticeEnabled() {
+    return targetLiveNotificationsAvailable() && (state.targetLiveNotificationsQcEnabled === true || state.liveStartNoticeEnabled !== false);
+  }
+
+  function effectiveCategoryChangeNoticeEnabled() {
+    return targetLiveNotificationsAvailable() && (state.targetLiveNotificationsQcEnabled === true || state.categoryChangeNoticeEnabled !== false);
+  }
   function getLiveNotificationContext() {
     const currentChannelId = getChannelIdFromUrl();
     const isWatchingVod = /^\/video\/[0-9]+(?:\/|$)/i.test(location.pathname);
@@ -394,14 +422,14 @@
     return {
       eligible: !!target && (isWatchingVod || (!!currentChannelId && currentChannelId.toLowerCase() !== target.toLowerCase())),
       currentChannelId, isWatchingVod, pageVisible: document.visibilityState === "visible",
-      liveStartNoticeEnabled: state.liveStartNoticeEnabled,
-      categoryChangeNoticeEnabled: state.categoryChangeNoticeEnabled,
+      liveStartNoticeEnabled: effectiveLiveStartNoticeEnabled(),
+      categoryChangeNoticeEnabled: effectiveCategoryChangeNoticeEnabled(),
     };
   }
 
   function displayTargetLiveNotification(result) {
     if (!getLiveNotificationContext().eligible) return;
-    if (result && result.notify && (result.notificationType === "categoryChange" ? state.categoryChangeNoticeEnabled : state.liveStartNoticeEnabled)) {
+    if (result && result.notify && (result.notificationType === "categoryChange" ? effectiveCategoryChangeNoticeEnabled() : effectiveLiveStartNoticeEnabled())) {
       const suffix = result.notificationType === "categoryChange" && result.categoryName
         ? "님이 카테고리를 변경하였습니다. " + result.categoryName
         : "님이 방송을 시작했습니다";
@@ -432,8 +460,8 @@
         currentChannelId,
         isWatchingVod,
         pageVisible: document.visibilityState === "visible",
-        liveStartNoticeEnabled: state.liveStartNoticeEnabled,
-        categoryChangeNoticeEnabled: state.categoryChangeNoticeEnabled,
+        liveStartNoticeEnabled: effectiveLiveStartNoticeEnabled(),
+        categoryChangeNoticeEnabled: effectiveCategoryChangeNoticeEnabled(),
       });
       if (testScenario || (result && result.simulation)) console.info("[오뱅알 테스트] 감지 결과 (서버 방송 응답은 모의 데이터)", result);
       displayTargetLiveNotification(result);
@@ -1559,16 +1587,19 @@
     const monthToggleLabel = state.monthExpanded ? "주간 보기" : "월간 보기";
     const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
     const settingsLabel = "알림 설정";
+    const showNotificationSettings = targetLiveNotificationSettingsVisible();
+    if (!showNotificationSettings && state.settingsOpen) state.settingsOpen = false;
     const scheduleToolbarHtml =
       '<div class="cs-schedule-toolbar">' +
       (state.extensionCollapsed ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
-      '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" +
+      (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
       '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? "\u25BC" : "\u25B2") + '<span class="cs-extension-collapse-tip">' + collapseLabel + "</span></button>" +
       "</div>";
-    const settingsPanelHtml = state.settingsOpen
+    const settingsPanelHtml = showNotificationSettings && state.settingsOpen
       ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
-        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 방송 시작 알림</span><button type="button" class="cs-settings-switch' + (state.liveStartNoticeEnabled ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(state.liveStartNoticeEnabled) + '" aria-label="방송 시작 알림"></button></div>' +
-        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (state.categoryChangeNoticeEnabled ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(state.categoryChangeNoticeEnabled) + '" aria-label="카테고리 변경 알림"></button></div>' +
+        (state.targetLiveNotificationsEnabled === false ? '<div class="cs-settings-row"><span class="cs-settings-label">관리자 설정에서 타스트리머 알림이 OFF입니다</span></div>' : "") +
+        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 방송 시작 알림</span><button type="button" class="cs-settings-switch' + (effectiveLiveStartNoticeEnabled() ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(effectiveLiveStartNoticeEnabled()) + '" aria-label="방송 시작 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (effectiveCategoryChangeNoticeEnabled() ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(effectiveCategoryChangeNoticeEnabled()) + '" aria-label="카테고리 변경 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
         "</div>"
       : "";
 
@@ -4392,6 +4423,9 @@
     const res = await loadSchedule(force);
     if (res && res.ok && res.data) {
       state.data = res.data;
+      state.targetLiveNotificationsEnabled = res.data.targetLiveNotificationsEnabled !== false;
+      state.targetLiveNotificationsPublicEnabled = res.data.targetLiveNotificationsPublicEnabled === true;
+      state.targetLiveNotificationsQcEnabled = readTargetLiveNoticeQcEnabled();
       const announcedVersion = String(res.data.latestExtensionVersion || "").trim();
       if (announcedVersion && compareVersions(announcedVersion, EXTENSION_VERSION) > 0) {
         const updateCheck = await sendRuntimeMessage({

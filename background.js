@@ -839,6 +839,19 @@ function normalizeGnimtiContent(value) {
   };
 }
 
+
+function settingEnabledFromValue(value, defaultValue) {
+  if (typeof value === "boolean") return value;
+  if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "enabled")) return value.enabled === true;
+  return !!defaultValue;
+}
+
+async function fetchTargetLiveNotificationsSetting(key, defaultValue) {
+  const rows = await fetchAdminSettingsByKey(key);
+  const configuredChannelId = defaultChannelId();
+  const row = (rows || []).find((item) => String((item && item.channel_id) || "").trim() === configuredChannelId) || (rows || [])[0];
+  return settingEnabledFromValue(row && row.value, defaultValue);
+}
 async function fetchGnimtiContentByChannel() {
   const rows = await fetchAdminSettingsByKey("gnimti_content");
   const byChannel = {};
@@ -973,6 +986,17 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
 
+  let targetLiveNotificationsEnabled = true;
+  let targetLiveNotificationsPublicEnabled = false;
+  try {
+    targetLiveNotificationsEnabled = await fetchTargetLiveNotificationsSetting("target_live_notifications", true);
+  } catch (e) {
+  }
+  try {
+    targetLiveNotificationsPublicEnabled = await fetchTargetLiveNotificationsSetting("target_live_notifications_public", false);
+  } catch (e) {
+  }
+
   const directiveProfiles = await resolveDirectiveProfiles(channels);
   const gnimtiProfiles = await resolveGnimtiProfiles();
   let gnimtiContentByChannel = {};
@@ -981,7 +1005,7 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 2, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 2, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -1003,7 +1027,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

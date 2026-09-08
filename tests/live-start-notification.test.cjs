@@ -243,13 +243,13 @@ test('simulation passes through page request, background handler and toast call'
     location: { pathname: '/video/12345' }, Date, document: { visibilityState: 'visible' },
     console: { info() {}, warn() {} },
     targetChannelId: () => 'target',
-    state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true },
+    state: { liveStartNoticeEnabled: false, categoryChangeNoticeEnabled: false, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: false, targetLiveNotificationsQcEnabled: true },
     sendRuntimeMessage: msg => { messages.push(msg); return h.dispatch(msg); },
     showLiveStartToast: (...args) => shown.push(args),
   });
   vm.runInContext('let liveStartCheckInFlight = false; let lastLiveStartCheckAt = 0; const LIVE_START_CHECK_INTERVAL = 10000;\n' +
     content.slice(content.indexOf('function getChannelIdFromUrl('), content.indexOf('function sendRuntimeMessage(')) +
-    content.slice(content.indexOf('function getLiveNotificationContext('), content.indexOf('function startLiveStartWatcher(')), ctx);
+    content.slice(content.indexOf('function targetLiveNotificationsAvailable('), content.indexOf('function startLiveStartWatcher(')), ctx);
   await ctx.checkTargetLiveStartToast(true, 'recovery');
   assert.equal(messages[0].type, 'simulateTargetLiveStart');
   assert.equal(shown.length, 1);
@@ -337,7 +337,7 @@ test('content script requests and displays VOD alerts, retaining page exclusions
     const ctx = vm.createContext({
       location: { pathname }, Date, document: { visibilityState: 'visible' },
       targetChannelId: () => target,
-      state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true },
+      state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: true, targetLiveNotificationsQcEnabled: false },
       sendRuntimeMessage: async msg => {
         messages.push(msg);
         return { notify: true, notificationType: 'liveStart', channelName: 'test' };
@@ -346,7 +346,7 @@ test('content script requests and displays VOD alerts, retaining page exclusions
     });
     vm.runInContext('let liveStartCheckInFlight = false; let lastLiveStartCheckAt = 0; const LIVE_START_CHECK_INTERVAL = 10000;\n' +
       content.slice(content.indexOf('function getChannelIdFromUrl('), content.indexOf('function sendRuntimeMessage(')) +
-      content.slice(content.indexOf('function getLiveNotificationContext('), content.indexOf('function startLiveStartWatcher(')), ctx);
+      content.slice(content.indexOf('function targetLiveNotificationsAvailable('), content.indexOf('function startLiveStartWatcher(')), ctx);
     await ctx.checkTargetLiveStartToast(true);
     assert.equal(messages.length, expected ? 1 : 0, pathname);
     assert.equal(shown.length, expected ? 1 : 0, pathname);

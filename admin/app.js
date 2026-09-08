@@ -10,6 +10,8 @@
   const STRUCTURED_INFO_PREFIX = "@info-v2:";
   const UPDATE_HISTORY_PREFIX = "@update:";
   const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
+  const TARGET_LIVE_NOTIFICATIONS_SETTING_KEY = "target_live_notifications";
+  const TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY = "target_live_notifications_public";
   const GNIMTI_CONTENT_SETTING_KEY = "gnimti_content";
   const LIVE_TITLE_HISTORY_TABLE = cfg.liveTitleHistoryTableName || "live_title_history";
   const LIVE_CATEGORY_HISTORY_TABLE = cfg.liveCategoryHistoryTableName || "live_category_history";
@@ -33,7 +35,7 @@
   let deletedIds = [];    // 저장 시 삭제할 기존 일정 행 id
   let deletedInfoIds = []; // 저장 시 삭제할 기존 소식/예정 컨텐츠 행 id
   let canManage = false;
-  let adminSettings = { autoLiveCategorySync: false, gnimtiContent: emptyGnimtiContent() };
+  let adminSettings = { autoLiveCategorySync: false, targetLiveNotifications: true, targetLiveNotificationsPublic: false, gnimtiContent: emptyGnimtiContent() };
   let adminSettingsLoadError = "";
   const gameCategoryCache = new Map();
 
@@ -263,7 +265,7 @@
     liveCategoryHistoryLoadError = "";
     const { data, error } = await sb
       .from(liveCategoryHistoryTableName())
-      .select("id,channel_id,live_key,schedule_date,category_label,category_id,category_type,offset_seconds,hidden,started_at,changed_at")
+      .select("id,channel_id,live_key,schedule_date,category_label,category_id,category_type,category_poster_image_url,offset_seconds,hidden,started_at,changed_at")
       .eq("channel_id", cfg.channelId)
       .order("changed_at", { ascending: true })
       .order("id", { ascending: true })
@@ -277,20 +279,32 @@
     liveCategoryHistory = data || [];
   }
 
-  function autoLiveCategorySyncEnabledFromValue(value) {
+  function settingEnabledFromValue(value, defaultValue) {
     if (typeof value === "boolean") return value;
     if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "enabled")) return value.enabled === true;
-    return false;
+    return !!defaultValue;
+  }
+
+  function autoLiveCategorySyncEnabledFromValue(value) {
+    return settingEnabledFromValue(value, false);
+  }
+
+  function targetLiveNotificationsEnabledFromValue(value) {
+    return settingEnabledFromValue(value, true);
+  }
+
+  function targetLiveNotificationsPublicEnabledFromValue(value) {
+    return settingEnabledFromValue(value, false);
   }
 
   async function loadAdminSettings() {
-    adminSettings = { autoLiveCategorySync: false, gnimtiContent: emptyGnimtiContent() };
+    adminSettings = { autoLiveCategorySync: false, targetLiveNotifications: true, targetLiveNotificationsPublic: false, gnimtiContent: emptyGnimtiContent() };
     adminSettingsLoadError = "";
     const { data, error } = await sb
       .from(adminSettingsTableName())
       .select("key,value")
       .eq("channel_id", cfg.channelId)
-      .in("key", [AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, GNIMTI_CONTENT_SETTING_KEY]);
+      .in("key", [AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, TARGET_LIVE_NOTIFICATIONS_SETTING_KEY, TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY, GNIMTI_CONTENT_SETTING_KEY]);
     if (error) {
       adminSettingsLoadError = error.message || String(error);
       console.warn("[admin] 설정 로드 실패:", error);
@@ -298,6 +312,8 @@
     }
     (data || []).forEach((row) => {
       if (row.key === AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY) adminSettings.autoLiveCategorySync = autoLiveCategorySyncEnabledFromValue(row.value);
+      if (row.key === TARGET_LIVE_NOTIFICATIONS_SETTING_KEY) adminSettings.targetLiveNotifications = targetLiveNotificationsEnabledFromValue(row.value);
+      if (row.key === TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY) adminSettings.targetLiveNotificationsPublic = targetLiveNotificationsPublicEnabledFromValue(row.value);
       if (row.key === GNIMTI_CONTENT_SETTING_KEY) adminSettings.gnimtiContent = normalizeGnimtiContent(row.value);
     });
   }
@@ -314,6 +330,18 @@
       },
       {
         channel_id: cfg.channelId,
+        key: TARGET_LIVE_NOTIFICATIONS_SETTING_KEY,
+        value: { enabled: !!adminSettings.targetLiveNotifications },
+        updated_at: now,
+      },
+      {
+        channel_id: cfg.channelId,
+        key: TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY,
+        value: { enabled: !!adminSettings.targetLiveNotificationsPublic },
+        updated_at: now,
+      },
+      {
+        channel_id: cfg.channelId,
         key: GNIMTI_CONTENT_SETTING_KEY,
         value: normalizeGnimtiContent(adminSettings.gnimtiContent),
         updated_at: now,
@@ -322,6 +350,19 @@
     const { error } = await sb
       .from(adminSettingsTableName())
       .upsert(payload, { onConflict: "channel_id,key" });
+    if (error) throw error;
+  }
+
+  async function saveAdminSettingValue(key, value) {
+    if (adminSettingsLoadError) throw new Error(adminSettingsLoadError);
+    const { error } = await sb
+      .from(adminSettingsTableName())
+      .upsert({
+        channel_id: cfg.channelId,
+        key,
+        value,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "channel_id,key" });
     if (error) throw error;
   }
   async function loadFeedback() {
@@ -547,8 +588,10 @@
     const list = $("settingsList");
     if (!list) return;
     const enabled = !!adminSettings.autoLiveCategorySync;
+    const targetNoticeEnabled = adminSettings.targetLiveNotifications !== false;
+    const targetNoticePublicEnabled = adminSettings.targetLiveNotificationsPublic === true;
     const warning = adminSettingsLoadError
-      ? '<div class="settings-warning">설정 테이블을 확인할 수 없습니다. SQL 설정 전까지 자동 동기화는 기본 OFF로 동작합니다.</div>'
+      ? '<div class="settings-warning">설정 테이블을 확인할 수 없습니다. SQL 설정 전까지 자동 동기화는 기본 OFF, 타스트리머 알림은 관리자 기본 ON/사용자 공개 기본 OFF로 동작합니다.</div>'
       : '';
     list.innerHTML =
       '<div class="schedule-group-head"><p class="group-label">설정</p></div>' +
@@ -563,7 +606,31 @@
             '<span class="toggle' + (enabled ? ' on' : '') + '"><span class="knob"></span></span>' +
           '</button>' +
         '</div>' +
+      '</div>' +
+      '<div class="card settings-card">' +
+        '<div class="settings-row">' +
+          '<div class="settings-copy">' +
+            '<div class="settings-title">타스트리머 알림</div>' +
+            '<div class="settings-desc">관리자 QC용 알림 스위치입니다. OFF로 저장하면 QC 브라우저에서도 알림이 차단됩니다.</div>' +
+          '</div>' +
+          '<button type="button" class="settings-toggle" data-setting-target-live-notifications="1" aria-pressed="' + (targetNoticeEnabled ? 'true' : 'false') + '">' +
+            '<span class="toggle-label">' + (targetNoticeEnabled ? 'ON' : 'OFF') + '</span>' +
+            '<span class="toggle' + (targetNoticeEnabled ? ' on' : '') + '"><span class="knob"></span></span>' +
+          '</button>' +
+        '</div>' +
         warning +
+      '</div>' +
+      '<div class="card settings-card">' +
+        '<div class="settings-row">' +
+          '<div class="settings-copy">' +
+            '<div class="settings-title">타스트리머 알림 사용자 공개</div>' +
+            '<div class="settings-desc">ON으로 저장하면 프론트의 알림 설정 버튼이 노출되고 사용자가 직접 알림을 켜고 끌 수 있습니다.</div>' +
+          '</div>' +
+          '<button type="button" class="settings-toggle" data-setting-target-live-notifications-public="1" aria-pressed="' + (targetNoticePublicEnabled ? 'true' : 'false') + '">' +
+            '<span class="toggle-label">' + (targetNoticePublicEnabled ? 'ON' : 'OFF') + '</span>' +
+            '<span class="toggle' + (targetNoticePublicEnabled ? ' on' : '') + '"><span class="knob"></span></span>' +
+          '</button>' +
+        '</div>' +
       '</div>';
     bindSettingsCards();
   }
@@ -576,8 +643,52 @@
         markDirty();
       };
     });
-  }
-
+    document.querySelectorAll("[data-setting-target-live-notifications]").forEach((el) => {
+      el.onclick = async () => {
+        if (!canManage) {
+          toast("저장 권한이 없습니다. admin_users에 로그인 계정 UID를 추가하세요.");
+          return;
+        }
+        const previous = adminSettings.targetLiveNotifications !== false;
+        const next = !previous;
+        adminSettings.targetLiveNotifications = next;
+        renderSettings();
+        try {
+          await saveAdminSettingValue(TARGET_LIVE_NOTIFICATIONS_SETTING_KEY, { enabled: next });
+          original = snapshot();
+          markDirty();
+          toast("타스트리머 알림 설정을 저장했습니다.");
+        } catch (error) {
+          adminSettings.targetLiveNotifications = previous;
+          renderSettings();
+          markDirty();
+          toast("타스트리머 알림 설정 저장 실패: " + (error.message || error));
+        }
+      };
+    });
+    document.querySelectorAll("[data-setting-target-live-notifications-public]").forEach((el) => {
+      el.onclick = async () => {
+        if (!canManage) {
+          toast("저장 권한이 없습니다. admin_users에 로그인 계정 UID를 추가하세요.");
+          return;
+        }
+        const previous = adminSettings.targetLiveNotificationsPublic === true;
+        const next = !previous;
+        adminSettings.targetLiveNotificationsPublic = next;
+        renderSettings();
+        try {
+          await saveAdminSettingValue(TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY, { enabled: next });
+          original = snapshot();
+          markDirty();
+          toast("타스트리머 알림 사용자 공개 설정을 저장했습니다.");
+        } catch (error) {
+          adminSettings.targetLiveNotificationsPublic = previous;
+          renderSettings();
+          markDirty();
+          toast("타스트리머 알림 사용자 공개 저장 실패: " + (error.message || error));
+        }
+      };
+    });  }
   function gnimtiContent() {
     adminSettings.gnimtiContent = normalizeGnimtiContent(adminSettings.gnimtiContent);
     return adminSettings.gnimtiContent;
@@ -1324,6 +1435,20 @@
     return (type || "NONE") + "|" + (id || label || "NONE") + "|" + label;
   }
 
+  function titleHistoryCategoryEditHtml(item) {
+    const id = String(item && item.id || "");
+    const label = String(item && item.category_label || "").trim();
+    const type = String(item && item.category_type || "").trim().toUpperCase();
+    return '<div class="live-title-history-category-edit">' +
+      '<div class="game-autocomplete-wrap">' +
+        '<input type="text" data-title-history-category="' + esc(id) + '" value="' + esc(label) + '" placeholder="카테고리 검색 또는 직접 입력" autocomplete="off" />' +
+        '<div class="member-results game-results" data-title-history-category-results="' + esc(id) + '"></div>' +
+      '</div>' +
+      (type ? '<span class="game-result-badge">' + esc(type) + '</span>' : '') +
+      '<button type="button" class="add-btn small" data-title-history-category-save="' + esc(id) + '">카테고리 저장</button>' +
+    '</div>';
+  }
+
   function titleHistoryGroupedHtml(items, includeDate) {
     if (liveTitleHistoryLoadError) {
       return '<div class="settings-warning live-title-history-inline-warning">\uBC29\uC81C\uBAA9 \uBCC0\uACBD \uAE30\uB85D\uC744 \uBD88\uB7EC\uC62C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
@@ -1366,6 +1491,7 @@
             '<div class="live-title-history-main">' + esc(titleText) + '</div>' +
             '<div class="live-title-history-meta"><span>' + meta + '</span>' + omittedBadge + '<button type="button" class="add-btn small live-title-history-toggle" data-title-history-hidden="' + esc(item.id) + '">' + (omitted ? '복원' : '방제 생략') + '</button></div>' +
             previous +
+            titleHistoryCategoryEditHtml(item) +
           '</article>';
         }).join("");
         return '<section class="live-title-history-group">' + category + rowsHtml + '</section>';
@@ -1393,34 +1519,79 @@
     return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
   }
 
+  function scheduleDateStartIso(date) {
+    const key = String(date || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return new Date().toISOString();
+    return new Date(key + "T00:00:00+09:00").toISOString();
+  }
+
+  function chapterChangedAtIso(startedAt, offsetSeconds) {
+    const base = new Date(startedAt || "");
+    if (Number.isNaN(base.getTime())) return new Date().toISOString();
+    return new Date(base.getTime() + Math.max(0, Number(offsetSeconds) || 0) * 1000).toISOString();
+  }
+
+  function scheduleChapterSessions(date, items) {
+    const sessions = new Map();
+    const ensure = (key, startedAt) => {
+      const liveKey = String(key || "").trim() || (String(date || "").trim() + "-manual");
+      if (!sessions.has(liveKey)) sessions.set(liveKey, { liveKey, startedAt: String(startedAt || "").trim(), items: [] });
+      const session = sessions.get(liveKey);
+      if (!session.startedAt && startedAt) session.startedAt = String(startedAt || "").trim();
+      return session;
+    };
+    (items || []).forEach((item) => ensure(item.live_key || item.started_at || date, item.started_at).items.push(item));
+    const row = rows.find((entry) => String(entry && entry.date || "").trim() === String(date || "").trim());
+    (row && row.vods || []).forEach((vod) => {
+      if (vod && (vod.liveKey || vod.startedAt)) ensure(vod.liveKey || vod.startedAt, vod.startedAt);
+    });
+    if (!sessions.size) ensure(String(date || "").trim() + "-manual", scheduleDateStartIso(date));
+    return Array.from(sessions.values());
+  }
+
+  function chapterRowHtml(item) {
+    const type = String(item.category_type || "").trim().toUpperCase();
+    return '<li class="chapter-preview-row' + (item.hidden ? ' is-hidden' : '') + '">' +
+      '<input class="chapter-preview-time" type="text" inputmode="numeric" data-chapter-time="' + esc(item.id) + '" value="' + esc(formatChapterOffset(item.offset_seconds)) + '" aria-label="챕터 시작 시간" />' +
+      '<div class="game-autocomplete-wrap">' +
+        '<input class="chapter-preview-title" type="text" data-chapter-title="' + esc(item.id) + '" value="' + esc(item.category_label || "") + '" placeholder="챕터 제목" aria-label="챕터 제목" autocomplete="off" />' +
+        '<div class="member-results game-results" data-chapter-title-results="' + esc(item.id) + '"></div>' +
+      '</div>' +
+      (type ? '<b>' + esc(type) + '</b>' : '') +
+      '<button type="button" class="flag-toggle chapter-hidden-toggle' + (item.hidden ? ' on' : '') + '" data-chapter-hidden="' + esc(item.id) + '">' + (item.hidden ? '숨김됨' : '노출') + '</button>' +
+      '<button type="button" class="add-btn small" data-chapter-save="' + esc(item.id) + '">저장</button>' +
+    '</li>';
+  }
+
+  function chapterAddRowHtml(date, session) {
+    const key = String(session && session.liveKey || "").trim() || (String(date || "").trim() + "-manual");
+    return '<li class="chapter-preview-row is-new">' +
+      '<input class="chapter-preview-time" type="text" inputmode="numeric" data-chapter-new-time="' + esc(key) + '" value="00:00:00" aria-label="새 챕터 시작 시간" />' +
+      '<div class="game-autocomplete-wrap">' +
+        '<input class="chapter-preview-title" type="text" data-chapter-new-title="' + esc(key) + '" placeholder="새 챕터 제목" aria-label="새 챕터 제목" autocomplete="off" />' +
+        '<div class="member-results game-results" data-chapter-new-results="' + esc(key) + '"></div>' +
+      '</div>' +
+      '<span></span>' +
+      '<button type="button" class="add-btn small" data-chapter-add="' + esc(key) + '" data-chapter-date="' + esc(date) + '" data-chapter-started-at="' + esc(session && session.startedAt || "") + '">+ 챕터</button>' +
+    '</li>';
+  }
+
   function chapterPreviewHtml(date) {
     if (liveCategoryHistoryLoadError) {
       return '<div class="settings-warning live-title-history-inline-warning">다시보기 챕터 기록을 불러올 수 없습니다.</div>';
     }
     const items = liveCategoryHistory.filter((item) => String((item && item.schedule_date) || "").trim() === date);
-    if (!items.length) return '<div class="empty live-title-history-empty">아직 생성될 다시보기 챕터가 없습니다.</div>';
-    const sessions = new Map();
-    items.forEach((item) => {
-      const liveKey = String(item.live_key || item.started_at || date).trim();
-      if (!sessions.has(liveKey)) sessions.set(liveKey, []);
-      sessions.get(liveKey).push(item);
-    });
-    return Array.from(sessions.values()).map((session, sessionIndex) => {
+    const sessions = scheduleChapterSessions(date, items);
+    return sessions.map((session, sessionIndex) => {
       const seen = new Set();
-      const chapters = session.filter((item) => {
+      const chapters = session.items.filter((item) => {
         const key = [item.category_type || "", item.category_id || "", item.category_label || "", Number(item.offset_seconds) || 0].join("|").toLowerCase();
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       }).slice(0, 10);
-      const heading = sessions.size > 1 ? '<div class="chapter-preview-session">다시보기 ' + (sessionIndex + 1) + '</div>' : '';
-      const rowsHtml = chapters.map((item) => '<li class="chapter-preview-row' + (item.hidden ? ' is-hidden' : '') + '">' +
-        '<input class="chapter-preview-time" type="text" inputmode="numeric" data-chapter-time="' + esc(item.id) + '" value="' + esc(formatChapterOffset(item.offset_seconds)) + '" aria-label="챕터 시작 시간" />' +
-        '<input class="chapter-preview-title" type="text" data-chapter-title="' + esc(item.id) + '" value="' + esc(item.category_label || "") + '" placeholder="챕터 제목" aria-label="챕터 제목" />' +
-        (item.category_type ? '<b>' + esc(item.category_type) + '</b>' : '') +
-        '<button type="button" class="flag-toggle chapter-hidden-toggle' + (item.hidden ? ' on' : '') + '" data-chapter-hidden="' + esc(item.id) + '">' + (item.hidden ? '숨김됨' : '노출') + '</button>' +
-        '<button type="button" class="add-btn small" data-chapter-save="' + esc(item.id) + '">저장</button>' +
-      '</li>').join("");
+      const heading = sessions.length > 1 ? '<div class="chapter-preview-session">다시보기 ' + (sessionIndex + 1) + '</div>' : '';
+      const rowsHtml = chapters.map(chapterRowHtml).join("") + chapterAddRowHtml(date, session);
       return '<section class="chapter-preview-session-wrap">' + heading + '<ol class="chapter-preview-list">' + rowsHtml + '</ol></section>';
     }).join("");
   }
@@ -1825,6 +1996,140 @@
     input.addEventListener("blur", () => setTimeout(close, 160));
   }
 
+  function findDataElement(attr, value) {
+    const expected = String(value || "");
+    return Array.from(document.querySelectorAll("[" + attr + "]")).find((el) => el.getAttribute(attr) === expected) || null;
+  }
+
+  function bindCategoryHistoryAutocomplete(input, results, pickAttr, onApply, onDirectInput) {
+    if (!input || !results || input.dataset.categoryHistoryAutocompleteBound) return;
+    input.dataset.categoryHistoryAutocompleteBound = "1";
+    let timer = null;
+    let requestSeq = 0;
+    let latestOptions = [];
+    const close = () => { results.innerHTML = ""; };
+    const remember = (category) => {
+      input.dataset.selectedCategoryId = category.categoryId || "";
+      input.dataset.selectedCategoryType = category.categoryType || "";
+      input.dataset.selectedCategoryPosterImageUrl = category.posterImageUrl || category.categoryPosterImageUrl || "";
+    };
+    const apply = (item) => {
+      const category = typeof item === "string" ? { label: item } : (item || {});
+      input.dataset.applyingCategory = "1";
+      input.value = category.label || "";
+      remember(category);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      delete input.dataset.applyingCategory;
+      onApply(category);
+      close();
+      input.blur();
+    };
+    const mergeOptions = (localItems, apiItems) => {
+      const seen = new Set();
+      const options = [];
+      [...localItems, ...apiItems.map((item) => ({ source: "chzzk", ...item }))].forEach((item) => {
+        if (!item || !item.label) return;
+        const key = (item.categoryType || "") + "|" + (item.categoryId || "") + "|" + item.label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push(item);
+      });
+      return options.slice(0, 10);
+    };
+    const renderOptions = (options, statusText) => {
+      latestOptions = options;
+      if (!options.length && !statusText) { close(); return; }
+      const optionHtml = options.map((item, index) => {
+        const image = item.posterImageUrl ? '<img class="game-result-poster" src="' + esc(item.posterImageUrl) + '" alt="" />' : '<span class="game-result-poster game-result-poster-empty">' + esc((item.label || "?").charAt(0) || "?") + '</span>';
+        const badge = item.source === "chzzk" ? '<span class="game-result-badge">' + esc(item.categoryType || "CHZZK") + '</span>' : '<span class="game-result-badge local">기존</span>';
+        return '<button type="button" class="member-result game-result" ' + pickAttr + '="' + index + '">' + image + '<span class="game-result-main"><span class="game-result-label">' + esc(item.label) + '</span>' + badge + '</span></button>';
+      }).join("");
+      results.innerHTML = optionHtml + (statusText ? '<div class="member-result-empty">' + esc(statusText) + '</div>' : "");
+      results.querySelectorAll("[" + pickAttr + "]").forEach((button) => {
+        bindInstantMemberResult(button, () => apply(latestOptions[+button.getAttribute(pickAttr)]));
+      });
+    };
+    const localMatches = () => {
+      const query = input.value.trim().toLowerCase();
+      return knownGameCategoryOptions(input)
+        .filter((item) => !query || item.label.toLowerCase().includes(query))
+        .slice(0, 5);
+    };
+    const renderSearch = () => {
+      clearTimeout(timer);
+      const keyword = input.value.trim();
+      renderOptions(mergeOptions(localMatches(), []), keyword ? "치지직 카테고리 검색 중..." : "");
+      if (!keyword) return;
+      const seq = ++requestSeq;
+      timer = setTimeout(async () => {
+        const result = await searchChzzkCategories(keyword);
+        if (seq !== requestSeq) return;
+        renderOptions(mergeOptions(localMatches(), result.list), result.ok ? "" : "카테고리 검색 실패: " + result.error);
+      }, 220);
+    };
+    input.addEventListener("input", () => {
+      if (input.dataset.applyingCategory !== "1") {
+        delete input.dataset.selectedCategoryId;
+        delete input.dataset.selectedCategoryType;
+        delete input.dataset.selectedCategoryPosterImageUrl;
+      }
+      onDirectInput(input.value);
+      renderSearch();
+    });
+    input.addEventListener("focus", renderSearch);
+    input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+    input.addEventListener("blur", () => setTimeout(close, 160));
+  }
+
+  function bindTitleHistoryCategoryAutocomplete(input) {
+    const id = input.getAttribute("data-title-history-category") || "";
+    const results = findDataElement("data-title-history-category-results", id);
+    bindCategoryHistoryAutocomplete(input, results, "data-title-history-category-pick", (category) => {
+      const item = liveTitleHistory.find((entry) => String(entry.id) === id);
+      if (!item) return;
+      item.category_label = category.label || "";
+      item.category_id = category.categoryId || "";
+      item.category_type = category.categoryType || "";
+      item.category_poster_image_url = category.posterImageUrl || category.categoryPosterImageUrl || "";
+    }, (value) => {
+      const item = liveTitleHistory.find((entry) => String(entry.id) === id);
+      if (!item) return;
+      item.category_label = value;
+      if (input.dataset.applyingCategory !== "1") {
+        item.category_id = "";
+        item.category_type = "";
+        item.category_poster_image_url = "";
+      }
+    });
+  }
+
+  function bindChapterTitleAutocomplete(input) {
+    const id = input.getAttribute("data-chapter-title") || "";
+    const results = findDataElement("data-chapter-title-results", id);
+    bindCategoryHistoryAutocomplete(input, results, "data-chapter-title-pick", (category) => {
+      const item = liveCategoryHistory.find((entry) => String(entry.id) === id);
+      if (!item) return;
+      item.category_label = category.label || "";
+      item.category_id = category.categoryId || "";
+      item.category_type = category.categoryType || "";
+      item.category_poster_image_url = category.posterImageUrl || category.categoryPosterImageUrl || "";
+    }, (value) => {
+      const item = liveCategoryHistory.find((entry) => String(entry.id) === id);
+      if (!item) return;
+      item.category_label = value;
+      if (input.dataset.applyingCategory !== "1") {
+        item.category_id = "";
+        item.category_type = "";
+        item.category_poster_image_url = "";
+      }
+    });
+  }
+
+  function bindChapterNewAutocomplete(input) {
+    const key = input.getAttribute("data-chapter-new-title") || "";
+    const results = findDataElement("data-chapter-new-results", key);
+    bindCategoryHistoryAutocomplete(input, results, "data-chapter-new-pick", () => {}, () => {});
+  }
   function vodsListHtml(r, i) {
     const vods = r.vods || [];
     const itemsHtml = vods.map((v, vi) => vodItemHtml(i, v, vi)).join("");
@@ -3814,6 +4119,71 @@
         render();
       };
     });
+    document.querySelectorAll("[data-title-history-category]").forEach((el) => {
+      bindTitleHistoryCategoryAutocomplete(el);
+    });
+    document.querySelectorAll("[data-title-history-category-save]").forEach((el) => {
+      el.onclick = async () => {
+        const id = el.getAttribute("data-title-history-category-save") || "";
+        const item = liveTitleHistory.find((entry) => String(entry.id) === id);
+        const input = findDataElement("data-title-history-category", id);
+        if (!item || !input) return;
+        const label = String(input.value || "").trim();
+        const payload = {
+          category_label: label || null,
+          category_id: String(item.category_id || "").trim() || null,
+          category_type: String(item.category_type || "").trim() || null,
+          category_poster_image_url: String(item.category_poster_image_url || "").trim() || null,
+        };
+        el.disabled = true;
+        const { error } = await sb.from(liveTitleHistoryTableName()).update(payload).eq("id", item.id).eq("channel_id", cfg.channelId);
+        if (error) { toast("방제 카테고리 저장 실패: " + error.message); el.disabled = false; return; }
+        item.category_label = label;
+        item.category_id = payload.category_id || "";
+        item.category_type = payload.category_type || "";
+        item.category_poster_image_url = payload.category_poster_image_url || "";
+        toast(label ? "방제 카테고리를 저장했습니다." : "방제 카테고리를 비웠습니다.");
+        render();
+      };
+    });
+    document.querySelectorAll("[data-chapter-title]").forEach((el) => {
+      bindChapterTitleAutocomplete(el);
+    });
+    document.querySelectorAll("[data-chapter-new-title]").forEach((el) => {
+      bindChapterNewAutocomplete(el);
+    });
+    document.querySelectorAll("[data-chapter-add]").forEach((el) => {
+      el.onclick = async () => {
+        const liveKey = el.getAttribute("data-chapter-add") || "";
+        const date = el.getAttribute("data-chapter-date") || openScheduleTitleHistoryDate;
+        const startedAt = el.getAttribute("data-chapter-started-at") || scheduleDateStartIso(date);
+        const input = findDataElement("data-chapter-new-time", liveKey);
+        const titleInput = findDataElement("data-chapter-new-title", liveKey);
+        const seconds = parseChapterOffset(input && input.value);
+        if (seconds === null) { toast("시간은 시:분:초 형식으로 입력해 주세요."); return; }
+        const title = String((titleInput && titleInput.value) || "").trim();
+        if (!title) { toast("새 챕터 제목을 입력해 주세요."); return; }
+        const payload = {
+          channel_id: cfg.channelId,
+          live_key: liveKey || (String(date || "").trim() + "-manual"),
+          schedule_date: date,
+          category_label: title,
+          category_id: String(titleInput.dataset.selectedCategoryId || "").trim() || null,
+          category_type: String(titleInput.dataset.selectedCategoryType || "").trim() || null,
+          category_poster_image_url: String(titleInput.dataset.selectedCategoryPosterImageUrl || "").trim() || null,
+          started_at: startedAt,
+          changed_at: chapterChangedAtIso(startedAt, seconds),
+          offset_seconds: seconds,
+          hidden: false,
+        };
+        el.disabled = true;
+        const { data, error } = await sb.from(liveCategoryHistoryTableName()).insert(payload).select("id,channel_id,live_key,schedule_date,category_label,category_id,category_type,category_poster_image_url,offset_seconds,hidden,started_at,changed_at").single();
+        if (error) { toast("챕터 추가 실패: " + error.message); el.disabled = false; return; }
+        liveCategoryHistory.push(data || payload);
+        toast("챕터를 추가했습니다.");
+        render();
+      };
+    });
     document.querySelectorAll("[data-chapter-time]").forEach((el) => {
       el.oninput = () => {
         const item = liveCategoryHistory.find((entry) => String(entry.id) === el.getAttribute("data-chapter-time"));
@@ -3846,7 +4216,7 @@
         const title = String((titleInput && titleInput.value) || "").trim();
         if (!title) { toast("챕터 제목을 입력해 주세요."); return; }
         el.disabled = true;
-        const { error } = await sb.from(liveCategoryHistoryTableName()).update({ category_label: title, offset_seconds: seconds, hidden: !!item.hidden }).eq("id", item.id).eq("channel_id", cfg.channelId);
+        const { error } = await sb.from(liveCategoryHistoryTableName()).update({ category_label: title, category_id: String(item.category_id || "").trim() || null, category_type: String(item.category_type || "").trim() || null, category_poster_image_url: String(item.category_poster_image_url || "").trim() || null, offset_seconds: seconds, hidden: !!item.hidden }).eq("id", item.id).eq("channel_id", cfg.channelId);
         if (error) { toast("챕터 저장 실패: " + error.message); el.disabled = false; return; }
         item.offset_seconds = seconds;
         item.category_label = title;
@@ -4492,47 +4862,3 @@
 
   init();
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

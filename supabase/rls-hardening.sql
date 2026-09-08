@@ -130,7 +130,7 @@ grant all on public.admin_settings to service_role;
 grant select on public.live_title_history to anon, authenticated;
 grant update on public.live_title_history to authenticated;
 grant select on public.live_category_history to anon;
-grant select, update on public.live_category_history to authenticated;
+grant select, insert, update on public.live_category_history to authenticated;
 grant all on public.live_title_history to service_role;
 grant all on public.live_category_history to service_role;
 grant all on public.live_session_state to service_role;
@@ -196,11 +196,13 @@ drop policy if exists "admin users can update feedback status" on public.feedbac
 drop policy if exists "admin users can delete feedback" on public.feedback;
 drop policy if exists "admin users can read admin_users" on public.admin_users;
 drop policy if exists "admin users can manage admin_settings" on public.admin_settings;
+drop policy if exists "anon can read public target live notification settings" on public.admin_settings;
 drop policy if exists "admin users can read live title history" on public.live_title_history;
 drop policy if exists "admin users can update live title history" on public.live_title_history;
 drop policy if exists "anon can read live title history" on public.live_title_history;
 drop policy if exists "anon can read live category history" on public.live_category_history;
 drop policy if exists "authenticated can read live category history" on public.live_category_history;
+drop policy if exists "admin users can insert live category history" on public.live_category_history;
 drop policy if exists "admin users can update live category history" on public.live_category_history;
 
 create policy "anon can read schedule"
@@ -267,6 +269,11 @@ create policy "anon can read public gnimti settings"
   on public.admin_settings for select
   to anon
   using (key = 'gnimti_content');
+
+create policy "anon can read public target live notification settings"
+  on public.admin_settings for select
+  to anon
+  using (key in ('target_live_notifications', 'target_live_notifications_public'));
 create policy "admin users can manage admin_settings"
   on public.admin_settings for all
   to authenticated
@@ -298,6 +305,11 @@ create policy "authenticated can read live category history"
   on public.live_category_history for select
   to authenticated
   using (true);
+
+create policy "admin users can insert live category history"
+  on public.live_category_history for insert
+  to authenticated
+  with check (exists (select 1 from public.admin_users au where au.user_id = auth.uid()));
 
 create policy "admin users can update live category history"
   on public.live_category_history for update
@@ -383,10 +395,3 @@ grant execute on function public.check_edge_rate_limit(text, text, integer, inte
 
 -- Example, replace with the UUID from Supabase Auth > Users:
 -- insert into public.admin_users (user_id) values ('24e50812-e5aa-4636-8aa0-a6e15d3b7322');
-
-
-
-
-
-
-
