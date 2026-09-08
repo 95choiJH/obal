@@ -194,7 +194,7 @@
 
 
   function emptyGnimtiMember() {
-    return { name: "", position: "탑", tier: "", selfImageUrl: "", analysisImageUrl: "" };
+    return { name: "", channelId: "", channelName: "", channelImageUrl: "", position: "탑", tier: "", selfImageUrl: "", analysisImageUrl: "" };
   }
 
   function emptyGnimtiContent() {
@@ -206,7 +206,10 @@
     const source = value && typeof value === "object" ? value : {};
     const september = source.september && typeof source.september === "object" ? source.september : {};
     base.september.members = Array.isArray(september.members) ? september.members.map((member) => ({
-      name: String((member && member.name) || ""),
+      name: String((member && (member.name || member.channelName || member.channel_name)) || ""),
+      channelId: String((member && (member.channelId || member.channel_id)) || ""),
+      channelName: String((member && (member.channelName || member.channel_name || member.name)) || ""),
+      channelImageUrl: String((member && (member.channelImageUrl || member.channel_image_url)) || ""),
       position: String((member && member.position) || "탑"),
       tier: String((member && member.tier) || "").toUpperCase(),
       selfImageUrl: String((member && (member.selfImageUrl || member.self_image_url)) || ""),
@@ -743,9 +746,14 @@
   function gnimtiMemberAdminHtml(member, index) {
     const positionOptions = gnimtiPositions().map((position) => '<option value="' + esc(position) + '"' + (member.position === position ? ' selected' : '') + '>' + esc(position) + '</option>').join("");
     const tierOptions = gnimtiTiers().map((tier) => '<option value="' + esc(tier) + '"' + (member.tier === tier ? ' selected' : '') + '>' + (tier || '티어 없음') + '</option>').join("");
+    const profileLabel = member.channelId ? '<span class="game-result-badge">API</span>' : '';
     return '<div class="gnimti-member-card" data-gnimti-member-card="' + index + '">' +
       '<div class="gnimti-member-main">' +
-        '<input type="text" data-gnimti-member-field="name" data-mi="' + index + '" value="' + esc(member.name || "") + '" placeholder="스트리머명" />' +
+        '<div class="game-autocomplete-wrap gnimti-member-name-wrap">' +
+          '<input type="text" data-gnimti-member-name="' + index + '" data-mi="' + index + '" value="' + esc(member.name || member.channelName || "") + '" placeholder="스트리머명 검색" autocomplete="off" />' +
+          '<div class="member-results game-results" id="gnimti-member-results-' + index + '"></div>' +
+          profileLabel +
+        '</div>' +
         '<select data-gnimti-member-field="position" data-mi="' + index + '">' + positionOptions + '</select>' +
         '<select data-gnimti-member-field="tier" data-mi="' + index + '">' + tierOptions + '</select>' +
         '<div class="info-card-actions">' +
@@ -798,6 +806,45 @@
     return data && data.publicUrl ? data.publicUrl : "";
   }
 
+  function renderGnimtiStreamerResults(container, result, index, keyword) {
+    const data = gnimtiSeptember();
+    data.members[index] = data.members[index] || emptyGnimtiMember();
+    const list = result && result.ok ? result.list : [];
+    const manual = String(keyword || "").trim();
+    const rowsHtml = list.length ? list.slice(0, 8).map((c) =>
+      '<button type="button" class="member-result" data-gnimti-streamer-pick="' + index + '-' + esc(c.channelId) + '">' +
+        (c.channelImageUrl ? '<img src="' + esc(c.channelImageUrl) + '" alt="" />' : '<span class="member-avatar member-avatar-fallback">' + esc((c.channelName || "?").charAt(0)) + '</span>') +
+        '<span>' + esc(c.channelName) + '</span></button>'
+    ).join("") : '<div class="member-result-empty">검색 결과가 없습니다.</div>';
+    const manualHtml = manual ? '<button type="button" class="member-result member-result-manual" data-gnimti-streamer-manual="' + index + '">직접 입력: ' + esc(manual) + '</button>' : '';
+    container.innerHTML = rowsHtml + manualHtml;
+    container.querySelectorAll('[data-gnimti-streamer-pick]').forEach((button) => {
+      bindInstantMemberResult(button, () => {
+        const [, channelId] = button.getAttribute('data-gnimti-streamer-pick').split('-');
+        const chosen = list.find((c) => c.channelId === channelId);
+        if (!chosen) return;
+        const member = data.members[index] = data.members[index] || emptyGnimtiMember();
+        member.name = chosen.channelName || manual;
+        member.channelId = chosen.channelId || "";
+        member.channelName = chosen.channelName || member.name;
+        member.channelImageUrl = chosen.channelImageUrl || "";
+        renderGnimtiAdmin();
+        markDirty();
+      });
+    });
+    container.querySelectorAll('[data-gnimti-streamer-manual]').forEach((button) => {
+      bindInstantMemberResult(button, () => {
+        const member = data.members[index] = data.members[index] || emptyGnimtiMember();
+        member.name = manual;
+        member.channelId = "";
+        member.channelName = "";
+        member.channelImageUrl = "";
+        container.innerHTML = "";
+        renderGnimtiAdmin();
+        markDirty();
+      });
+    });
+  }
   function chooseGnimtiImage(target, kind, button) {
     const input = document.createElement("input");
     input.type = "file";
@@ -823,6 +870,19 @@
   }
 
   function bindGnimtiAdmin() {
+    document.querySelectorAll("[data-gnimti-member-name]").forEach((el) => {
+      const index = Number(el.getAttribute("data-mi"));
+      el.oninput = el.onchange = () => {
+        const data = gnimtiSeptember();
+        const member = data.members[index] = data.members[index] || emptyGnimtiMember();
+        member.name = el.value;
+        member.channelId = "";
+        member.channelName = "";
+        member.channelImageUrl = "";
+        markDirty();
+      };
+      bindChannelSearchInput(el, "gnimti-member-results-" + index, (container, result, keyword) => renderGnimtiStreamerResults(container, result, index, keyword));
+    });
     document.querySelectorAll("[data-gnimti-member-field]").forEach((el) => {
       const index = Number(el.getAttribute("data-mi"));
       const field = el.getAttribute("data-gnimti-member-field");

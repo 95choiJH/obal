@@ -825,7 +825,10 @@ function normalizeGnimtiContent(value) {
     version: 1,
     september: {
       members: Array.isArray(september.members) ? september.members.map((member) => ({
-        name: String((member && member.name) || "").trim(),
+        name: String((member && (member.name || member.channelName || member.channel_name)) || "").trim(),
+        channelId: String((member && (member.channelId || member.channel_id)) || "").trim(),
+        channelName: String((member && (member.channelName || member.channel_name || member.name)) || "").trim(),
+        channelImageUrl: String((member && (member.channelImageUrl || member.channel_image_url)) || "").trim(),
         position: String((member && member.position) || "").trim(),
         tier: String((member && member.tier) || "").trim().toUpperCase(),
         selfImageUrl: String((member && (member.selfImageUrl || member.self_image_url)) || "").trim(),
