@@ -277,6 +277,8 @@ async function currentLiveCategory(channelId: string, offsetHours: number) {
       encodeURIComponent(category.categoryType) + "/" + encodeURIComponent(category.categoryId) + "/info";
     const infoJson = await fetchJson(infoUrl);
     const info = infoJson && (infoJson.content || infoJson);
+    const infoLabel = String((info && (info.categoryValue || info.label || info.name || info.title)) || "").trim();
+    if (infoLabel) category.label = infoLabel;
     category.posterImageUrl = String((info && info.posterImageUrl) || category.posterImageUrl || "").trim();
   } catch (error) {
     console.warn("category poster lookup failed", error);
@@ -579,6 +581,13 @@ async function safeRecordLiveTitleChange(
 }
 
 
+function isTalkCategory(category: ReturnType<typeof normalizeGameImage>) {
+  if (!category) return false;
+  const id = String(category.categoryId || "").trim().toLowerCase();
+  const type = String(category.categoryType || "").trim().toUpperCase();
+  const label = String(category.label || "").trim().toLowerCase();
+  return id === "talk" || (type === "ETC" && label === "talk");
+}
 function sameCategoryHistoryCategory(
   row: { category_id?: string | null; category_type?: string | null; category_label?: string | null },
   category: NonNullable<ReturnType<typeof normalizeGameImage>>,
@@ -634,6 +643,7 @@ async function recordLiveCategoryChange(
       started_at: startedAt || null,
       changed_at: changedAt,
       offset_seconds: offsetSeconds,
+      hidden: isTalkCategory(category),
     }),
   }, supabaseUrl, serviceRoleKey);
 

@@ -47,6 +47,7 @@
   const CATEGORY_CHANGE_NOTICE_KEY = "obaengal:category-change-notice";
   const VOD_CATEGORY_SEEK_KEY = "obaengal:vod-category-seek";
   const TARGET_LIVE_NOTICE_QC_KEY = "obaengal:target-live-notice-qc";
+  const TITLE_HISTORY_TEST_CHANNEL_KEY = "obaengal:title-history-test-channel-id";
 
   function readExtensionCollapsed() {
     try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
@@ -229,6 +230,16 @@
     return String(cfg.channelId || "0dad8baf12a436f722faa8e5001c5011").trim();
   }
 
+  function titleHistoryTestChannelId() {
+    try {
+      const stored = String(localStorage.getItem(TITLE_HISTORY_TEST_CHANNEL_KEY) || "").trim();
+      if (/^[0-9a-f]{32}$/i.test(stored)) return stored;
+    } catch (_) {}
+    const cfg = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
+    const configured = String(cfg.titleHistoryTestChannelId || "").trim();
+    return /^[0-9a-f]{32}$/i.test(configured) ? configured : "";
+  }
+
   function findLivePlayerToastParent() {
     const fullscreen = document.fullscreenElement || document.webkitFullscreenElement;
     if (fullscreen) return { element: fullscreen, insidePlayer: true };
@@ -271,7 +282,7 @@
       host = document.createElement("div");
       host.id = "obaengal-live-start-toast-host";
       host.style.zIndex = "2147483647";
-      host.style.pointerEvents = "auto";
+      host.style.pointerEvents = "none";
       host.attachShadow({ mode: "open" });
     }
 
@@ -279,18 +290,22 @@
       const computed = window.getComputedStyle(parent);
       if (computed.position === "static") parent.style.position = "relative";
       host.style.position = "absolute";
-      host.style.top = "16px";
-      host.style.left = "50%";
-      host.style.right = "auto";
+      host.style.top = "0";
+      host.style.left = "0";
+      host.style.right = "0";
       host.style.bottom = "auto";
-      host.style.transform = "translateX(-50%)";
+      host.style.width = "100%";
+      host.style.height = "108px";
+      host.style.transform = "none";
     } else {
       host.style.position = "fixed";
-      host.style.top = "16px";
-      host.style.left = "50%";
-      host.style.right = "auto";
+      host.style.top = "0";
+      host.style.left = "0";
+      host.style.right = "0";
       host.style.bottom = "auto";
-      host.style.transform = "translateX(-50%)";
+      host.style.width = "100%";
+      host.style.height = "108px";
+      host.style.transform = "none";
     }
 
     if (host.parentNode !== parent) parent.appendChild(host);
@@ -306,7 +321,7 @@
     const category = String(categoryName || "").trim();
     host.shadowRoot.innerHTML =
       '<style>' +
-      ':host{all:initial}.toast{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(18,20,25,.98),rgba(28,31,38,.96)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#a78bfa,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f4f5f6;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.4);transform:translateX(-18px);opacity:0;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:1;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#d7dee7;font-weight:800}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{grid-column:2;appearance:none;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.09);color:#f8fafc;height:30px;padding:0 10px;font:900 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}.watch-btn:hover{border-color:rgba(125,211,252,.58);background:rgba(56,189,248,.2);color:#fff}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{grid-column:3;appearance:none;display:inline-flex;align-items:flex-start;justify-content:center;width:24px;height:24px;margin-left:-2px;border:1px solid rgba(255,255,255,.14);border-radius:7px;background:rgba(255,255,255,.06);color:#cfd8e3;font:900 17px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13);color:#fff}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateX(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateX(-18px);opacity:0}}' +
+      ':host{all:initial;display:flex;justify-content:center;align-items:flex-start;box-sizing:border-box;width:100%;height:108px;padding:16px 24px 28px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.68) 0%,rgba(0,0,0,.5) 42%,rgba(0,0,0,.2) 72%,rgba(0,0,0,0) 100%)}.toast{position:relative;pointer-events:auto;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(8,10,14,.995),rgba(18,22,29,.99)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#f8fafc,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f8fafc;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 18px 46px rgba(0,0,0,.68),0 0 0 1px rgba(255,255,255,.14),0 0 28px rgba(0,255,163,.2);transform:translateY(-14px);opacity:0;isolation:isolate;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast::before{content:"";position:absolute;left:8px;top:8px;bottom:8px;z-index:1;width:4px;border-radius:999px;background:linear-gradient(180deg,#00ffa3,#38bdf8);box-shadow:0 0 14px rgba(0,255,163,.45)}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:2;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{position:relative;z-index:1;grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#eef4fb;font-weight:850;text-shadow:0 1px 2px rgba(0,0,0,.36)}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{position:relative;z-index:1;grid-column:2;appearance:none;border:1px solid rgba(0,255,163,.45);border-radius:7px;background:#00ffa3;color:#04251d;height:30px;padding:0 10px;font:950 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 0 18px rgba(0,255,163,.22)}.watch-btn:hover{border-color:rgba(125,211,252,.75);background:#7dd3fc;color:#031923}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{position:relative;z-index:1;grid-column:3;appearance:none;display:inline-flex;align-items:flex-start;justify-content:center;width:24px;height:24px;margin-left:-2px;border:1px solid rgba(255,255,255,.26);border-radius:7px;background:rgba(255,255,255,.1);color:#f1f5f9;font:900 17px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13);color:#fff}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateY(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateY(-14px);opacity:0}}' +
       '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button><button type="button" class="close-btn" id="obaengal-live-start-close" aria-label="닫기">&times;</button></div>';
     const avatar = host.shadowRoot.getElementById("obaengal-live-start-avatar");
     if (avatar) {
@@ -631,7 +646,7 @@
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
       background: rgba(15,16,18,0.28); }
     .cs-info-layout { display: flex; flex-direction: column; gap: 10px; }
-    .cs-info-content-area { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; }
+    .cs-info-content-area { display: none !important; }
 
     .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .cs-schedule-section.cs-collapsed .cs-header { margin-bottom: 0; }
@@ -3738,7 +3753,13 @@
 
 
 
+  function isTitleHistoryTestChannelPage() {
+    const testChannelId = titleHistoryTestChannelId();
+    return !!testChannelId && !!state.channelId && state.channelId.toLowerCase() === testChannelId.toLowerCase();
+  }
+
   function getCurrentDataChannelId() {
+    if (isTitleHistoryTestChannelPage()) return targetChannelId();
     if (state.channelId) return state.channelId;
     if (typeof isChzzkVodPage === "function" && isChzzkVodPage()) return targetChannelId();
     return state.channelId;
@@ -3759,12 +3780,17 @@
     });
   }
 
-  function titleHistoryItemsForCurrentLive(list) {
+  function titleHistoryItemsForRecentBroadcast(list) {
     if (!Array.isArray(list) || !list.length) return [];
-    const latest = list.find((item) => item && String(item.liveKey || item.live_key || "").trim());
+    const latest = list.find((item) => item && (String(item.liveKey || item.live_key || "").trim() || String(item.startedAt || item.started_at || "").trim() || String(item.scheduleDate || item.schedule_date || "").trim()));
     if (!latest) return [];
     const liveKey = String(latest.liveKey || latest.live_key || "").trim();
-    return list.filter((item) => item && String(item.liveKey || item.live_key || "").trim() === liveKey);
+    if (liveKey) return list.filter((item) => item && String(item.liveKey || item.live_key || "").trim() === liveKey);
+    const startedAt = String(latest.startedAt || latest.started_at || "").trim();
+    if (startedAt) return list.filter((item) => item && sameStartedAt(String(item.startedAt || item.started_at || "").trim(), startedAt));
+    const scheduleDate = String(latest.scheduleDate || latest.schedule_date || "").trim();
+    if (scheduleDate) return list.filter((item) => item && String(item.scheduleDate || item.schedule_date || "").trim() === scheduleDate);
+    return [];
   }
 
   function currentLiveTitleText(scopedList) {
@@ -3781,22 +3807,20 @@
     const list = histories && dataChannelId ? histories[dataChannelId] : [];
     if (!Array.isArray(list)) return [];
     const vodMatch = (typeof isChzzkVodPage === "function" && isChzzkVodPage()) ? currentVodScheduleMatch() : null;
-    const scopedList = vodMatch ? titleHistoryItemsForVodMatch(list, vodMatch) : titleHistoryItemsForCurrentLive(list);
-    const currentTitleKey = vodMatch ? "" : currentLiveTitleText(scopedList).toLowerCase();
-    const seen = new Set();
-    const unique = [];
-    for (const item of scopedList) {
+    const scopedList = vodMatch ? titleHistoryItemsForVodMatch(list, vodMatch) : titleHistoryItemsForRecentBroadcast(list);
+    const currentTitleKey = vodMatch || isTitleHistoryTestChannelPage() ? "" : currentLiveTitleText(scopedList).toLowerCase();
+    const filtered = [];
+    const sorted = scopedList.slice().sort((a, b) => String(a.changedAt || '').localeCompare(String(b.changedAt || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+    for (const item of sorted) {
       if (item && (item.hidden === true || item.categoryHidden === true || item.category_hidden === true)) continue;
-      const title = String((item && item.title) || "").trim();
+      const title = String((item && item.title) || '').trim();
       if (!title) continue;
-      const key = title.replace(/\s+/g, " ").trim().toLowerCase();
+      const key = title.replace(/\s+/g, ' ').trim().toLowerCase();
       if (currentTitleKey && key === currentTitleKey) continue;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(item);
-      if (unique.length >= 80) break;
+      filtered.push(item);
+      if (filtered.length >= 80) break;
     }
-    return unique;
+    return filtered;
   }
 
   function formatTitleHistoryTime(value) {
@@ -3810,10 +3834,11 @@
   }
 
   function titleHistoryCategoryKey(item) {
-    const label = String((item && item.categoryLabel) || "").trim();
-    const id = String((item && item.categoryId) || "").trim();
-    const type = String((item && item.categoryType) || "").trim();
-    return (type || "NONE") + "|" + (id || label || "NONE") + "|" + label;
+    const label = String((item && item.categoryLabel) || '').trim();
+    if (label) return 'LABEL|' + label.toLowerCase();
+    const id = String((item && item.categoryId) || '').trim();
+    const type = String((item && item.categoryType) || '').trim();
+    return 'EMPTY|' + (id || type || 'NONE').toLowerCase();
   }
 
   function renderTitleHistoryPopover() {
@@ -3821,34 +3846,47 @@
     if (!items.length) {
       return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30">&times;</button></div><div class="oth-sheet-body"><div class="oth-empty">\uC544\uC9C1 \uAE30\uB85D\uB41C \uBC29\uC81C \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div></div>';
     }
-    const groups = new Map();
+    const groups = [];
     items.forEach((item) => {
       const key = titleHistoryCategoryKey(item);
-      if (!groups.has(key)) {
-        groups.set(key, {
-          label: String(item.categoryLabel || "\uCE74\uD14C\uACE0\uB9AC").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
-          type: String(item.categoryType || "").trim(),
-          latest: String(item.changedAt || ""),
-          items: [],
-        });
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) {
+        const type = String(item.categoryType || '').trim();
+        last.items.push(item);
+        if (String(item.changedAt || '') > last.latest) last.latest = String(item.changedAt || '');
+        if (!last.first || String(item.changedAt || '') < last.first) last.first = String(item.changedAt || '');
+        if (last.type && type && last.type !== type) last.type = '';
+        return;
       }
-      const group = groups.get(key);
-      if (String(item.changedAt || "") > group.latest) group.latest = String(item.changedAt || "");
-      group.items.push(item);
+      groups.push({
+        key,
+        label: String(item.categoryLabel || '\uCE74\uD14C\uACE0\uB9AC').trim() || '\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C',
+        type: String(item.categoryType || '').trim(),
+        latest: String(item.changedAt || ''),
+        first: String(item.changedAt || ''),
+        items: [item],
+      });
     });
-    const html = Array.from(groups.values())
-      .sort((a, b) => String(b.latest || "").localeCompare(String(a.latest || "")))
+    let previousRenderedTitle = '';
+    const html = groups
+      .sort((a, b) => String(a.first || '').localeCompare(String(b.first || '')) || String(a.latest || '').localeCompare(String(b.latest || '')))
       .map((group) => {
         const rows = group.items
           .slice()
           .sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || "")))
+          .filter((item) => {
+            const titleKey = String((item && item.title) || '').trim().toLowerCase();
+            if (titleKey && titleKey === previousRenderedTitle) return false;
+            previousRenderedTitle = titleKey;
+            return true;
+          })
           .map((item) => {
             const title = String(item.title || "").trim();
             const time = formatTitleHistoryTime(item.changedAt);
             return '<li class="oth-title-row"><span class="oth-time">' + escapeHtml(time) + '</span><span class="oth-title-text">' + escapeHtml(title) + '</span></li>';
           }).join("");
-        const type = group.type ? '<span class="oth-type">' + escapeHtml(group.type) + '</span>' : "";
-        return '<section class="oth-group"><div class="oth-category"><span>' + escapeHtml(group.label) + '</span>' + type + '</div><ol class="oth-list">' + rows + '</ol></section>';
+        if (!rows) return '';
+        return '<section class="oth-group"><div class="oth-category"><span>' + escapeHtml(group.label) + '</span></div><ol class="oth-list">' + rows + '</ol></section>';
       }).join("");
     return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30">&times;</button></div><div class="oth-sheet-body">' + html + '</div>';
   }
@@ -3861,7 +3899,7 @@
       '.oth-popover[hidden]{display:none}.oth-sheet-handle{width:42px;height:4px;margin:0 auto 10px;border-radius:999px;background:rgba(255,255,255,.24)}.oth-sheet-body{max-height:calc(min(58vh,520px) - 58px);overflow:auto;padding:0 2px 2px}.oth-sheet-body::-webkit-scrollbar{width:8px}.oth-sheet-body::-webkit-scrollbar-thumb{border-radius:999px;background:rgba(120,255,181,.36)}.oth-sheet-body::-webkit-scrollbar-track{background:rgba(255,255,255,.05)}.oth-close{appearance:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:4px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:rgba(255,255,255,.06);color:#dce7e1;font-size:18px;line-height:1;cursor:pointer}.oth-close:hover{border-color:rgba(124,255,183,.42);background:rgba(124,255,183,.12);color:#fff}@keyframes oth-popover-up{to{transform:translate(-50%,0)}}' +
       '.oth-popover-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}.oth-popover-head strong{flex:1 1 auto}' +
       '.oth-group{padding:10px 0;border-top:1px solid rgba(255,255,255,.08)}.oth-group:first-of-type{border-top:0;padding-top:0}' +
-      '.oth-category{display:flex;align-items:center;gap:7px;margin-bottom:8px;color:#91ffbd;font-size:12px;font-weight:800}.oth-type{padding:2px 5px;border-radius:999px;background:rgba(145,255,189,.13);color:#b8ffd4;font-size:10px}' +
+      '.oth-category{display:flex;align-items:center;gap:7px;margin-bottom:8px;color:#91ffbd;font-size:12px;font-weight:800}' +
       '.oth-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}.oth-title-row{display:grid;grid-template-columns:65px minmax(0,1fr);gap:8px;align-items:start;padding:7px 9px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(255,255,255,.035);font-size:12px;line-height:1.45}.oth-time{color:#8f9d97;font-variant-numeric:tabular-nums}.oth-title-text{color:#fff;font-weight:700;white-space:normal;overflow-wrap:anywhere}' +
       '.oth-empty{padding:8px 2px;color:#aeb8b3;font-size:12px;white-space:nowrap}' +
       '@media (max-width:520px){.oth-popover{width:100vw;max-width:100vw;border-left:0;border-right:0}}' +
@@ -3979,11 +4017,13 @@
       return;
     }
     const title = findTitleHistoryTitleAnchor();
-    if (!title || !getTitleHistoryItems().length) {
+    const fallbackAnchor = isTitleHistoryTestChannelPage() ? findOfflineActionAnchor() : null;
+    const anchor = title || fallbackAnchor;
+    if (!anchor || !getTitleHistoryItems().length) {
       removeTitleHistoryHost();
       return;
     }
-    if (state.titleHistoryHost && state.titleHistoryHost.isConnected && state.titleHistoryHost.previousElementSibling === title) {
+    if (state.titleHistoryHost && state.titleHistoryHost.isConnected && state.titleHistoryHost.previousElementSibling === anchor) {
       return;
     }
     removeTitleHistoryHost();
@@ -4011,7 +4051,7 @@
       closeTitleHistoryPopover();
     };
     document.addEventListener("mousedown", state.titleHistoryOutsideHandler, true);
-    title.insertAdjacentElement("afterend", host);
+    anchor.insertAdjacentElement("afterend", host);
     state.titleHistoryHost = host;
   }
 
@@ -4054,6 +4094,31 @@
     return String((item && (item.liveKey || item.live_key)) || "").trim();
   }
 
+  function categoryHistoryStartedAt(item) {
+    return String((item && (item.startedAt || item.started_at)) || "").trim();
+  }
+
+  function vodStartedAt(vod) {
+    return String((vod && (vod.startedAt || vod.started_at)) || "").trim();
+  }
+
+  function timestampMsValue(value) {
+    const ms = Date.parse(String(value || "").trim());
+    return Number.isFinite(ms) ? ms : 0;
+  }
+
+  function sameStartedAt(a, b) {
+    const left = timestampMsValue(a);
+    const right = timestampMsValue(b);
+    return !!left && !!right && Math.abs(left - right) <= 10 * 60 * 1000;
+  }
+
+  function categoryItemsForVodStartedAt(items, vod) {
+    const startedAt = vodStartedAt(vod);
+    if (!startedAt) return [];
+    return items.filter((item) => sameStartedAt(categoryHistoryStartedAt(item), startedAt));
+  }
+
   function categoryGroupsByLiveKey(items) {
     const groups = [];
     const byKey = new Map();
@@ -4092,10 +4157,10 @@
     const vod = vodMatch && vodMatch.vod;
     const liveKey = liveKeyFromVod(vod);
     const scheduleDate = String((scheduleEntry && scheduleEntry.date) || "").trim();
-    if (!items.length || (!liveKey && !scheduleDate)) return [];
-    const scopedGroup = liveKey
-      ? items.filter((item) => item && categoryHistoryLiveKey(item) === liveKey)
-      : dateCategoryGroupForVod(items, vodMatch, scheduleDate);
+    if (!items.length || (!liveKey && !vodStartedAt(vod) && !scheduleDate)) return [];
+    const liveKeyGroup = liveKey ? items.filter((item) => item && categoryHistoryLiveKey(item) === liveKey) : [];
+    const startedAtGroup = liveKeyGroup.length ? [] : categoryItemsForVodStartedAt(items, vod);
+    const scopedGroup = liveKeyGroup.length ? liveKeyGroup : (startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate));
     const seen = new Set();
     return scopedGroup.slice().sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
       const key = String(item.categoryType || "") + "|" + String(item.categoryId || "") + "|" + String(item.categoryLabel || "").trim().toLowerCase() + "|" + String(item.offsetSeconds ?? "");

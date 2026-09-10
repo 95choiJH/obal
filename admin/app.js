@@ -1489,23 +1489,62 @@
   }
 
   function titleHistoryCategoryKey(item) {
-    const label = String((item && item.category_label) || "").trim();
-    const id = String((item && item.category_id) || "").trim();
-    const type = String((item && item.category_type) || "").trim();
-    return (type || "NONE") + "|" + (id || label || "NONE") + "|" + label;
+    const label = String((item && item.category_label) || '').trim();
+    if (label) return 'LABEL|' + label.toLowerCase();
+    const id = String((item && item.category_id) || '').trim();
+    const type = String((item && item.category_type) || '').trim();
+    return 'EMPTY|' + (id || type || 'NONE').toLowerCase();
   }
 
-  function titleHistoryCategoryEditHtml(item) {
-    const id = String(item && item.id || "");
-    const label = String(item && item.category_label || "").trim();
-    const type = String(item && item.category_type || "").trim().toUpperCase();
+  function titleHistoryConsecutiveGroups(items) {
+    const sorted = (items || [])
+      .slice()
+      .sort((a, b) => String(a.changed_at || '').localeCompare(String(b.changed_at || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+    const groups = [];
+    sorted.forEach((item) => {
+      const key = titleHistoryCategoryKey(item);
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) {
+        const type = String(item.category_type || '').trim();
+        last.items.push(item);
+        if (last.type && type && last.type !== type) last.type = '';
+        return;
+      }
+      groups.push({
+        key,
+        label: String(item.category_label || '').trim() || '\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C',
+        type: String(item.category_type || '').trim(),
+        items: [item],
+      });
+    });
+    groups.forEach((group) => {
+      group.hidden = group.items.every((item) => !!item.category_hidden) || group.items.every((item) => !!item.hidden);
+    });
+    return groups;
+  }
+
+  function titleHistoryGroupItemsForItem(target) {
+    if (!target) return [];
+    const scheduleDate = String((target && target.schedule_date) || '').trim();
+    const scoped = scheduleDate
+      ? liveTitleHistory.filter((item) => String((item && item.schedule_date) || '').trim() === scheduleDate)
+      : liveTitleHistory;
+    const groups = titleHistoryConsecutiveGroups(scoped);
+    const targetId = String(target.id || '');
+    const group = groups.find((entry) => entry.items.some((item) => String(item.id || '') === targetId));
+    return group ? group.items : [];
+  }
+
+
+  function titleHistoryCategoryEditHtml(group, ids) {
+    const key = String(ids || "");
+    const label = String((group && group.label) || "").trim();
     return '<div class="live-title-history-category-edit">' +
       '<div class="game-autocomplete-wrap">' +
-        '<input type="text" data-title-history-category="' + esc(id) + '" value="' + esc(label) + '" placeholder="카테고리 검색 또는 직접 입력" autocomplete="off" />' +
-        '<div class="member-results game-results" data-title-history-category-results="' + esc(id) + '"></div>' +
+        '<input type="text" data-title-history-category="' + esc(key) + '" value="' + esc(label) + '" placeholder="카테고리 검색 또는 직접 입력" autocomplete="off" />' +
+        '<div class="member-results game-results" data-title-history-category-results="' + esc(key) + '"></div>' +
       '</div>' +
-      (type ? '<span class="game-result-badge">' + esc(type) + '</span>' : '') +
-      '<button type="button" class="add-btn small" data-title-history-category-save="' + esc(id) + '">카테고리 저장</button>' +
+      '<button type="button" class="add-btn small" data-title-history-category-save="' + esc(key) + '">카테고리 저장</button>' +
     '</div>';
   }
 
@@ -1516,46 +1555,34 @@
     if (!items.length) {
       return '<div class="empty live-title-history-empty">\uC774 \uC77C\uC815\uC5D0 \uAE30\uB85D\uB41C \uC774\uC804 \uBC29\uC81C\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
     }
-    const groups = new Map();
-    items.forEach((item) => {
-      const key = titleHistoryCategoryKey(item);
-      if (!groups.has(key)) {
-        groups.set(key, {
-          key,
-          label: String(item.category_label || "").trim() || "\uCE74\uD14C\uACE0\uB9AC \uC5C6\uC74C",
-          type: String(item.category_type || "").trim(),
-          hidden: !!item.category_hidden,
-          latest: String(item.changed_at || ""),
-          items: [],
-        });
-      }
-      const group = groups.get(key);
-      if (String(item.changed_at || "") > group.latest) group.latest = String(item.changed_at || "");
-      group.items.push(item);
-    });
-    return Array.from(groups.values())
-      .sort((a, b) => String(b.latest || "").localeCompare(String(a.latest || "")))
-      .map((group) => {
-        const category = '<div class="live-title-history-category-row' + (group.hidden ? ' is-hidden' : '') + '"><span class="live-title-history-category">' + esc(group.label) + (group.type ? ' <b>' + esc(group.type) + '</b>' : '') + '</span><button type="button" class="add-btn small live-title-history-toggle" data-title-category-hidden="' + esc(group.key) + '">' + (group.hidden ? '복원' : '카테고리 생략') + '</button></div>';
-        const seenTitles = new Set();
-        const rowsHtml = group.items.map((item) => {
-          const titleText = String((item && item.title) || "").trim();
-          const titleKey = titleText.toLowerCase();
-          const duplicate = !!titleKey && seenTitles.has(titleKey);
-          const omitted = !!item.hidden;
-          if (titleKey) seenTitles.add(titleKey);
-          const previous = item.previous_title ? '<div class="live-title-history-prev">이전: ' + esc(item.previous_title) + '</div>' : '';
-          const meta = (includeDate ? esc(item.schedule_date || '') + ' · ' : '') + esc(formatHistoryDateTime(item.changed_at));
-          const omittedBadge = (omitted || duplicate) ? '<span class="live-title-history-omitted">' + (omitted ? '생략됨' : '중복') + '</span>' : '';
-          return '<article class="live-title-history-item' + (omitted ? ' is-omitted' : '') + '">' +
-            '<div class="live-title-history-main">' + esc(titleText) + '</div>' +
-            '<div class="live-title-history-meta"><span>' + meta + '</span>' + omittedBadge + '<button type="button" class="add-btn small live-title-history-toggle" data-title-history-hidden="' + esc(item.id) + '">' + (omitted ? '복원' : '방제 생략') + '</button></div>' +
-            previous +
-            titleHistoryCategoryEditHtml(item) +
-          '</article>';
-        }).join("");
-        return '<section class="live-title-history-group">' + category + rowsHtml + '</section>';
+ const groups = titleHistoryConsecutiveGroups(items);
+    let previousFrontTitle = "";
+    return groups.map((group) => {
+      const ids = group.items.map((item) => String(item.id || "")).filter(Boolean).join(",");
+      const renderedItems = group.items.map((item) => {
+        const titleText = String((item && item.title) || "").trim();
+        const titleKey = titleText.replace(/\s+/g, " ").trim().toLowerCase();
+        const frontOmitted = !item.hidden && !!titleKey && titleKey === previousFrontTitle;
+        if (!item.hidden && titleKey && !frontOmitted) previousFrontTitle = titleKey;
+        return { item, titleText, frontOmitted, omitted: !!item.hidden || frontOmitted };
+      });
+      const groupHidden = group.hidden || (!!renderedItems.length && renderedItems.every((entry) => entry.omitted));
+      const rowsHtml = renderedItems.map((entry) => {
+        const item = entry.item;
+        const titleText = entry.titleText;
+        const omitted = entry.omitted;
+        const previous = item.previous_title ? '<div class="live-title-history-prev">이전: ' + esc(item.previous_title) + '</div>' : '';
+        const meta = (includeDate ? esc(item.schedule_date || '') + ' · ' : '') + esc(formatHistoryDateTime(item.changed_at));
+        const omittedBadge = item.hidden ? '<span class="live-title-history-omitted">생략됨</span>' : (entry.frontOmitted ? '<span class="live-title-history-omitted">프론트 생략</span>' : '');
+        return '<article class="live-title-history-item' + (omitted ? ' is-omitted' : '') + '">' +
+          '<div class="live-title-history-main">' + esc(titleText) + '</div>' +
+          '<div class="live-title-history-meta"><span>' + meta + '</span>' + omittedBadge + '<button type="button" class="add-btn small live-title-history-toggle" data-title-history-hidden="' + esc(item.id) + '">' + (item.hidden ? '복원' : '방제 생략') + '</button></div>' +
+          previous +
+        '</article>';
       }).join("");
+      const category = '<div class="live-title-history-category-row' + (groupHidden ? ' is-hidden' : '') + '">' + titleHistoryCategoryEditHtml(group, ids) + '<button type="button" class="add-btn small live-title-history-toggle" data-title-category-hidden="' + esc(ids) + '">' + (group.hidden ? '복원' : '카테고리 생략') + '</button></div>';
+      return '<section class="live-title-history-group">' + category + rowsHtml + '</section>';
+    }).join("");
   }
 
   function scheduleTitleHistoryButtonHtml(r, i) {
@@ -1591,13 +1618,45 @@
     return new Date(base.getTime() + Math.max(0, Number(offsetSeconds) || 0) * 1000).toISOString();
   }
 
+  function isTalkCategoryValue(label, categoryId, categoryType) {
+    const id = String(categoryId || "").trim().toLowerCase();
+    const type = String(categoryType || "").trim().toUpperCase();
+    const name = String(label || "").trim().toLowerCase();
+    return id === "talk" || (type === "ETC" && name === "talk");
+  }
+
+  function timestampMsValue(value) {
+    const ms = Date.parse(String(value || "").trim());
+    return Number.isFinite(ms) ? ms : 0;
+  }
+
+  function sameChapterStartedAt(a, b) {
+    const left = timestampMsValue(a);
+    const right = timestampMsValue(b);
+    return !!left && !!right && Math.abs(left - right) <= 10 * 60 * 1000;
+  }
+
+  function findChapterSessionByStartedAt(sessions, startedAt) {
+    if (!startedAt) return null;
+    for (const session of sessions.values()) {
+      if (sameChapterStartedAt(session.startedAt, startedAt)) return session;
+    }
+    return null;
+  }
+
   function scheduleChapterSessions(date, items) {
     const sessions = new Map();
     const ensure = (key, startedAt) => {
+      const rawStartedAt = String(startedAt || "").trim();
+      const matched = findChapterSessionByStartedAt(sessions, rawStartedAt);
+      if (matched) {
+        if (!matched.startedAt && rawStartedAt) matched.startedAt = rawStartedAt;
+        return matched;
+      }
       const liveKey = String(key || "").trim() || (String(date || "").trim() + "-manual");
-      if (!sessions.has(liveKey)) sessions.set(liveKey, { liveKey, startedAt: String(startedAt || "").trim(), items: [] });
+      if (!sessions.has(liveKey)) sessions.set(liveKey, { liveKey, startedAt: rawStartedAt, items: [] });
       const session = sessions.get(liveKey);
-      if (!session.startedAt && startedAt) session.startedAt = String(startedAt || "").trim();
+      if (!session.startedAt && rawStartedAt) session.startedAt = rawStartedAt;
       return session;
     };
     (items || []).forEach((item) => ensure(item.live_key || item.started_at || date, item.started_at).items.push(item));
@@ -1942,13 +2001,11 @@
 
   function partCategorySelectorHtml(i, pi, part) {
     const label = partCategoryLabel(part);
-    const type = String(part && part.categoryType || "").trim().toUpperCase();
     const poster = String(part && part.categoryPosterImageUrl || "").trim();
     const selected = label
       ? '<div class="part-category-selected">' +
         (poster ? '<img class="game-result-poster" src="' + esc(poster) + '" alt="" />' : '<span class="game-result-poster game-result-poster-empty">' + esc(label.charAt(0) || "?") + '</span>') +
         '<span class="part-category-selected-label">' + esc(label) + '</span>' +
-        (type ? '<span class="game-result-badge">' + esc(type) + '</span>' : '') +
         '<button type="button" class="member-chip-del" data-delpartcategory="' + i + '-' + pi + '" aria-label="카테고리 제거">×</button>' +
       '</div>'
       : '';
@@ -2142,24 +2199,28 @@
   }
 
   function bindTitleHistoryCategoryAutocomplete(input) {
-    const id = input.getAttribute("data-title-history-category") || "";
-    const results = findDataElement("data-title-history-category-results", id);
+    const ids = String(input.getAttribute("data-title-history-category") || "").split(",").map((id) => id.trim()).filter(Boolean);
+    const key = ids.join(",");
+    const results = findDataElement("data-title-history-category-results", key);
+    const applyToItems = (updater) => {
+      liveTitleHistory.filter((entry) => ids.includes(String(entry.id))).forEach(updater);
+    };
     bindCategoryHistoryAutocomplete(input, results, "data-title-history-category-pick", (category) => {
-      const item = liveTitleHistory.find((entry) => String(entry.id) === id);
-      if (!item) return;
-      item.category_label = category.label || "";
-      item.category_id = category.categoryId || "";
-      item.category_type = category.categoryType || "";
-      item.category_poster_image_url = category.posterImageUrl || category.categoryPosterImageUrl || "";
+      applyToItems((item) => {
+        item.category_label = category.label || "";
+        item.category_id = category.categoryId || "";
+        item.category_type = category.categoryType || "";
+        item.category_poster_image_url = category.posterImageUrl || category.categoryPosterImageUrl || "";
+      });
     }, (value) => {
-      const item = liveTitleHistory.find((entry) => String(entry.id) === id);
-      if (!item) return;
-      item.category_label = value;
-      if (input.dataset.applyingCategory !== "1") {
-        item.category_id = "";
-        item.category_type = "";
-        item.category_poster_image_url = "";
-      }
+      applyToItems((item) => {
+        item.category_label = value;
+        if (input.dataset.applyingCategory !== "1") {
+          item.category_id = "";
+          item.category_type = "";
+          item.category_poster_image_url = "";
+        }
+      });
     });
   }
 
@@ -4161,14 +4222,22 @@
         const { error } = await sb.from(liveTitleHistoryTableName()).update({ hidden }).eq("id", item.id).eq("channel_id", cfg.channelId);
         if (error) { toast("방제 생략 설정 저장 실패: " + error.message); el.disabled = false; return; }
         item.hidden = hidden;
+ const groupItems = titleHistoryGroupItemsForItem(item);
+ const categoryHidden = groupItems.length ? groupItems.every((entry) => !!entry.hidden) : false;
+ const categoryItemsToUpdate = groupItems.filter((entry) => !!entry.category_hidden !== categoryHidden);
+ if (categoryItemsToUpdate.length) {
+ const { error: categoryError } = await sb.from(liveTitleHistoryTableName()).update({ category_hidden: categoryHidden }).in('id', categoryItemsToUpdate.map((entry) => entry.id)).eq('channel_id', cfg.channelId);
+          if (categoryError) { toast('카테고리 생략 자동 설정 실패: ' + categoryError.message); el.disabled = false; return; }
+ categoryItemsToUpdate.forEach((entry) => { entry.category_hidden = categoryHidden; });
+ }
         toast(hidden ? "이전 방제를 생략했습니다." : "이전 방제를 복원했습니다.");
         render();
       };
     });
     document.querySelectorAll("[data-title-category-hidden]").forEach((el) => {
       el.onclick = async () => {
-        const key = el.getAttribute("data-title-category-hidden") || "";
-        const items = titleHistoryItemsForDate(openScheduleTitleHistoryDate).filter((item) => titleHistoryCategoryKey(item) === key);
+        const ids = String(el.getAttribute("data-title-category-hidden") || "").split(",").map((id) => id.trim()).filter(Boolean);
+        const items = liveTitleHistory.filter((entry) => ids.includes(String(entry.id)));
         if (!items.length) return;
         const hidden = !items.every((item) => !!item.category_hidden);
         el.disabled = true;
@@ -4184,24 +4253,27 @@
     });
     document.querySelectorAll("[data-title-history-category-save]").forEach((el) => {
       el.onclick = async () => {
-        const id = el.getAttribute("data-title-history-category-save") || "";
-        const item = liveTitleHistory.find((entry) => String(entry.id) === id);
-        const input = findDataElement("data-title-history-category", id);
-        if (!item || !input) return;
+        const ids = String(el.getAttribute("data-title-history-category-save") || "").split(",").map((id) => id.trim()).filter(Boolean);
+        const items = liveTitleHistory.filter((entry) => ids.includes(String(entry.id)));
+        const input = findDataElement("data-title-history-category", ids.join(","));
+        if (!items.length || !input) return;
         const label = String(input.value || "").trim();
+        const first = items[0] || {};
         const payload = {
           category_label: label || null,
-          category_id: String(item.category_id || "").trim() || null,
-          category_type: String(item.category_type || "").trim() || null,
-          category_poster_image_url: String(item.category_poster_image_url || "").trim() || null,
+          category_id: String(first.category_id || "").trim() || null,
+          category_type: String(first.category_type || "").trim() || null,
+          category_poster_image_url: String(first.category_poster_image_url || "").trim() || null,
         };
         el.disabled = true;
-        const { error } = await sb.from(liveTitleHistoryTableName()).update(payload).eq("id", item.id).eq("channel_id", cfg.channelId);
+        const { error } = await sb.from(liveTitleHistoryTableName()).update(payload).in("id", items.map((item) => item.id)).eq("channel_id", cfg.channelId);
         if (error) { toast("방제 카테고리 저장 실패: " + error.message); el.disabled = false; return; }
-        item.category_label = label;
-        item.category_id = payload.category_id || "";
-        item.category_type = payload.category_type || "";
-        item.category_poster_image_url = payload.category_poster_image_url || "";
+        items.forEach((item) => {
+          item.category_label = label;
+          item.category_id = payload.category_id || "";
+          item.category_type = payload.category_type || "";
+          item.category_poster_image_url = payload.category_poster_image_url || "";
+        });
         toast(label ? "방제 카테고리를 저장했습니다." : "방제 카테고리를 비웠습니다.");
         render();
       };
@@ -4234,7 +4306,7 @@
           started_at: startedAt,
           changed_at: chapterChangedAtIso(startedAt, seconds),
           offset_seconds: seconds,
-          hidden: false,
+          hidden: isTalkCategoryValue(title, titleInput.dataset.selectedCategoryId, titleInput.dataset.selectedCategoryType),
         };
         el.disabled = true;
         const { data, error } = await sb.from(liveCategoryHistoryTableName()).insert(payload).select("id,channel_id,live_key,schedule_date,category_label,category_id,category_type,category_poster_image_url,offset_seconds,hidden,started_at,changed_at").single();
