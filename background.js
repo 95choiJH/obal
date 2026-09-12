@@ -251,99 +251,15 @@ async function checkTargetLiveStart(currentChannelId, options, dependencies = {
   };
 }
 
-let multiTabLiveSimulation = null;
-
-function restoreMultiTabLiveSimulation(record) {
-  const { startsAt, expiresAt } = record;
-  let saved = record.saved || {};
-  return {
-    startsAt, expiresAt,
-    dependencies: {
-      storageGet: async () => ({ ...saved }),
-      storageSet: async (values) => {
-        saved = { ...saved, ...values };
-        await storageSet({ targetLiveSimulation: { startsAt, expiresAt, saved } });
-      },
-      fetchTargetChannelProfile,
-      fetchTargetLiveStatus: async () => normalizeLiveStatusPayload({ content: Date.now() < startsAt
-        ? { status: "CLOSE" }
-        : { status: "OPEN", liveId: "test-multi-tab-" + startsAt, openDate: new Date(startsAt).toISOString(),
-          liveTitle: "여러 탭 알림 테스트", categoryType: "GAME", liveCategory: "minecraft", liveCategoryValue: "마인크래프트" } }),
-    },
-  };
-}
-
-async function loadMultiTabLiveSimulation() {
-  if (!multiTabLiveSimulation) {
-    const values = await storageGet(["targetLiveSimulation"]);
-    const record = values.targetLiveSimulation;
-    if (!multiTabLiveSimulation && record && record.expiresAt > Date.now()) multiTabLiveSimulation = restoreMultiTabLiveSimulation(record);
-  }
-  return multiTabLiveSimulation;
-}
-
-async function startMultiTabLiveSimulation() {
-  await loadMultiTabLiveSimulation();
-  const now = Date.now();
-  if (multiTabLiveSimulation && now < multiTabLiveSimulation.expiresAt) return multiTabLiveSimulation;
-  const record = { startsAt: now + 15000, expiresAt: now + 60000, saved: {} };
-  multiTabLiveSimulation = restoreMultiTabLiveSimulation(record);
-  await storageSet({ targetLiveSimulation: record });
-  return multiTabLiveSimulation;
-}
-
 const liveTabCheckQueues = new Map();
 function checkTargetLiveStartForPage(currentChannelId, options) {
   const key = options && options.notificationTabId;
   const previous = liveTabCheckQueues.get(key) || Promise.resolve();
-  const request = previous.catch(() => {}).then(() => checkTargetLiveStartForPageUnlocked(currentChannelId, options));
+  const request = previous.catch(() => {}).then(() => checkTargetLiveStart(currentChannelId, options));
   liveTabCheckQueues.set(key, request);
   const cleanup = () => { if (liveTabCheckQueues.get(key) === request) liveTabCheckQueues.delete(key); };
   request.then(cleanup, cleanup);
   return request;
-}
-
-async function checkTargetLiveStartForPageUnlocked(currentChannelId, options) {
-  const session = await loadMultiTabLiveSimulation();
-  if (!session || Date.now() >= session.expiresAt) {
-    multiTabLiveSimulation = null;
-    return checkTargetLiveStart(currentChannelId, options);
-  }
-  const result = await checkTargetLiveStart(currentChannelId, options, session.dependencies);
-  return { ...result, simulation: { scenario: "multi-tab", startsAt: session.startsAt, expiresAt: session.expiresAt } };
-}
-
-async function simulateTargetLiveStart(currentChannelId, options, scenario) {
-  if (scenario === "multi-tab") {
-    await startMultiTabLiveSimulation();
-    return checkTargetLiveStartForPage(currentChannelId, options);
-  }
-  // 실제 감지 함수를 사용하되, 테스트 상태와 응답은 이 호출 안에서만 유지한다.
-  let saved = {};
-  let payload;
-  const dependencies = {
-    storageGet: async () => saved,
-    storageSet: async (values) => { saved = { ...saved, ...values }; },
-    fetchTargetLiveStatus: async () => normalizeLiveStatusPayload(payload),
-    fetchTargetChannelProfile,
-  };
-  const live = {
-    status: "OPEN", liveId: "test-new-live", openDate: new Date().toISOString(),
-    liveTitle: "방송 시작 감지 테스트", categoryType: "GAME",
-    liveCategory: "minecraft", liveCategoryValue: "마인크래프트",
-  };
-  payload = { content: scenario === "recovery"
-    ? { ...live, liveId: "test-old-live", openDate: new Date(Date.now() - 86400000).toISOString() }
-    : { status: "CLOSE" } };
-  const before = await checkTargetLiveStart(currentChannelId, options, dependencies);
-  payload = { content: live };
-  const started = await checkTargetLiveStart(currentChannelId, options, dependencies);
-  const repeated = await checkTargetLiveStart(currentChannelId, options, dependencies);
-  return {
-    ...started,
-    simulation: { scenario: scenario === "recovery" ? "recovery" : "offline-to-live",
-      beforeNotify: before.notify, startedNotify: started.notify, repeatedNotify: repeated.notify },
-  };
 }
 
 function sendLiveTabMessage(tabId, message) {
@@ -358,7 +274,7 @@ let desktopNoticeQueue = Promise.resolve();
 function notifyHiddenLiveTab(result, options) {
   if (!result || !result.notify || options.pageVisible !== false || !api.notifications) return Promise.resolve();
   const task = desktopNoticeQueue.catch(() => {}).then(async () => {
-    const key = [result.simulation ? "test" : "live", result.liveKey, result.notificationType, result.categoryName].join(":");
+    const key = ["live", result.liveKey, result.notificationType, result.categoryName].join(":");
     const saved = await storageGet(["lastDesktopLiveNotice"]);
     const previous = saved.lastDesktopLiveNotice;
     if (previous && previous.key === key && Date.now() - previous.at < 180000) return;
@@ -394,7 +310,7 @@ async function pollLiveNotificationTabs() {
         const options = { ...context, notificationTabId: tab.id };
         const result = await checkTargetLiveStartForPage(context.currentChannelId, options);
         await notifyHiddenLiveTab(result, options).catch(error => console.warn("[오뱅알] 데스크톱 알림 실패", error));
-        if (result.notify || result.simulation) await sendLiveTabMessage(tab.id, { type: "targetLiveNotification", result });
+        if (result.notify) await sendLiveTabMessage(tab.id, { type: "targetLiveNotification", result });
       } catch (_) { /* 확장 미적용 페이지와 닫힌 탭은 건너뛴다. */ }
     }));
   } finally {
@@ -1121,16 +1037,7 @@ if (api.notifications && api.notifications.onClicked) {
 }
 
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg && msg.type === "getTargetChannelProfile") {
-    fetchTargetChannelProfile().then((profile) => {
-      sendResponse({ ok: true, ...(profile || {}) });
-    }).catch((error) => {
-      sendResponse({ ok: false, channelName: targetChannelName(), channelImageUrl: "", error: String((error && error.message) || error) });
-    });
-    return true;
-  }
-  if (msg && (msg.type === "checkTargetLiveStart" || msg.type === "simulateTargetLiveStart")) {
-    const check = msg.type === "simulateTargetLiveStart" ? simulateTargetLiveStart : checkTargetLiveStartForPage;
+  if (msg && msg.type === "checkTargetLiveStart") {
     const options = {
       notificationTabId: _sender && _sender.tab && _sender.tab.id,
       pageVisible: msg.pageVisible !== false,
@@ -1138,9 +1045,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       liveStartNoticeEnabled: msg.liveStartNoticeEnabled !== false,
       categoryChangeNoticeEnabled: msg.categoryChangeNoticeEnabled !== false,
     };
-    const request = msg.type === "simulateTargetLiveStart"
-      ? check(msg.currentChannelId, options, msg.scenario)
-      : check(msg.currentChannelId, options);
+    const request = checkTargetLiveStartForPage(msg.currentChannelId, options);
     request.then(async (result) => {
       await notifyHiddenLiveTab(result, options).catch(error => console.warn("[오뱅알] 데스크톱 알림 실패", error));
       sendResponse(result);

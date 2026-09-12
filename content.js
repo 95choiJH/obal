@@ -47,7 +47,6 @@
   const LIVE_START_NOTICE_KEY = "obaengal:live-start-notice";
   const CATEGORY_CHANGE_NOTICE_KEY = "obaengal:category-change-notice";
   const VOD_CATEGORY_SEEK_KEY = "obaengal:vod-category-seek";
-  const TARGET_LIVE_NOTICE_QC_KEY = "obaengal:target-live-notice-qc";
 
   function readExtensionCollapsed() {
     try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
@@ -72,10 +71,6 @@
     catch (_) { /* 저장소 접근이 제한된 페이지에서는 현재 세션 상태만 사용 */ }
   }
 
-  function readTargetLiveNoticeQcEnabled() {
-    try { return localStorage.getItem(TARGET_LIVE_NOTICE_QC_KEY) === "1"; }
-    catch (_) { return false; }
-  }
   const state = {
     data: null,          // schedule.json 전체
     fetchedAt: null,
@@ -92,7 +87,6 @@
     categoryChangeNoticeEnabled: readNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY, false),
     targetLiveNotificationsEnabled: true,
     targetLiveNotificationsPublicEnabled: false,
-    targetLiveNotificationsQcEnabled: readTargetLiveNoticeQcEnabled(),
     selectedGame: "",
     gameRankTranslate: 0,
     noticeIndex: 0,
@@ -406,7 +400,7 @@
 
 
   function targetLiveNotificationsAvailable() {
-    return state.targetLiveNotificationsEnabled !== false && (state.targetLiveNotificationsPublicEnabled === true || state.targetLiveNotificationsQcEnabled === true);
+    return state.targetLiveNotificationsEnabled !== false && state.targetLiveNotificationsPublicEnabled === true;
   }
 
   function targetLiveNotificationSettingsVisible() {
@@ -414,11 +408,11 @@
   }
 
   function effectiveLiveStartNoticeEnabled() {
-    return targetLiveNotificationsAvailable() && (state.targetLiveNotificationsQcEnabled === true || state.liveStartNoticeEnabled !== false);
+    return targetLiveNotificationsAvailable() && state.liveStartNoticeEnabled !== false;
   }
 
   function effectiveCategoryChangeNoticeEnabled() {
-    return targetLiveNotificationsAvailable() && (state.targetLiveNotificationsQcEnabled === true || state.categoryChangeNoticeEnabled !== false);
+    return targetLiveNotificationsAvailable() && state.categoryChangeNoticeEnabled !== false;
   }
   function getLiveNotificationContext() {
     const currentChannelId = getChannelIdFromUrl();
@@ -442,16 +436,14 @@
     }
   }
 
-  async function checkTargetLiveStartToast(force, testScenario) {
+  async function checkTargetLiveStartToast(force) {
     if (liveStartCheckInFlight) {
-      if (testScenario) console.warn("[오뱅알 테스트] 조회 중입니다. 잠시 후 다시 실행하세요.");
       return;
     }
     const currentChannelId = getChannelIdFromUrl();
     const isWatchingVod = /^\/video\/[0-9]+(?:\/|$)/i.test(location.pathname);
     const target = targetChannelId();
     if (!target || (!isWatchingVod && (!currentChannelId || currentChannelId.toLowerCase() === target.toLowerCase()))) {
-      if (testScenario) console.warn("[오뱅알 테스트] 타스트리머 채널 또는 다시보기에서 실행하세요.");
       return;
     }
     const now = Date.now();
@@ -460,15 +452,13 @@
     liveStartCheckInFlight = true;
     try {
       const result = await sendRuntimeMessage({
-        type: testScenario ? "simulateTargetLiveStart" : "checkTargetLiveStart",
-        scenario: testScenario,
+        type: "checkTargetLiveStart",
         currentChannelId,
         isWatchingVod,
         pageVisible: document.visibilityState === "visible",
         liveStartNoticeEnabled: effectiveLiveStartNoticeEnabled(),
         categoryChangeNoticeEnabled: effectiveCategoryChangeNoticeEnabled(),
       });
-      if (testScenario || (result && result.simulation)) console.info("[오뱅알 테스트] 감지 결과 (서버 방송 응답은 모의 데이터)", result);
       displayTargetLiveNotification(result);
     } catch (_e) {
     } finally {
@@ -482,7 +472,6 @@
         sendResponse(getLiveNotificationContext());
       }
       if (message && message.type === "targetLiveNotification") {
-        if (message.result && message.result.simulation) console.info("[오뱅알 테스트] 백그라운드 감지 결과", message.result);
         displayTargetLiveNotification(message.result);
         sendResponse({ ok: true });
       }
@@ -494,32 +483,6 @@
     });
     document.addEventListener("fullscreenchange", ensureLiveStartToastHost);
     document.addEventListener("webkitfullscreenchange", ensureLiveStartToastHost);
-    window.addEventListener("message", (event) => {
-      if (event.source !== window) return;
-      const data = event.data || {};
-      if (!data) return;
-      if (data.type === "obaengal:test-live-start-toast") {
-        if (data.channelImageUrl) {
-          showLiveStartToast(data.channelName || "\uB530\uD6A8\uB2C8", data.channelImageUrl || "", data.messageSuffix || "", data.categoryName || "");
-          return;
-        }
-        sendRuntimeMessage({ type: "getTargetChannelProfile" }).then((profile) => {
-          showLiveStartToast(
-            data.channelName || (profile && profile.channelName) || "\uB530\uD6A8\uB2C8",
-            (profile && profile.channelImageUrl) || "",
-            data.messageSuffix || "",
-            data.categoryName || ""
-          );
-        });
-        return;
-      }
-      if (data.type === "obaengal:test-live-start-check") {
-        checkTargetLiveStartToast(true);
-      }
-      if (data.type === "obaengal:test-live-start-simulation") {
-        checkTargetLiveStartToast(true, data.scenario === "multi-tab" ? "multi-tab" : data.scenario === "recovery" ? "recovery" : "offline-to-live");
-      }
-    });
   }
 
   function indexSchedule() {
@@ -2069,30 +2032,6 @@
     for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
     const hue = Math.abs(hash) % 360;
     return ' style="--cs-tag-color: hsl(' + hue + ' 88% 76%); --cs-tag-bg: hsl(' + hue + ' 88% 60% / 0.16); --cs-tag-border: hsl(' + hue + ' 88% 68% / 0.32); --cs-tag-light-color: hsl(' + hue + ' 72% 32%); --cs-tag-light-bg: hsl(' + hue + ' 85% 50% / 0.13); --cs-tag-light-border: hsl(' + hue + ' 72% 42% / 0.24);"';
-  }
-
-  function firstDirectiveTag(value) {
-    const raw = String(value || "");
-    const trimmed = raw.trim();
-    const wholeBracket = trimmed.match(/^:t\[/i);
-    if (wholeBracket) {
-      const end = findDirectiveBracketEnd(trimmed, 2);
-      if (end === trimmed.length - 1) return trimmed.slice(3, end).trim();
-    }
-    const wholeSpace = trimmed.match(/^:t\s+(.+)$/i);
-    if (wholeSpace) return wholeSpace[1].trim();
-    let i = 0;
-    while (i < raw.length) {
-      const bracket = raw.slice(i).match(/^:t\[/i);
-      if (bracket) {
-        const end = findDirectiveBracketEnd(raw, i + 2);
-        if (end > i) return raw.slice(i + 3, end).trim();
-      }
-      const inline = raw.slice(i).match(/^:t\s+([^\s:]+)/i);
-      if (inline) return inline[1].trim();
-      i += 1;
-    }
-    return "";
   }
 
   function firstPartTag(p) {
@@ -4494,7 +4433,6 @@
       state.data = res.data;
       state.targetLiveNotificationsEnabled = res.data.targetLiveNotificationsEnabled !== false;
       state.targetLiveNotificationsPublicEnabled = res.data.targetLiveNotificationsPublicEnabled === true;
-      state.targetLiveNotificationsQcEnabled = readTargetLiveNoticeQcEnabled();
       const announcedVersion = String(res.data.latestExtensionVersion || "").trim();
       if (announcedVersion && compareVersions(announcedVersion, EXTENSION_VERSION) > 0) {
         const updateCheck = await sendRuntimeMessage({

@@ -31,8 +31,6 @@ function harness(previous) {
   ctx.api = { runtime: { getURL: value => 'extension://' + value, onMessage: { addListener: callback => { listener = callback; } } } };
   vm.runInContext(source.slice(source.indexOf('api.runtime.onMessage.addListener(')), ctx);
   return {
-    advance: milliseconds => { clockNow += milliseconds; },
-    resetWorkerMemory: () => vm.runInContext('multiTabLiveSimulation = null;', ctx),
     enableDesktop: (firefox = false) => {
       const notices = [];
       if (firefox) ctx.browser = {};
@@ -66,17 +64,6 @@ function harness(previous) {
 }
 const old = { live: true, liveKey: '100', categoryKey: 'old game', lastNotifiedLiveKey: '100' };
 const live = { status: 'OPEN', liveId: 101, openDate: '2026-09-05 12:00:00', liveTitle: 'New title', categoryType: 'GAME', liveCategoryValue: 'New game' };
-
-test('multi-tab simulation survives background worker memory reset', async () => {
-  const h = harness(old);
-  await h.dispatch({ type: 'simulateTargetLiveStart', scenario: 'multi-tab', isWatchingVod: true }, 1);
-  h.advance(30000);
-  h.resetWorkerMemory();
-  const result = await h.dispatch({ type: 'checkTargetLiveStart', isWatchingVod: true }, 1);
-  assert.equal(result.notify, true);
-  assert.equal(result.simulation.scenario, 'multi-tab');
-  assert.deepEqual(h.state(), old);
-});
 
 test('Firefox Promise notification API handles hidden tab alerts', async () => {
   const h = harness();
@@ -160,49 +147,6 @@ test('one tab disabling notifications cannot consume another tab alert', async (
   assert.equal((await h.dispatch(request, 2)).notify, true);
 });
 
-test('multi-tab simulation notifies both tabs once and expires without changing real state', async () => {
-  const h = harness(old);
-  const start = await h.dispatch({ type: 'simulateTargetLiveStart', scenario: 'multi-tab', currentChannelId: 'other-a' }, 1);
-  assert.equal(start.notify, false);
-  assert.equal((await h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-b' }, 2)).notify, false);
-  h.advance(16000);
-  const first = await h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-a' }, 1);
-  const second = await h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-b' }, 2);
-  assert.equal(first.notify, true);
-  assert.equal(second.notify, true);
-  assert.equal((await h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-a' }, 1)).notify, false);
-  assert.equal((await h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-b' }, 2)).notify, false);
-  assert.deepEqual(h.state(), old);
-  h.advance(45000);
-  await h.check({ error: 'real API marker' });
-  const resumed = await h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-b' });
-  assert.equal(resumed.error, 'real API marker');
-  assert.equal(resumed.simulation, undefined);
-});
-
-test('multi-tab simulation supports simultaneous requests from separate tabs', async () => {
-  const h = harness(old);
-  await h.dispatch({ type: 'simulateTargetLiveStart', scenario: 'multi-tab', isWatchingVod: true }, 1);
-  await h.dispatch({ type: 'checkTargetLiveStart', isWatchingVod: true }, 2);
-  h.advance(16000);
-  const results = await Promise.all([
-    h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-a' }, 1),
-    h.dispatch({ type: 'checkTargetLiveStart', currentChannelId: 'other-b' }, 2),
-  ]);
-  assert.deepEqual(results.map(result => result.notify), [true, true]);
-  assert.deepEqual(h.state(), old);
-});
-
-test('separate browser simulations do not consume each other notifications', async () => {
-  const chrome = harness(old);
-  const firefox = harness(old);
-  for (const h of [chrome, firefox]) {
-    await h.dispatch({ type: 'simulateTargetLiveStart', scenario: 'multi-tab', isWatchingVod: true });
-    h.advance(16000);
-    assert.equal((await h.dispatch({ type: 'checkTargetLiveStart', isWatchingVod: true })).notify, true);
-  }
-});
-
 test('missed offline: legacy stored ID detects recent new broadcast once', async () => {
   const h = harness(old);
   const result = await h.check(live);
@@ -212,29 +156,7 @@ test('missed offline: legacy stored ID detects recent new broadcast once', async
   assert.equal(h.state().liveId, '101');
 });
 
-test('simulation message uses actual detector and leaves real stored state intact', async () => {
-  for (const scenario of ['offline-to-live', 'recovery']) {
-    const h = harness(old);
-    const result = await h.dispatch({ type: 'simulateTargetLiveStart', isWatchingVod: true, scenario });
-    assert.equal(result.ok, true);
-    assert.equal(result.notify, true);
-    assert.equal(result.notificationType, 'liveStart');
-    assert.equal(result.simulation.beforeNotify, false);
-    assert.equal(result.simulation.startedNotify, true);
-    assert.equal(result.simulation.repeatedNotify, false);
-    assert.deepEqual(h.state(), old);
-  }
-});
-test('simulation message preserves real alert settings and page restrictions', async () => {
-  const h = harness(old);
-  const disabled = await h.dispatch({ type: 'simulateTargetLiveStart', isWatchingVod: true, liveStartNoticeEnabled: false });
-  assert.equal(disabled.notify, false);
-  const excluded = await h.dispatch({ type: 'simulateTargetLiveStart', currentChannelId: 'target' });
-  assert.equal(excluded.notify, false);
-  assert.deepEqual(h.state(), old);
-});
-
-test('simulation passes through page request, background handler and toast call', async () => {
+test('live transition passes through page request, background handler and toast call', async () => {
   const content = fs.readFileSync(path.join(__dirname, '../content.js'), 'utf8');
   const h = harness(old);
   const shown = [];
@@ -243,18 +165,21 @@ test('simulation passes through page request, background handler and toast call'
     location: { pathname: '/video/12345' }, Date, document: { visibilityState: 'visible' },
     console: { info() {}, warn() {} },
     targetChannelId: () => 'target',
-    state: { liveStartNoticeEnabled: false, categoryChangeNoticeEnabled: false, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: false, targetLiveNotificationsQcEnabled: true },
+    state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: true },
     sendRuntimeMessage: msg => { messages.push(msg); return h.dispatch(msg); },
     showLiveStartToast: (...args) => shown.push(args),
   });
   vm.runInContext('let liveStartCheckInFlight = false; let lastLiveStartCheckAt = 0; const LIVE_START_CHECK_INTERVAL = 10000;\n' +
     content.slice(content.indexOf('function getChannelIdFromUrl('), content.indexOf('function sendRuntimeMessage(')) +
     content.slice(content.indexOf('function targetLiveNotificationsAvailable('), content.indexOf('function startLiveStartWatcher(')), ctx);
-  await ctx.checkTargetLiveStartToast(true, 'recovery');
-  assert.equal(messages[0].type, 'simulateTargetLiveStart');
+  h.setResponse({ status: 'CLOSE' });
+  await ctx.checkTargetLiveStartToast(true);
+  h.setResponse(live);
+  await ctx.checkTargetLiveStartToast(true);
+  assert.equal(messages[0].type, 'checkTargetLiveStart');
   assert.equal(shown.length, 1);
   assert.match(shown[0][2], /방송을 시작했습니다/);
-  assert.deepEqual(h.state(), old);
+  assert.equal(h.state().lastNotifiedLiveKey, '101');
 });
 test('ordinary offline to live transition still notifies once', async () => {
   const h = harness(old);
@@ -321,6 +246,28 @@ test('VOD category alerts respect both notification settings', async () => {
   assert.equal((await harness(old).check(live, { isWatchingVod: true, liveStartNoticeEnabled: false }, null)).notify, false);
 });
 
+test('public and personal settings control alerts without a QC override', () => {
+  const content = fs.readFileSync(path.join(__dirname, '../content.js'), 'utf8');
+  for (const adminEnabled of [false, true]) {
+    for (const publicEnabled of [false, true]) {
+      for (const startEnabled of [false, true]) {
+        for (const categoryEnabled of [false, true]) {
+          const ctx = vm.createContext({ state: {
+            targetLiveNotificationsEnabled: adminEnabled,
+            targetLiveNotificationsPublicEnabled: publicEnabled,
+            liveStartNoticeEnabled: startEnabled,
+            categoryChangeNoticeEnabled: categoryEnabled,
+            targetLiveNotificationsQcEnabled: true,
+          } });
+          vm.runInContext(content.slice(content.indexOf('function targetLiveNotificationsAvailable('), content.indexOf('function startLiveStartWatcher(')), ctx);
+          assert.equal(ctx.effectiveLiveStartNoticeEnabled(), adminEnabled && publicEnabled && startEnabled);
+          assert.equal(ctx.effectiveCategoryChangeNoticeEnabled(), adminEnabled && publicEnabled && categoryEnabled);
+        }
+      }
+    }
+  }
+});
+
 test('content script requests and displays VOD alerts, retaining page exclusions', async () => {
   const content = fs.readFileSync(path.join(__dirname, '../content.js'), 'utf8');
   const target = 'a'.repeat(32);
@@ -337,7 +284,7 @@ test('content script requests and displays VOD alerts, retaining page exclusions
     const ctx = vm.createContext({
       location: { pathname }, Date, document: { visibilityState: 'visible' },
       targetChannelId: () => target,
-      state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: true, targetLiveNotificationsQcEnabled: false },
+      state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: true },
       sendRuntimeMessage: async msg => {
         messages.push(msg);
         return { notify: true, notificationType: 'liveStart', channelName: 'test' };
