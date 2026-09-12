@@ -1,4 +1,4 @@
-// content.js — 치지직 페이지에 일정 그리드를 주입
+﻿// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -25,6 +25,7 @@
   const GNIMTI_ICON_IMAGE_URL = api.runtime.getURL("images/gnimti-logo2.png");
   const OBAL_IOS_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal_ios.png");
   const OBAL_ANDROID_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal-android.png");
+  const NOTIFICATION_GUIDE_IMAGE_URL = api.runtime.getURL("images/notification-guide.png");
   const OBAL_MOBILE_LINK_URL = "https://obaengal.netlify.app/";
   const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
   const GNIMTI_TIER_BACK_IMAGE_URLS = {
@@ -47,7 +48,6 @@
   const CATEGORY_CHANGE_NOTICE_KEY = "obaengal:category-change-notice";
   const VOD_CATEGORY_SEEK_KEY = "obaengal:vod-category-seek";
   const TARGET_LIVE_NOTICE_QC_KEY = "obaengal:target-live-notice-qc";
-  const TITLE_HISTORY_TEST_CHANNEL_KEY = "obaengal:title-history-test-channel-id";
 
   function readExtensionCollapsed() {
     try { return localStorage.getItem(EXTENSION_COLLAPSED_KEY) === "1"; }
@@ -228,16 +228,6 @@
   function targetChannelId() {
     const cfg = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
     return String(cfg.channelId || "0dad8baf12a436f722faa8e5001c5011").trim();
-  }
-
-  function titleHistoryTestChannelId() {
-    try {
-      const stored = String(localStorage.getItem(TITLE_HISTORY_TEST_CHANNEL_KEY) || "").trim();
-      if (/^[0-9a-f]{32}$/i.test(stored)) return stored;
-    } catch (_) {}
-    const cfg = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
-    const configured = String(cfg.titleHistoryTestChannelId || "").trim();
-    return /^[0-9a-f]{32}$/i.test(configured) ? configured : "";
   }
 
   function findLivePlayerToastParent() {
@@ -635,6 +625,15 @@
       padding: 10px; border: 1px solid #343740; border-radius: 8px; background: #202126; color: #f1f2f4;
       box-shadow: 0 12px 28px rgba(0,0,0,.34); }
     .cs-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 36px; padding: 6px 4px; }
+    .cs-settings-heading { display: flex; align-items: center; gap: 6px; padding: 0 4px 6px; font-size: 13px; font-weight: 700; }
+    .cs-settings-help { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 1px solid #727680; border-radius: 50%; color: inherit; background: transparent; font: 700 11px/1 system-ui; cursor: pointer; }
+    .cs-settings-help:hover { background: rgba(128,128,128,.2); }
+    .cs-settings-help:focus-visible, .cs-notification-guide-close:focus-visible { outline: 2px solid #03a950; outline-offset: 3px; }
+    .cs-notification-guide { position: fixed; inset: 0; margin: auto; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; overflow: auto; overscroll-behavior: contain; box-sizing: border-box; border: 1px solid #727680; border-radius: 12px; background: #fff; color: #202126; box-shadow: 0 16px 48px rgba(0,0,0,.4); }
+    .cs-notification-guide::backdrop { background: rgba(0,0,0,.35); }
+    .cs-notification-guide-heading { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; font: 700 14px/1.4 system-ui; }
+    .cs-notification-guide-close { width: 28px; height: 28px; border: 0; border-radius: 6px; background: #eef0f3; color: #202126; font-size: 20px; cursor: pointer; }
+    .cs-notification-guide img { display: block; width: 100%; height: auto; }
     .cs-settings-row + .cs-settings-row { border-top: 1px solid rgba(255,255,255,.07); }
     .cs-settings-label { min-width: 0; color: #eef0f3; font-size: 13px; font-weight: 700; line-height: 1.35; }
     .cs-settings-switch { position: relative; flex: 0 0 auto; width: 42px; height: 24px; border: 0; border-radius: 999px; background: #4a4d54; cursor: pointer; transition: background .16s ease; }
@@ -706,7 +705,7 @@
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; right: 16%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-position: center bottom; transform: scale(1.15); transform-origin: bottom right; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; right: 22%; bottom: 7%; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-position: center bottom; transform: scale(0.95); transform-origin: bottom right; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
 
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
@@ -1612,9 +1611,11 @@
       "</div>";
     const settingsPanelHtml = showNotificationSettings && state.settingsOpen
       ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
+        '<div class="cs-settings-heading"><span>알림 설정</span><button type="button" class="cs-settings-help" popovertarget="cs-notification-guide" aria-label="알림 기능 도움말" title="알림 기능 도움말">?</button></div>' +
+        '<div id="cs-notification-guide" class="cs-notification-guide" popover="auto" role="dialog" aria-label="알림 기능 도움말"><div class="cs-notification-guide-heading"><span>알림 기능 도움말</span><button type="button" class="cs-notification-guide-close" popovertarget="cs-notification-guide" popovertargetaction="hide" aria-label="도움말 닫기" autofocus>×</button></div><img src="' + NOTIFICATION_GUIDE_IMAGE_URL + '" alt="효니 방송 시작 알림 안내: 다른 스트리머 방송 시청 중 시작 알림을 받고, 방송보러가기로 이동할 수 있습니다. 설정에서 방송 시작 및 카테고리 변경 알림을 켜거나 끌 수 있습니다." loading="lazy"></div>' +
         (state.targetLiveNotificationsEnabled === false ? '<div class="cs-settings-row"><span class="cs-settings-label">관리자 설정에서 타스트리머 알림이 OFF입니다</span></div>' : "") +
-        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 방송 시작 알림</span><button type="button" class="cs-settings-switch' + (effectiveLiveStartNoticeEnabled() ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(effectiveLiveStartNoticeEnabled()) + '" aria-label="방송 시작 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
-        '<div class="cs-settings-row"><span class="cs-settings-label">타스트리머 방송·모든 다시보기에서 카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (effectiveCategoryChangeNoticeEnabled() ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(effectiveCategoryChangeNoticeEnabled()) + '" aria-label="카테고리 변경 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">방송 시작 알림</span><button type="button" class="cs-settings-switch' + (effectiveLiveStartNoticeEnabled() ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(effectiveLiveStartNoticeEnabled()) + '" aria-label="방송 시작 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
+        '<div class="cs-settings-row"><span class="cs-settings-label">카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (effectiveCategoryChangeNoticeEnabled() ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(effectiveCategoryChangeNoticeEnabled()) + '" aria-label="카테고리 변경 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
         "</div>"
       : "";
 
@@ -3753,13 +3754,7 @@
 
 
 
-  function isTitleHistoryTestChannelPage() {
-    const testChannelId = titleHistoryTestChannelId();
-    return !!testChannelId && !!state.channelId && state.channelId.toLowerCase() === testChannelId.toLowerCase();
-  }
-
   function getCurrentDataChannelId() {
-    if (isTitleHistoryTestChannelPage()) return targetChannelId();
     if (state.channelId) return state.channelId;
     if (typeof isChzzkVodPage === "function" && isChzzkVodPage()) return targetChannelId();
     return state.channelId;
@@ -3808,7 +3803,7 @@
     if (!Array.isArray(list)) return [];
     const vodMatch = (typeof isChzzkVodPage === "function" && isChzzkVodPage()) ? currentVodScheduleMatch() : null;
     const scopedList = vodMatch ? titleHistoryItemsForVodMatch(list, vodMatch) : titleHistoryItemsForRecentBroadcast(list);
-    const currentTitleKey = vodMatch || isTitleHistoryTestChannelPage() ? "" : currentLiveTitleText(scopedList).toLowerCase();
+    const currentTitleKey = vodMatch ? "" : currentLiveTitleText(scopedList).toLowerCase();
     const filtered = [];
     const sorted = scopedList.slice().sort((a, b) => String(a.changedAt || '').localeCompare(String(b.changedAt || '')) || String(a.id || '').localeCompare(String(b.id || '')));
     for (const item of sorted) {
@@ -4016,9 +4011,7 @@
       removeTitleHistoryHost();
       return;
     }
-    const title = findTitleHistoryTitleAnchor();
-    const fallbackAnchor = isTitleHistoryTestChannelPage() ? findOfflineActionAnchor() : null;
-    const anchor = title || fallbackAnchor;
+    const anchor = findTitleHistoryTitleAnchor();
     if (!anchor || !getTitleHistoryItems().length) {
       removeTitleHistoryHost();
       return;

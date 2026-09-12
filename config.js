@@ -27,9 +27,6 @@ const CHZZK_SCHEDULE_CONFIG = {
   liveTitleHistoryTableName: "live_title_history",
   liveCategoryHistoryTableName: "live_category_history",
 
-  // Temporary frontend title-history test channel. Clear before public release.
-  titleHistoryTestChannelId: "65c3035bdc598c81f15a8fe0e958b3ce",
-
   // 캐시 유지 시간(분). 이 시간 안에는 네트워크 요청 없이 캐시를 사용합니다.
   cacheTtlMinutes: 10,
 
