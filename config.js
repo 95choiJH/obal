@@ -31,7 +31,7 @@ const CHZZK_SCHEDULE_CONFIG = {
   cacheTtlMinutes: 10,
 
   // 치지직 페이지가 열려 있을 때 일정과 소식을 자동으로 다시 불러오는 주기(분)
-  autoRefreshMinutes: 1,
+  autoRefreshMinutes: 0.5,
 
   // (선택) 인라인 삽입 위치를 직접 지정하고 싶을 때 CSS 선택자를 입력.
   // 비워두면 자동 탐색합니다. 예: '[class*="_information_1lz65"]'

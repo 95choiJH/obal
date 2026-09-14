@@ -4589,7 +4589,7 @@
     if (document.visibilityState !== "visible" || isFullscreenActive() || fullscreenRestorePending ||
         !state.channelId || !state.host || autoRefreshInFlight) return;
     const cfg = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
-    const minutes = Math.max(1, Number(cfg.autoRefreshMinutes || cfg.cacheTtlMinutes || 1) || 1);
+    const minutes = Math.max(0.5, Number(cfg.autoRefreshMinutes || cfg.cacheTtlMinutes || 0.5) || 0.5);
     const interval = minutes * 60 * 1000;
     const fetchedAt = typeof state.fetchedAt === "number" ? state.fetchedAt : Date.parse(state.fetchedAt || "") || 0;
     if (Date.now() - Math.max(fetchedAt, lastAutoRefreshAttempt) < interval) return;
@@ -4608,7 +4608,7 @@
   }
 
   function startAutoRefresh() {
-    setInterval(runAutoRefreshIfDue, 30000);
+    setInterval(runAutoRefreshIfDue, 5000);
     setInterval(rotateNoticeIfNeeded, 3000);
     setInterval(applyPendingVodSeek, 700);
     document.addEventListener("visibilitychange", () => {

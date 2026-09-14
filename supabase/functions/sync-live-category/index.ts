@@ -6,7 +6,6 @@
 const DEFAULT_CHANNEL_ID = "0dad8baf12a436f722faa8e5001c5011";
 const AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY = "auto_live_category_sync";
 const LIVE_TITLE_HISTORY_TABLE = "live_title_history";
-const LIVE_CATEGORY_HISTORY_TABLE = "live_category_history";
 const LIVE_SESSION_STATE_TABLE = "live_session_state";
 const LIVE_CONTINUATION_WINDOW_MS = 2 * 60 * 60 * 1000;
 const VOD_RECENT_RETRY_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -255,13 +254,14 @@ async function fetchJson(url: string) {
 async function currentLiveCategory(channelId: string, offsetHours: number) {
   const statusUrl = "https://api.chzzk.naver.com/polling/v3.1/channels/" + encodeURIComponent(channelId) + "/live-status";
   const statusJson = await fetchJson(statusUrl);
+  const observedAt = new Date().toISOString();
   const live = statusJson && (statusJson.content || statusJson);
   const status = String((live && live.status) || "").toUpperCase();
   const scheduleDate = live && typeof live === "object" ? liveScheduleDate(live as Record<string, unknown>, offsetHours) : currentDateKey(offsetHours);
   const startedAt = live && typeof live === "object" ? String(liveStartTimestamp(live as Record<string, unknown>) || "") : "";
   const title = live && typeof live === "object" ? liveTitle(live as Record<string, unknown>) : "";
   const key = live && typeof live === "object" ? liveKey(live as Record<string, unknown>, scheduleDate, startedAt) : "";
-  if (status !== "OPEN") return { live: false, category: null, status, date: scheduleDate, startedAt, title, liveKey: key };
+  if (status !== "OPEN") return { live: false, category: null, status, date: scheduleDate, startedAt, title, liveKey: key, observedAt };
 
   const category = normalizeGameImage({
     label: live.liveCategoryValue,
@@ -269,7 +269,7 @@ async function currentLiveCategory(channelId: string, offsetHours: number) {
     categoryType: live.categoryType,
   });
   if (!category || !category.label || !category.categoryId || !category.categoryType) {
-    return { live: true, category: null, status, date: scheduleDate, startedAt, title, liveKey: key };
+    return { live: true, category: null, status, date: scheduleDate, startedAt, title, liveKey: key, observedAt };
   }
 
   try {
@@ -284,7 +284,7 @@ async function currentLiveCategory(channelId: string, offsetHours: number) {
     console.warn("category poster lookup failed", error);
   }
 
-  return { live: true, category, status, date: scheduleDate, startedAt, title, liveKey: key };
+  return { live: true, category, status, date: scheduleDate, startedAt, title, liveKey: key, observedAt };
 }
 
 async function supabaseFetch(path: string, options: RequestInit, supabaseUrl: string, serviceRoleKey: string) {
@@ -588,18 +588,6 @@ function isTalkCategory(category: ReturnType<typeof normalizeGameImage>) {
   const label = String(category.label || "").trim().toLowerCase();
   return id === "talk" || (type === "ETC" && label === "talk");
 }
-function sameCategoryHistoryCategory(
-  row: { category_id?: string | null; category_type?: string | null; category_label?: string | null },
-  category: NonNullable<ReturnType<typeof normalizeGameImage>>,
-) {
-  const rowCategoryId = String(row.category_id || "").trim();
-  const rowCategoryType = String(row.category_type || "").trim().toUpperCase();
-  if (rowCategoryId && category.categoryId && rowCategoryType && category.categoryType) {
-    return rowCategoryId === category.categoryId && rowCategoryType === category.categoryType;
-  }
-  return String(row.category_label || "").trim().toLowerCase() === category.label.trim().toLowerCase();
-}
-
 async function recordLiveCategoryChange(
   channelId: string,
   date: string,
@@ -609,27 +597,18 @@ async function recordLiveCategoryChange(
   offsetHours: number,
   supabaseUrl: string,
   serviceRoleKey: string,
+  observedAt = new Date().toISOString(),
 ) {
   if (!category || !String(category.label || "").trim()) return { recorded: false, reason: "empty-category" };
 
   const normalizedKey = String(key || startedAt || date || "live").trim();
-  const query = "/rest/v1/" + LIVE_CATEGORY_HISTORY_TABLE +
-    "?select=id,category_label,category_id,category_type&channel_id=eq." + encodeURIComponent(channelId) +
-    "&live_key=eq." + encodeURIComponent(normalizedKey) +
-    "&order=changed_at.desc,id.desc&limit=1";
-  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as Array<{ id: number; category_label?: string | null; category_id?: string | null; category_type?: string | null }>;
-  const latest = rows && rows[0];
-  if (latest && sameCategoryHistoryCategory(latest, category)) {
-    return { recorded: false, reason: "unchanged", category };
-  }
-
-  const changedAt = new Date().toISOString();
+  const changedAt = observedAt;
   const startedMs = chzzkTimestampMs(startedAt, offsetHours);
   const changedMs = timestampMs(changedAt);
-  const offsetSeconds = latest ? (startedMs && changedMs >= startedMs ? Math.floor((changedMs - startedMs) / 1000) : null) : 0;
-  await supabaseFetch("/rest/v1/" + LIVE_CATEGORY_HISTORY_TABLE, {
+  const offsetSeconds = startedMs && changedMs >= startedMs ? Math.floor((changedMs - startedMs) / 1000) : null;
+  const result = await supabaseFetch("/rest/v1/rpc/record_live_chapter_observation", {
     method: "POST",
-    body: JSON.stringify({
+    body: JSON.stringify({ observation: {
       channel_id: channelId,
       live_key: normalizedKey,
       schedule_date: date,
@@ -637,25 +616,14 @@ async function recordLiveCategoryChange(
       category_id: category.categoryId || null,
       category_type: category.categoryType || null,
       category_poster_image_url: category.posterImageUrl || category.url || null,
-      previous_category_label: latest ? String(latest.category_label || "").trim() || null : null,
-      previous_category_id: latest ? String(latest.category_id || "").trim() || null : null,
-      previous_category_type: latest ? String(latest.category_type || "").trim() || null : null,
       started_at: startedAt || null,
       changed_at: changedAt,
       offset_seconds: offsetSeconds,
       hidden: isTalkCategory(category),
-    }),
+    } }),
   }, supabaseUrl, serviceRoleKey);
 
-  return {
-    recorded: true,
-    action: latest ? "changed" : "initial",
-    category,
-    previousCategory: latest || null,
-    changedAt,
-    offsetSeconds,
-    liveKey: normalizedKey,
-  };
+  return { ...result, category };
 }
 
 async function safeRecordLiveCategoryChange(
@@ -667,9 +635,10 @@ async function safeRecordLiveCategoryChange(
   offsetHours: number,
   supabaseUrl: string,
   serviceRoleKey: string,
+  observedAt = new Date().toISOString(),
 ) {
   try {
-    return await recordLiveCategoryChange(channelId, date, key, startedAt, category, offsetHours, supabaseUrl, serviceRoleKey);
+    return await recordLiveCategoryChange(channelId, date, key, startedAt, category, offsetHours, supabaseUrl, serviceRoleKey, observedAt);
   } catch (error) {
     console.warn("live category history write failed", error);
     return { recorded: false, reason: "write-failed", error: String((error && (error as Error).message) || error) };
@@ -969,6 +938,8 @@ Deno.serve(async (req) => {
   if (!isAuthorized(req, serviceRoleKey, syncSecret)) return jsonResponse({ error: "Unauthorized" }, 401);
 
   const url = new URL(req.url);
+  const mode = url.searchParams.get("mode") || "full";
+  if (!["full", "chapters", "maintenance"].includes(mode)) return jsonResponse({ error: "Invalid sync mode" }, 400);
   const channelId = (url.searchParams.get("channelId") || Deno.env.get("LIVE_CATEGORY_CHANNEL_ID") || DEFAULT_CHANNEL_ID).trim();
   if (!/^[0-9a-f]{32}$/i.test(channelId)) return jsonResponse({ error: "Invalid channel ID" }, 400);
 
@@ -978,7 +949,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await requestBody(req);
-    const syncSetting = await loadAutoLiveCategorySyncEnabled(channelId, supabaseUrl, serviceRoleKey);
+    const syncSetting = mode === "chapters" ? { enabled: false } : await loadAutoLiveCategorySyncEnabled(channelId, supabaseUrl, serviceRoleKey);
     const testCategories = testCategoriesFromBody(body);
     if (testCategories.length) {
       const startedAt = String(body.startedAt || "");
@@ -1000,10 +971,30 @@ Deno.serve(async (req) => {
 
     const current = await currentLiveCategory(channelId, offsetHours);
     const rawDate = current.date || currentDateKey(offsetHours);
-    const session = current.live
-      ? await resolveLiveSession(channelId, rawDate, current.liveKey || "", current.startedAt || "", current.title || "", offsetHours, supabaseUrl, serviceRoleKey)
+    // Maintenance only reads the session mapping. The fast collector owns
+    // live state and history so the minute job cannot add delayed chapters.
+    const savedSession = mode === "maintenance" && current.live
+      ? await loadLiveSessionStateByKey(channelId, current.liveKey || "", supabaseUrl, serviceRoleKey)
       : null;
-    const endState = current.live ? null : await markLiveSessionEndedIfNeeded(channelId, supabaseUrl, serviceRoleKey);
+    const session = current.live
+      ? mode === "maintenance"
+        ? { date: savedSession?.schedule_date || rawDate, liveKey: savedSession?.live_key || current.liveKey || "" }
+        : await resolveLiveSession(channelId, rawDate, current.liveKey || "", current.startedAt || "", current.title || "", offsetHours, supabaseUrl, serviceRoleKey)
+      : null;
+    const endState = current.live || mode === "maintenance" ? null : await markLiveSessionEndedIfNeeded(channelId, supabaseUrl, serviceRoleKey);
+    const date = session ? session.date : rawDate;
+    const liveKeyForHistory = session ? session.liveKey : (current.liveKey || "");
+    // Persist the observation before any replay discovery. observedAt excludes
+    // time spent resolving category metadata and writing the session.
+    const categoryHistory = current.live && mode !== "maintenance"
+      ? await safeRecordLiveCategoryChange(channelId, date, liveKeyForHistory, current.startedAt || "", current.category, offsetHours, supabaseUrl, serviceRoleKey, current.observedAt)
+      : { recorded: false, reason: mode === "maintenance" ? "maintenance" : "not-live" };
+    const titleHistory = current.live && mode !== "maintenance"
+      ? await safeRecordLiveTitleChange(channelId, date, current.title || "", liveKeyForHistory, current.startedAt || "", current.category, supabaseUrl, serviceRoleKey)
+      : { recorded: false, reason: mode === "maintenance" ? "maintenance" : "not-live" };
+    if (mode === "chapters") {
+      return jsonResponse({ mode, session, endState, categoryHistory, titleHistory });
+    }
     const endedSession = endState && "session" in endState ? (endState.session as LiveSessionState | null) : null;
     // A newly started live must not block replay discovery for an earlier,
     // already-ended session. Pending rows are explicitly filtered to
@@ -1025,14 +1016,6 @@ Deno.serve(async (req) => {
     }
     const recentVodBackfill = await syncRecentReplayVodsToSchedule(channelId, offsetHours, supabaseUrl, serviceRoleKey);
     const vodSync = [...vodSyncResults, ...recentVodBackfill];
-    const date = session ? session.date : rawDate;
-    const liveKeyForHistory = session ? session.liveKey : (current.liveKey || "");
-    const titleHistory = current.live
-      ? await safeRecordLiveTitleChange(channelId, date, current.title || "", liveKeyForHistory, current.startedAt || "", current.category, supabaseUrl, serviceRoleKey)
-      : { recorded: false, reason: "not-live" };
-    const categoryHistory = current.live
-      ? await safeRecordLiveCategoryChange(channelId, date, liveKeyForHistory, current.startedAt || "", current.category, offsetHours, supabaseUrl, serviceRoleKey)
-      : { recorded: false, reason: "not-live" };
     if (!syncSetting.enabled) {
       return jsonResponse({ synced: false, reason: "disabled", setting: AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, mode: "live", session, endState, vodSync, titleHistory, categoryHistory });
     }
