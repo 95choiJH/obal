@@ -20,6 +20,7 @@ const TARGET_LIVE_STATUS_CACHE_KEY = "targetLiveStatusCache";
 const TARGET_CHANNEL_PROFILE_CACHE_KEY = "targetChannelProfileCache";
 const TARGET_LIVE_STATUS_CACHE_TTL = 9000;
 const TARGET_LIVE_START_RECOVERY_MAX_AGE = 5 * 60 * 1000;
+const TARGET_CATEGORY_CHANGE_RECOVERY_MAX_AGE = 5 * 60 * 1000;
 const TARGET_CHANNEL_PROFILE_CACHE_TTL = 6 * 60 * 60 * 1000;
 let updateReloadScheduled = false;
 
@@ -218,7 +219,10 @@ async function checkTargetLiveStart(currentChannelId, options, dependencies = {
   const liveStartNotify = liveStartNoticeEnabled && hadKnownState &&
     (previous.live === false || (newSession && recentlyStarted)) && previous.lastNotifiedLiveKey !== liveKey;
   const isGameCategory = status.categoryType === "GAME" || (status.categoryType === "" && !!status.liveCategory && status.liveCategory !== "talk" && status.liveCategory !== "etc");
-  const categoryNotify = categoryChangeNoticeEnabled && isGameCategory && hadKnownState && previous.live === true && !newSession && !!categoryKey && !!previous.categoryKey && previous.categoryKey !== categoryKey;
+  const previousCheckedAt = Number(previous && previous.checkedAt);
+  const recentlyChecked = hadKnownState && Number.isFinite(previousCheckedAt) &&
+    now - previousCheckedAt <= TARGET_CATEGORY_CHANGE_RECOVERY_MAX_AGE;
+  const categoryNotify = categoryChangeNoticeEnabled && isGameCategory && recentlyChecked && hadKnownState && previous.live === true && !newSession && !!categoryKey && !!previous.categoryKey && previous.categoryKey !== categoryKey;
   const notify = liveStartNotify || categoryNotify;
   const notificationType = categoryNotify ? "categoryChange" : "liveStart";
   await storageSet({

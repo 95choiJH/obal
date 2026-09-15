@@ -1588,8 +1588,10 @@
   function scheduleTitleHistoryButtonHtml(r, i) {
     const date = String((r && r.date) || "").trim();
     const count = titleHistoryItemsForDate(date).length;
+    const chapterCount = liveCategoryHistory.filter((item) => String((item && item.schedule_date) || "").trim() === date).length;
     const open = openScheduleTitleHistoryDate === date;
-    return '<button type="button" class="add-btn small schedule-title-history-btn' + (open ? ' on' : '') + '" data-schedule-title-history="' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '">방송 기록' + (count ? ' ' + count : '') + '</button>';
+    return '<button type="button" class="add-btn small schedule-title-history-btn' + (open ? ' on' : '') + '" data-schedule-title-history="' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '">방송 기록' + (count ? ' ' + count : '') + '</button>' +
+      '<button type="button" class="add-btn small schedule-title-history-btn schedule-chapter-add-btn' + (open ? ' on' : '') + '" data-schedule-chapter-open="' + i + '" aria-expanded="' + (open ? 'true' : 'false') + '">+ 챕터' + (chapterCount ? ' ' + chapterCount : '') + '</button>';
   }
 
   function formatChapterOffset(value) {
@@ -4211,6 +4213,21 @@
         const date = rows[i] && rows[i].date;
         openScheduleTitleHistoryDate = openScheduleTitleHistoryDate === date ? "" : (date || "");
         render();
+      };
+    });
+    document.querySelectorAll("[data-schedule-chapter-open]").forEach((el) => {
+      el.onclick = () => {
+        const i = +el.getAttribute("data-schedule-chapter-open");
+        const date = rows[i] && rows[i].date;
+        if (!date) return;
+        openScheduleTitleHistoryDate = date;
+        render();
+        setTimeout(() => {
+          const input = document.querySelector('[data-chapter-new-title]');
+          if (input && input.focus) input.focus();
+          const panel = document.querySelector('.schedule-title-history-panel');
+          if (panel && panel.scrollIntoView) panel.scrollIntoView({ block: "nearest" });
+        }, 0);
       };
     });
     document.querySelectorAll("[data-title-history-hidden]").forEach((el) => {

@@ -116,3 +116,55 @@ test('observation timestamp precedes a slow category metadata response', async (
 test('invalid collection mode is rejected', async () => {
   assert.equal((await harness().request('invalid')).status, 400);
 });
+
+
+test('recent replay backfill uses continued live session schedule date', async () => {
+  const calls = [];
+  const h = harness({
+    fetchLatestReplayVideos: async () => [{ videoNo: '100', publishDateAt: '2026-09-05T01:00:00Z' }],
+    fetchVideoDetail: async () => ({ liveOpenDate: '2026-09-05 00:10:00' }),
+    loadRecentLiveSessionStates: async () => [{
+      channel_id: 'channel', live_key: 'continued', schedule_date: '2026-09-04',
+      started_at: '2026-09-05 00:10:00', last_seen_at: null, ended_at: null,
+      title: null, vod_url: null, vod_video_no: null, vod_saved_at: null,
+      vod_checked_at: null, is_live: false, updated_at: null,
+    }],
+    supabaseFetch: async (route, options) => {
+      calls.push({ route, method: options.method, body: options.body ? JSON.parse(options.body) : null });
+      if (route.includes('/rest/v1/schedule?select=id,date,vods')) return [];
+      if (route.includes('date=eq.2026-09-04')) return [{ id: 1, vods: [] }];
+      if (route.includes('/rest/v1/schedule?id=eq.1')) return [{ id: 1 }];
+      throw new Error('Unexpected route ' + route);
+    },
+  }, { Date: class Clock extends Date {
+    constructor(...args) { super(...(args.length ? args : ['2026-09-05T02:00:00Z'])); }
+    static now() { return Date.parse('2026-09-05T02:00:00Z'); }
+  } });
+
+  const result = await h.context.syncRecentReplayVodsToSchedule('channel', 9, 'https://db.example', 'service');
+  assert.equal(result[0].synced, true);
+  assert.equal(result[0].date, '2026-09-04');
+  assert.ok(calls.some(call => call.route.includes('date=eq.2026-09-04')));
+  assert.ok(!calls.some(call => call.route.includes('date=eq.2026-09-05')));
+});
+
+test('recent replay append skips vod already saved on another schedule date', async () => {
+  const calls = [];
+  const h = harness({
+    supabaseFetch: async (route, options) => {
+      calls.push({ route, method: options.method });
+      if (route.includes('/rest/v1/schedule?select=id,date,vods')) {
+        return [{ id: 2, date: '2026-09-05', vods: [{ url: 'https://chzzk.naver.com/video/100', label: '방송 다시보기' }] }];
+      }
+      throw new Error('Unexpected write ' + route);
+    },
+  });
+
+  const result = await h.context.appendReplayVodToSchedule('channel', '2026-09-04', {
+    videoNo: '100', url: 'https://chzzk.naver.com/video/100/', startedAt: '2026-09-05 00:10:00',
+  }, 'https://db.example', 'service');
+  assert.equal(result.synced, false);
+  assert.equal(result.reason, 'already-present');
+  assert.equal(result.date, '2026-09-05');
+  assert.equal(calls.length, 1);
+});

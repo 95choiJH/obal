@@ -23,7 +23,8 @@ function harness(previous) {
     fetchTargetLiveStatus: async () => response,
     fetchTargetChannelProfile: async () => ({ channelName: 'test' }),
   });
-  vm.runInContext(source.match(/const TARGET_LIVE_START_RECOVERY_MAX_AGE = [^;]+;/)[0] +
+  vm.runInContext(source.match(/const TARGET_LIVE_START_RECOVERY_MAX_AGE = [^;]+;/)[0] + '\n' +
+    source.match(/const TARGET_CATEGORY_CHANGE_RECOVERY_MAX_AGE = [^;]+;/)[0] +
     '\nconst TARGET_LIVE_STATE_KEY = "targetLiveStartState";\n' +
     source.slice(source.indexOf('function normalizeLiveStatusPayload('), source.indexOf('async function fetchTargetChannelProfile(')) +
     source.slice(source.indexOf('function liveStartedAt('), source.indexOf('async function openDefaultChannelWithSchedule(')), ctx);
@@ -62,7 +63,7 @@ function harness(previous) {
     state: () => saved.targetLiveStartState,
   };
 }
-const old = { live: true, liveKey: '100', categoryKey: 'old game', lastNotifiedLiveKey: '100' };
+const old = { live: true, liveKey: '100', categoryKey: 'old game', lastNotifiedLiveKey: '100', checkedAt: now };
 const live = { status: 'OPEN', liveId: 101, openDate: '2026-09-05 12:00:00', liveTitle: 'New title', categoryType: 'GAME', liveCategoryValue: 'New game' };
 
 test('Firefox Promise notification API handles hidden tab alerts', async () => {
@@ -299,4 +300,13 @@ test('content script requests and displays VOD alerts, retaining page exclusions
     assert.equal(shown.length, expected ? 1 : 0, pathname);
     if (expected) assert.equal(messages[0].isWatchingVod, vod, pathname);
   }
+});
+
+
+test('stale category changes only refresh the baseline without notifying', async () => {
+  const stale = { ...old, liveId: '101', checkedAt: now - 10 * 60 * 1000 };
+  const h = harness(stale);
+  const result = await h.check(live, { isWatchingVod: true }, null);
+  assert.equal(result.notify, false);
+  assert.equal(h.state().categoryKey, 'new game');
 });

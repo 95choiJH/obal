@@ -368,6 +368,13 @@ async function loadLiveSessionStateByKey(channelId: string, liveKey: string, sup
   const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
   return rows && rows[0] ? rows[0] : null;
 }
+async function loadRecentLiveSessionStates(channelId: string, supabaseUrl: string, serviceRoleKey: string) {
+  const query = "/rest/v1/" + LIVE_SESSION_STATE_TABLE +
+    "?select=" + LIVE_SESSION_STATE_SELECT + "&channel_id=eq." + encodeURIComponent(channelId) +
+    "&order=started_at.desc.nullslast,updated_at.desc&limit=24";
+  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as LiveSessionState[];
+  return Array.isArray(rows) ? rows : [];
+}
 
 function shouldRetryPendingVodSession(session: LiveSessionState, offsetHours: number, nowMs: number) {
   if (!session || (session.vod_saved_at && session.vod_url)) return false;
@@ -750,9 +757,51 @@ function recentReplayScheduleDate(video: Record<string, unknown>, detail: Record
   if (!publishMs) return { date: "", startedAt: "" };
   return { date: new Date(publishMs + offsetHours * 60 * 60 * 1000).toISOString().slice(0, 10), startedAt: "" };
 }
+function sessionMatchesReplayStart(session: LiveSessionState, startedAt: string, offsetHours: number) {
+  const replayStartedMs = chzzkTimestampMs(startedAt, offsetHours);
+  const sessionStartedMs = chzzkTimestampMs(session && session.started_at, offsetHours);
+  return !!replayStartedMs && !!sessionStartedMs && Math.abs(replayStartedMs - sessionStartedMs) <= 10 * 60 * 1000;
+}
+
+async function recentReplayScheduleDateWithSession(
+  channelId: string,
+  video: Record<string, unknown>,
+  detail: Record<string, unknown> | null,
+  offsetHours: number,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+) {
+  const replayDate = recentReplayScheduleDate(video, detail, offsetHours);
+  if (!replayDate.startedAt) return replayDate;
+  try {
+    const sessions = await loadRecentLiveSessionStates(channelId, supabaseUrl, serviceRoleKey);
+    const session = sessions.find((item) => item && item.schedule_date && sessionMatchesReplayStart(item, replayDate.startedAt, offsetHours));
+    if (session && session.schedule_date) return { ...replayDate, date: session.schedule_date, liveKey: session.live_key || "" };
+  } catch (error) {
+    console.warn("recent replay session date lookup failed", error);
+  }
+  return replayDate;
+}
+
+async function findScheduleVodByUrl(channelId: string, url: string, supabaseUrl: string, serviceRoleKey: string) {
+  const normalizedUrl = String(url || "").trim();
+  if (!normalizedUrl) return null;
+  const query = "/rest/v1/schedule?select=id,date,vods&channel_id=eq." + encodeURIComponent(channelId) +
+    "&order=date.desc&limit=60";
+  const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as Array<{ id: number; date: string; vods: unknown }>;
+  const existing = Array.isArray(rows) ? rows.find((row) => {
+    const vods = Array.isArray(row.vods) ? row.vods.map(normalizeVodItem).filter(Boolean) as VodItem[] : [];
+    return vods.some((item) => sameVodUrl(item.url, normalizedUrl));
+  }) : null;
+  return existing || null;
+}
 
 async function appendReplayVodToSchedule(channelId: string, date: string, vod: { videoNo: string; url: string; startedAt?: string }, supabaseUrl: string, serviceRoleKey: string) {
   if (!date || !vod.url) return { synced: false, reason: "invalid-vod" };
+  const existingVodRow = await findScheduleVodByUrl(channelId, vod.url, supabaseUrl, serviceRoleKey);
+  if (existingVodRow) {
+    return { synced: false, reason: "already-present", url: vod.url, videoNo: vod.videoNo, date: existingVodRow.date };
+  }
   const query = "/rest/v1/schedule?select=id,vods&channel_id=eq." + encodeURIComponent(channelId) +
     "&date=eq." + encodeURIComponent(date) + "&limit=1";
   const rows = await supabaseFetch(query, { method: "GET" }, supabaseUrl, serviceRoleKey) as Array<{ id: number; vods: unknown }>;
@@ -800,7 +849,7 @@ async function syncRecentReplayVodsToSchedule(channelId: string, offsetHours: nu
     } catch (error) {
       console.warn("recent replay detail lookup failed", videoNo, error);
     }
-    const replayDate = recentReplayScheduleDate(video, detail, offsetHours);
+    const replayDate = await recentReplayScheduleDateWithSession(channelId, video, detail, offsetHours, supabaseUrl, serviceRoleKey);
     if (!replayDate.date) continue;
     const result = await appendReplayVodToSchedule(channelId, replayDate.date, {
       videoNo,
