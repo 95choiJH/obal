@@ -15,6 +15,7 @@
   const GNIMTI_CONTENT_SETTING_KEY = "gnimti_content";
   const LIVE_TITLE_HISTORY_TABLE = cfg.liveTitleHistoryTableName || "live_title_history";
   const LIVE_CATEGORY_HISTORY_TABLE = cfg.liveCategoryHistoryTableName || "live_category_history";
+  const LOL_STREAMER_ACCOUNTS_TABLE = cfg.lolStreamerAccountsTableName || "lol_streamer_accounts";
   const GNIMTI_IMAGE_BUCKET = cfg.gnimtiImageBucketName || "game-images";
 
   // ---- 상태 ----
@@ -27,6 +28,8 @@
   let liveTitleHistoryLoadError = "";
   let liveCategoryHistory = [];
   let liveCategoryHistoryLoadError = "";
+  let lolStreamerAccount = emptyLolStreamerAccount();
+  let lolStreamerAccountLoadError = "";
   let activeAdminMenu = "schedule";
   let selectedScheduleDate = "";
   let scheduleMonthOffset = 0;
@@ -90,7 +93,8 @@
     return (
       JSON.stringify(scheduleSnap) + "|" + deletedIds.join(",") +
       "||" + JSON.stringify(infoSnap) + "|" + deletedInfoIds.join(",") +
-      "||" + JSON.stringify(adminSettings)
+      "||" + JSON.stringify(adminSettings) +
+      "||" + JSON.stringify(lolStreamerAccount)
     );
   }
   function markDirty() {
@@ -181,6 +185,7 @@
       .order("id", { ascending: true });
     info = infoError ? [] : (infoData || []).map((u) => ({ id: u.id, content: u.content || "", hidden: !!u.hidden }));
     await loadAdminSettings();
+    await loadLolStreamerAccount();
     await loadLiveTitleHistory();
     await loadLiveCategoryHistory();
 
@@ -192,6 +197,28 @@
     loadFeedback();
   }
 
+
+  function emptyLolStreamerAccount() {
+    return { enabled: true, riotGameName: "", riotTagLine: "", platformRegion: "kr", regionalRouting: "asia", latestTier: "", latestRank: "", latestLeaguePoints: null, latestRankUpdatedAt: "" };
+  }
+
+  function normalizeLolStreamerAccount(row) {
+    const base = emptyLolStreamerAccount();
+    if (!row || typeof row !== "object") return base;
+    return {
+      id: row.id || null,
+      enabled: row.enabled !== false,
+      riotPuuid: String(row.riot_puuid || row.riotPuuid || ""),
+      riotGameName: String(row.riot_game_name || row.riotGameName || ""),
+      riotTagLine: String(row.riot_tag_line || row.riotTagLine || ""),
+      platformRegion: String(row.platform_region || row.platformRegion || base.platformRegion),
+      regionalRouting: String(row.regional_routing || row.regionalRouting || base.regionalRouting),
+      latestTier: String(row.latest_tier || row.latestTier || ""),
+      latestRank: String(row.latest_rank || row.latestRank || ""),
+      latestLeaguePoints: row.latest_league_points ?? row.latestLeaguePoints ?? null,
+      latestRankUpdatedAt: String(row.latest_rank_updated_at || row.latestRankUpdatedAt || ""),
+    };
+  }
 
   function emptyGnimtiMember() {
     return { name: "", channelId: "", channelName: "", channelImageUrl: "", position: "탑", tier: "", selfImageUrl: "", analysisImageUrl: "" };
@@ -233,6 +260,10 @@
     return LIVE_CATEGORY_HISTORY_TABLE;
   }
 
+  function lolStreamerAccountsTableName() {
+    return LOL_STREAMER_ACCOUNTS_TABLE;
+  }
+
   function formatHistoryDateTime(value) {
     if (!value) return "";
     const date = new Date(value);
@@ -244,6 +275,48 @@
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  async function loadLolStreamerAccount() {
+    lolStreamerAccountLoadError = "";
+    const { data, error } = await sb
+      .from(lolStreamerAccountsTableName())
+      .select("id,channel_id,riot_puuid,riot_game_name,riot_tag_line,platform_region,regional_routing,enabled,latest_tier,latest_rank,latest_league_points,latest_rank_updated_at")
+      .eq("channel_id", cfg.channelId)
+      .maybeSingle();
+    if (error) {
+      lolStreamerAccount = emptyLolStreamerAccount();
+      lolStreamerAccountLoadError = error.message || String(error);
+      console.warn("[admin] LoL 계정 매핑 로드 실패:", error);
+      return;
+    }
+    lolStreamerAccount = normalizeLolStreamerAccount(data);
+  }
+
+  async function saveLolStreamerAccount() {
+    if (lolStreamerAccountLoadError) return;
+    const gameName = String(lolStreamerAccount.riotGameName || "").trim();
+    const tagLine = String(lolStreamerAccount.riotTagLine || "").trim();
+    const hasAccount = gameName || tagLine || lolStreamerAccount.riotPuuid;
+    if (!hasAccount) {
+      if (lolStreamerAccount.id) {
+        const { error } = await sb.from(lolStreamerAccountsTableName()).delete().eq("id", lolStreamerAccount.id).eq("channel_id", cfg.channelId);
+        if (error) throw error;
+      }
+      return;
+    }
+    const payload = {
+      channel_id: cfg.channelId,
+      riot_puuid: String(lolStreamerAccount.riotPuuid || "").trim() || null,
+      riot_game_name: gameName || null,
+      riot_tag_line: tagLine || null,
+      platform_region: String(lolStreamerAccount.platformRegion || "kr").trim().toLowerCase() || "kr",
+      regional_routing: String(lolStreamerAccount.regionalRouting || "asia").trim().toLowerCase() || "asia",
+      enabled: lolStreamerAccount.enabled !== false,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb.from(lolStreamerAccountsTableName()).upsert(payload, { onConflict: "channel_id" });
+    if (error) throw error;
   }
 
   async function loadLiveTitleHistory() {
@@ -634,8 +707,39 @@
             '<span class="toggle' + (targetNoticePublicEnabled ? ' on' : '') + '"><span class="knob"></span></span>' +
           '</button>' +
         '</div>' +
-      '</div>';
+      '</div>' +
+      lolStreamerAccountSettingsHtml();
     bindSettingsCards();
+  }
+
+  function lolStreamerAccountSettingsHtml() {
+    const account = lolStreamerAccount || emptyLolStreamerAccount();
+    const enabled = account.enabled !== false;
+    const platformOptions = ["kr", "jp", "na1", "euw1"].map((value) => '<option value="' + esc(value) + '"' + (String(account.platformRegion || "kr").toLowerCase() === value ? ' selected' : '') + '>' + esc(value.toUpperCase()) + '</option>').join("");
+    const regionalOptions = ["asia", "americas", "europe", "sea"].map((value) => '<option value="' + esc(value) + '"' + (String(account.regionalRouting || "asia").toLowerCase() === value ? ' selected' : '') + '>' + esc(value) + '</option>').join("");
+    const rankText = account.latestTier ? [account.latestTier, account.latestRank, account.latestLeaguePoints === null || account.latestLeaguePoints === undefined ? "" : account.latestLeaguePoints + "LP"].filter(Boolean).join(" ") : "티어 미수집";
+    const updatedText = account.latestRankUpdatedAt ? formatHistoryDateTime(account.latestRankUpdatedAt) : "업데이트 전";
+    const warning = lolStreamerAccountLoadError ? '<div class="settings-warning">LoL 계정 매핑을 불러올 수 없습니다: ' + esc(lolStreamerAccountLoadError) + '</div>' : '';
+    return '<div class="card settings-card">' +
+      '<div class="settings-row">' +
+        '<div class="settings-copy">' +
+          '<div class="settings-title">리그 오브 레전드 계정</div>' +
+          '<div class="settings-desc">라이브 중 완료된 솔로랭크 경기만 자동 기록합니다.</div>' +
+        '</div>' +
+        '<button type="button" class="settings-toggle" data-lol-account-enabled="1" aria-pressed="' + (enabled ? 'true' : 'false') + '">' +
+          '<span class="toggle-label">' + (enabled ? 'ON' : 'OFF') + '</span>' +
+          '<span class="toggle' + (enabled ? ' on' : '') + '"><span class="knob"></span></span>' +
+        '</button>' +
+      '</div>' +
+      '<div class="lol-account-grid">' +
+        '<label>Riot 이름<input type="text" data-lol-account-field="riotGameName" value="' + esc(account.riotGameName || "") + '" placeholder="게임 이름" /></label>' +
+        '<label>태그<input type="text" data-lol-account-field="riotTagLine" value="' + esc(account.riotTagLine || "") + '" placeholder="kr2" /></label>' +
+        '<label>플랫폼 서버<select data-lol-account-field="platformRegion">' + platformOptions + '</select></label>' +
+        '<label>Match 라우팅<select data-lol-account-field="regionalRouting">' + regionalOptions + '</select></label>' +
+      '</div>' +
+      '<div class="lol-account-meta"><span>' + esc(rankText) + '</span><span>' + esc(updatedText) + '</span>' + (account.riotPuuid ? '<span>PUUID 저장됨</span>' : '<span>PUUID 자동 조회 대기</span>') + '</div>' +
+      warning +
+    '</div>';
   }
 
   function bindSettingsCards() {
@@ -667,6 +771,21 @@
           markDirty();
           toast("타스트리머 알림 설정 저장 실패: " + (error.message || error));
         }
+      };
+    });
+    document.querySelectorAll("[data-lol-account-enabled]").forEach((el) => {
+      el.onclick = () => {
+        lolStreamerAccount.enabled = lolStreamerAccount.enabled === false;
+        renderSettings();
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-lol-account-field]").forEach((el) => {
+      const field = el.getAttribute("data-lol-account-field");
+      el.oninput = el.onchange = () => {
+        lolStreamerAccount[field] = el.value;
+        if (field === "riotGameName" || field === "riotTagLine") lolStreamerAccount.riotPuuid = "";
+        markDirty();
       };
     });
     document.querySelectorAll("[data-setting-target-live-notifications-public]").forEach((el) => {
@@ -4938,6 +5057,7 @@
       }
 
       await saveAdminSettings();
+      await saveLolStreamerAccount();
 
       toast("\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4");
       rows.forEach((row) => { delete row._newlyAdded; });

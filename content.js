@@ -79,6 +79,9 @@
     byDate: new Map(),   // "YYYY-MM-DD" -> entry
     pageOffset: 0,       // 0 = 오늘 페이지, -1 = 5일 전 페이지 ...
     monthExpanded: false,
+    scheduleViewMode: "schedule",
+    lastRenderedScheduleFingerprint: "",
+    lastRenderedLolFingerprint: "",
     extensionCollapsed: readExtensionCollapsed(),
     monthOffset: 0,
     gameOnly: false,
@@ -558,6 +561,520 @@
     return { cls: "cs-pill-on", html: '<span class="cs-dot"></span>오늘 방송 예정 (시간 미정)' };
   }
 
+  function lolStreamerRankForCurrentChannel() {
+    const rank = state.data && state.data.lolStreamerRanks && state.data.lolStreamerRanks[state.channelId];
+    return rank && typeof rank === "object" ? rank : null;
+  }
+
+  function lolRankText(rank) {
+    if (!rank || !rank.tier) return "";
+    const tierLabels = { IRON: "아이언", BRONZE: "브론즈", SILVER: "실버", GOLD: "골드", PLATINUM: "플래티넘", EMERALD: "에메랄드", DIAMOND: "다이아", MASTER: "마스터", GRANDMASTER: "그마", CHALLENGER: "챌린저" };
+    const tier = tierLabels[rank.tier] || rank.tier;
+    const division = ["MASTER", "GRANDMASTER", "CHALLENGER"].includes(rank.tier) ? "" : (rank.rank ? " " + rank.rank : "");
+    const lp = Number.isFinite(Number(rank.leaguePoints)) ? " " + Number(rank.leaguePoints) + "LP" : "";
+    return tier + division + lp;
+  }
+
+  function lolRankBadgeHtml() {
+    const rank = lolStreamerRankForCurrentChannel();
+    const text = lolRankText(rank);
+    if (!text) return "";
+    const name = rank.riotGameName ? rank.riotGameName + (rank.riotTagLine ? "#" + rank.riotTagLine : "") : "";
+    return '<span class="cs-lol-rank-badge" title="' + escapeHtml(name || "현재 솔로랭크") + '"><span>솔랭</span>' + escapeHtml(text) + '</span>';
+  }
+
+  function lolTierIconUrl(rank) {
+    const tier = String((rank && rank.tier) || "").trim().toLowerCase();
+    if (!tier) return "";
+    return "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem/emblem-" + encodeURIComponent(tier) + ".png";
+  }
+
+  function lolRiotIdText(rank) {
+    if (!rank || !rank.riotGameName) return "LoL 경기 로그";
+    return rank.riotGameName + (rank.riotTagLine ? "#" + rank.riotTagLine : "");
+  }
+
+  function lolDivisionLabel(rank) {
+    if (!rank || !rank.rank) return "";
+    const tier = String(rank.tier || "").toUpperCase();
+    if (["MASTER", "GRANDMASTER", "CHALLENGER"].includes(tier)) return "";
+    const division = String(rank.rank || "").toUpperCase();
+    return /^(I|II|III|IV)$/.test(division) ? division : "";
+  }
+
+  function lolLogToggleHtml(lolLogMode) {
+    if (lolLogMode) {
+      return '<button type="button" class="cs-lol-log-toggle cs-open" id="cs-lol-log-toggle" aria-pressed="true">방송 일정</button>';
+    }
+    const rank = lolStreamerRankForCurrentChannel();
+    const rankText = lolRankText(rank) || "현재 솔로랭크";
+    const riotId = lolRiotIdText(rank);
+    const tierIcon = lolTierIconUrl(rank);
+    const division = lolDivisionLabel(rank);
+    const emblemHtml = tierIcon
+      ? '<img class="cs-lol-toggle-emblem" src="' + escapeHtml(tierIcon) + '" alt="" loading="lazy" />'
+      : '<span class="cs-lol-toggle-emblem cs-lol-toggle-emblem-fallback" aria-hidden="true"></span>';
+    const divisionHtml = division ? '<span class="cs-lol-toggle-division" aria-label="세부 티어 ' + escapeHtml(division) + '">' + escapeHtml(division) + '</span>' : "";
+    return '<button type="button" class="cs-lol-log-toggle cs-lol-rank-toggle" id="cs-lol-log-toggle" aria-pressed="false" aria-label="' + escapeHtml(rankText + " 경기 로그") + '">' +
+      emblemHtml + divisionHtml + '<span class="cs-lol-toggle-id">' + escapeHtml(riotId) + '</span></button>';
+  }
+
+  function lolRankSummaryHtml(rank, text) {
+    const icon = lolTierIconUrl(rank);
+    return '<div class="cs-lol-summary-rank">' +
+      '<div class="cs-lol-summary-rank-emblem">' +
+      (icon ? '<img src="' + escapeHtml(icon) + '" alt="" loading="lazy" />' : '') +
+      '</div>' +
+      '<strong>' + escapeHtml(text || "-") + '</strong>' +
+      '</div>';
+  }
+
+  function lolMatchLogsForCurrentChannel() {
+    const logs = state.data && state.data.lolMatchLogs && state.data.lolMatchLogs[state.channelId];
+    return Array.isArray(logs) ? logs : [];
+  }
+
+  function lolCanonicalMatchKey(item) {
+    const id = String((item && item.matchId) || "").trim();
+    if (id) return id.replace(/^ui-test-/i, "");
+    return [item && item.gameStartAt, item && item.championId, item && item.teamPosition].map((value) => String(value || "")).join("|");
+  }
+
+  function lolUniqueMatchLogs(logs) {
+    const seen = new Set();
+    const list = [];
+    (logs || []).forEach((item) => {
+      const key = lolCanonicalMatchKey(item);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      list.push(item);
+    });
+    return list;
+  }
+
+  function stableStringifyForFingerprint(value) {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return "[" + value.map(stableStringifyForFingerprint).join(",") + "]";
+    return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + stableStringifyForFingerprint(value[key])).join(",") + "}";
+  }
+
+  function currentChannelScheduleFingerprint() {
+    const channel = state.channel || {};
+    return stableStringifyForFingerprint({
+      channelId: state.channelId || "",
+      schedule: channel.schedule || [],
+      updatedAt: state.data && state.data.updatedAt || "",
+      notices: state.data && state.data.notices || [],
+      updateHistories: state.data && state.data.updateHistories || [],
+      targetLiveNotificationsEnabled: state.targetLiveNotificationsEnabled !== false,
+      targetLiveNotificationsPublicEnabled: state.targetLiveNotificationsPublicEnabled === true,
+    });
+  }
+
+  function currentLolMatchLogFingerprint() {
+    const rank = lolStreamerRankForCurrentChannel();
+    return stableStringifyForFingerprint({
+      channelId: state.channelId || "",
+      rank: rank || null,
+      logs: lolRecentMatchLogs(100).map((item) => ({
+        matchId: item && item.matchId || "",
+        scheduleDate: item && item.scheduleDate || "",
+        gameStartAt: item && item.gameStartAt || "",
+        position: item && item.teamPosition || "",
+        championId: item && item.championId || null,
+        result: item && item.win,
+        k: item && item.kills || 0,
+        d: item && item.deaths || 0,
+        a: item && item.assists || 0,
+        damage: item && item.damageToChampions || null,
+        csPerMinute: item && item.csPerMinute || null,
+        goldPerMinute: item && item.goldPerMinute || null,
+        teamDamageShare: item && item.teamDamageShare || null,
+        killParticipation: item && item.killParticipation || null,
+        visionScorePerMinute: item && item.visionScorePerMinute || null,
+        wardsKilled: item && item.wardsKilled || null,
+        primaryRuneId: item && item.primaryRuneId || null,
+        secondaryStyleId: item && item.secondaryStyleId || null,
+        itemIds: item && item.itemIds || [],
+      })),
+    });
+  }
+
+  function currentViewFingerprint() {
+    return state.scheduleViewMode === "lolMatchLogs"
+      ? currentLolMatchLogFingerprint()
+      : currentChannelScheduleFingerprint();
+  }
+
+  function rememberRenderedFingerprint() {
+    const value = currentViewFingerprint();
+    if (state.scheduleViewMode === "lolMatchLogs") state.lastRenderedLolFingerprint = value;
+    else state.lastRenderedScheduleFingerprint = value;
+    return value;
+  }
+
+  function captureLolLogScroll() {
+    const log = state.shadow && state.shadow.querySelector && state.shadow.querySelector(".cs-lol-log");
+    return log ? log.scrollTop : 0;
+  }
+
+  function restoreLolLogScroll(scrollTop) {
+    if (state.scheduleViewMode !== "lolMatchLogs" || !Number.isFinite(Number(scrollTop))) return;
+    const log = state.shadow && state.shadow.querySelector && state.shadow.querySelector(".cs-lol-log");
+    if (log) log.scrollTop = Math.max(0, Number(scrollTop));
+  }
+
+  function shouldRenderAfterAutoRefresh(beforeFingerprint) {
+    const afterFingerprint = currentViewFingerprint();
+    if (state.scheduleViewMode === "lolMatchLogs") {
+      return afterFingerprint !== (beforeFingerprint || state.lastRenderedLolFingerprint);
+    }
+    return afterFingerprint !== (beforeFingerprint || state.lastRenderedScheduleFingerprint);
+  }
+
+  function lolSupportPosition(item) {
+    const position = String((item && item.teamPosition) || "").toUpperCase();
+    return position === "UTILITY" || position === "SUPPORT";
+  }
+
+  function lolRecentMatchLogs(limit) {
+    return lolUniqueMatchLogs(lolMatchLogsForCurrentChannel()).slice(0, limit);
+  }
+
+  function lolMatchStartMs(item) {
+    const start = item && item.gameStartAt ? new Date(String(item.gameStartAt)).getTime() : NaN;
+    if (Number.isFinite(start)) return start;
+    const key = String((item && item.scheduleDate) || "").trim();
+    const fallback = /^\d{4}-\d{2}-\d{2}$/.test(key) ? new Date(key + "T00:00:00+09:00").getTime() : NaN;
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+
+  function lolRecentDaysMatchLogs(logs, days) {
+    const now = Date.now();
+    const cutoff = now - Math.max(1, Number(days) || 30) * 24 * 60 * 60 * 1000;
+    return (logs || []).filter((item) => {
+      const time = lolMatchStartMs(item);
+      return time && time >= cutoff && time <= now + 24 * 60 * 60 * 1000;
+    });
+  }
+
+  function lolMatchDateLabel(key) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key || ""))) return String(key || "");
+    return popoverDateLabel(parseKey(key));
+  }
+
+  function lolMatchTimeLabel(value) {
+    if (!value) return "시간 미정";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "시간 미정";
+    return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+
+  function lolQueueLabel(item) {
+    if (item.queueLabel) return item.queueLabel;
+    const labels = { 400: "일반", 420: "솔로랭크", 430: "일반", 440: "자유랭크", 450: "칼바람" };
+    return labels[item.queueId] || (item.queueId ? "큐 " + item.queueId : "경기");
+  }
+
+  function lolPositionLabel(value) {
+    const labels = { TOP: "탑", JUNGLE: "정글", MIDDLE: "미드", MID: "미드", BOTTOM: "원딜", ADC: "원딜", UTILITY: "서폿", SUPPORT: "서폿" };
+    return labels[String(value || "").toUpperCase()] || "포지션 미정";
+  }
+
+  function lolPositionIconSvg(value) {
+    const key = String(value || "").toUpperCase();
+    const icon = key === "TOP" ? '<path d="M7 17 17 7"/><path d="M8 8h8v8"/><path d="M5 19h5"/>' :
+      key === "JUNGLE" ? '<path d="M12 4c-4 3-6 6-6 10a6 6 0 0 0 12 0c0-4-2-7-6-10Z"/><path d="M12 8v9"/><path d="M9 12h6"/>' :
+      key === "MIDDLE" || key === "MID" ? '<path d="M5 19 19 5"/><path d="M6 8V6h2"/><path d="M16 18h2v-2"/>' :
+      key === "BOTTOM" || key === "ADC" ? '<path d="M17 7 7 17"/><path d="M16 16H8V8"/><path d="M14 19h5"/>' :
+      key === "UTILITY" || key === "SUPPORT" ? '<circle cx="12" cy="8" r="3"/><path d="M6 20c1-4 3-6 6-6s5 2 6 6"/><path d="M12 11v5"/>' :
+      '<circle cx="12" cy="12" r="7"/><path d="M12 8v4l3 2"/>';
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#bfdbfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + icon + '</svg>');
+  }
+  const LOL_DATA_DRAGON_VERSION = "16.18.1";
+  const LOL_RUNE_ICON_PATHS = {"8000":"perk-images/Styles/7201_Precision.png","8005":"perk-images/Styles/Precision/PressTheAttack/PressTheAttack.png","8008":"perk-images/Styles/Precision/LethalTempo/LethalTempoTemp.png","8009":"perk-images/Styles/Precision/PresenceOfMind/PresenceOfMind.png","8010":"perk-images/Styles/Precision/Conqueror/Conqueror.png","8014":"perk-images/Styles/Precision/CoupDeGrace/CoupDeGrace.png","8017":"perk-images/Styles/Precision/CutDown/CutDown.png","8021":"perk-images/Styles/Precision/FleetFootwork/FleetFootwork.png","8100":"perk-images/Styles/7200_Domination.png","8105":"perk-images/Styles/Domination/RelentlessHunter/RelentlessHunter.png","8106":"perk-images/Styles/Domination/UltimateHunter/UltimateHunter.png","8112":"perk-images/Styles/Domination/Electrocute/Electrocute.png","8126":"perk-images/Styles/Domination/CheapShot/CheapShot.png","8128":"perk-images/Styles/Domination/DarkHarvest/DarkHarvest.png","8135":"perk-images/Styles/Domination/TreasureHunter/TreasureHunter.png","8137":"perk-images/Styles/Domination/SixthSense/SixthSense.png","8139":"perk-images/Styles/Domination/TasteOfBlood/GreenTerror_TasteOfBlood.png","8140":"perk-images/Styles/Domination/GrislyMementos/GrislyMementos.png","8141":"perk-images/Styles/Domination/DeepWard/DeepWard.png","8143":"perk-images/Styles/Domination/SuddenImpact/SuddenImpact.png","8200":"perk-images/Styles/7202_Sorcery.png","8210":"perk-images/Styles/Sorcery/Transcendence/Transcendence.png","8214":"perk-images/Styles/Sorcery/SummonAery/SummonAery.png","8224":"perk-images/Styles/Sorcery/NullifyingOrb/Axiom_Arcanist.png","8226":"perk-images/Styles/Sorcery/ManaflowBand/ManaflowBand.png","8229":"perk-images/Styles/Sorcery/ArcaneComet/ArcaneComet.png","8230":"perk-images/Styles/Sorcery/PhaseRush/StormraidersSurgeRuneIcon2.png","8232":"perk-images/Styles/Sorcery/Waterwalking/Waterwalking.png","8233":"perk-images/Styles/Sorcery/AbsoluteFocus/AbsoluteFocus.png","8234":"perk-images/Styles/Sorcery/Celerity/CelerityTemp.png","8236":"perk-images/Styles/Sorcery/GatheringStorm/GatheringStorm.png","8237":"perk-images/Styles/Sorcery/Scorch/Scorch.png","8242":"perk-images/Styles/Sorcery/Unflinching/Unflinching.png","8275":"perk-images/Styles/Sorcery/NimbusCloak/6361.png","8299":"perk-images/Styles/Sorcery/LastStand/LastStand.png","8300":"perk-images/Styles/7203_Whimsy.png","8304":"perk-images/Styles/Inspiration/MagicalFootwear/MagicalFootwear.png","8306":"perk-images/Styles/Inspiration/HextechFlashtraption/HextechFlashtraption.png","8313":"perk-images/Styles/Inspiration/PerfectTiming/AlchemistCabinet.png","8316":"perk-images/Styles/Inspiration/JackOfAllTrades/JackofAllTrades2.png","8321":"perk-images/Styles/Inspiration/CashBack/CashBack2.png","8345":"perk-images/Styles/Inspiration/BiscuitDelivery/BiscuitDelivery.png","8347":"perk-images/Styles/Inspiration/CosmicInsight/CosmicInsight.png","8351":"perk-images/Styles/Inspiration/GlacialAugment/GlacialAugment.png","8352":"perk-images/Styles/Inspiration/TimeWarpTonic/TimeWarpTonic.png","8360":"perk-images/Styles/Inspiration/UnsealedSpellbook/UnsealedSpellbook.png","8369":"perk-images/Styles/Inspiration/FirstStrike/FirstStrike.png","8400":"perk-images/Styles/7204_Resolve.png","8401":"perk-images/Styles/Resolve/MirrorShell/MirrorShell.png","8410":"perk-images/Styles/Resolve/ApproachVelocity/ApproachVelocity.png","8429":"perk-images/Styles/Resolve/Conditioning/Conditioning.png","8437":"perk-images/Styles/Resolve/GraspOfTheUndying/GraspOfTheUndying.png","8439":"perk-images/Styles/Resolve/VeteranAftershock/VeteranAftershock.png","8444":"perk-images/Styles/Resolve/SecondWind/SecondWind.png","8446":"perk-images/Styles/Resolve/Demolish/Demolish.png","8451":"perk-images/Styles/Resolve/Overgrowth/Overgrowth.png","8453":"perk-images/Styles/Resolve/Revitalize/Revitalize.png","8463":"perk-images/Styles/Resolve/FontOfLife/FontOfLife.png","8465":"perk-images/Styles/Resolve/Guardian/Guardian.png","8473":"perk-images/Styles/Resolve/BonePlating/BonePlating.png","8992":"perk-images/Styles/Sorcery/DeathfireTouch/DEATHFIRE_TOUCH_KEYSTONE.png","9101":"perk-images/Styles/Precision/AbsorbLife/AbsorbLife.png","9103":"perk-images/Styles/Precision/LegendBloodline/LegendBloodline.png","9104":"perk-images/Styles/Precision/LegendAlacrity/LegendAlacrity.png","9105":"perk-images/Styles/Precision/LegendHaste/LegendHaste.png","9111":"perk-images/Styles/Precision/Triumph.png","9923":"perk-images/Styles/Domination/HailOfBlades/HailOfBlades.png"};
+  const LOL_ITEM_NAMES = {"1001":"장화","1004":"요정의 부적","1006":"원기 회복의 구슬","1011":"거인의 허리띠","1018":"민첩성의 망토","1026":"방출의 마법봉","1027":"사파이어 수정","1028":"루비 수정","1029":"천 갑옷","1031":"쇠사슬 조끼","1033":"마법무효화의 망토","1035":"잉걸불 칼","1036":"롱소드","1037":"곡괭이","1038":"B.F. 대검","1039":"빗발칼날","1040":"흑요석 검","1042":"단검","1043":"곡궁","1052":"증폭의 고서","1053":"흡혈의 낫","1054":"도란의 방패","1055":"도란의 검","1056":"도란의 반지","1057":"음전자 망토","1058":"쓸데없이 큰 지팡이","1082":"암흑의 인장","1083":"수확의 낫","1086":"도란의 활","1090":"퀘스트: 상단","1091":"퀘스트: 중단","1092":"퀘스트: 하단","1093":"퀘스트: 서포터","1094":"퀘스트: 정글","1101":"새끼 화염발톱","1102":"새끼 바람돌이","1103":"새끼 이끼쿵쿵이","1104":"전령의 눈","1105":"새끼 이끼쿵쿵이","1106":"새끼 바람돌이","1107":"새끼 화염발톱","1111":"자르반 1세의","1120":"도란의 투구","1200":"상단 공격로 퀘스트","1201":"중단 공격로 퀘스트","1202":"하단 공격로 퀘스트","1203":"서포터 퀘스트","1204":"정글 퀘스트","1205":"정글 퀘스트 보상","1206":"중단 공격로 퀘스트 보상","1207":"하단 공격로 퀘스트 보상","1208":"서포터 퀘스트 보상","1209":"정글 퀘스트 보상","1210":"정글 퀘스트 보상","1211":"정글 퀘스트 보상","1220":"강력 순간이동 (상단 공격로 퀘스트 보상)","1221":"상단 공격로 퀘스트 보상","1222":"상단 공격로 퀘스트","1500":"관통 탄환","1501":"요새화","1502":"이중 갑옷","1503":"파수꾼의 눈","1504":"수호자","1505":"이중 갑옷","1506":"이중 갑옷","1507":"과충전","1508":"방탄 양말","1509":"체질","1510":"특이 체질","1511":"슈퍼 메크 방어구","1512":"슈퍼 메크 전력장","1515":"포탑 방패","1516":"구조물 현상금","1517":"구조물 현상금","1518":"구조물 현상금","1519":"구조물 현상금","1520":"과충전HA","1521":"요새화","1522":"포탑 강화","1523":"과충전","1524":"과잉성장","2001":"귀환","2002":"상급 귀환","2003":"체력 물약","2007":"귀환 비활성화","2010":"굳건한 의지의 완전한 비스킷","2015":"키르히아이스의 파편","2019":"강철 인장","2020":"야수화","2021":"땅굴 채굴기","2022":"빛나는 티끌","2031":"충전형 물약","2033":"부패 물약","2049":"수호자의 부적","2050":"수호자의 장막","2051":"수호자의 뿔피리","2052":"포로 간식","2055":"제어 와드","2056":"투명 와드","2065":"슈렐리아의 군가","2138":"강철의 영약","2139":"마법의 영약","2140":"분노의 영약","2141":"카파 주스","2142":"힘의 주스","2143":"활력의 주스","2144":"가속의 주스","2145":"행운의 주사위","2146":"향상된 행운의 주사위","2147":"증강 레벨","2150":"숙련의 영약","2151":"탐욕의 영약","2152":"힘의 영약","2161":"힘의 밴들 주스","2162":"활력의 밴들 주스","2163":"가속의 밴들 주스","2403":"미니언 해체분석기","2420":"추적자의 팔목 보호대","2421":"부서진 팔목 보호대","2422":"약간 신비한 신발","2501":"지배자의 피갑옷","2502":"끝없는 절망","2503":"어둠불꽃 횃불","2504":"케이닉 루컨","2508":"운명의 재","2510":"황혼과 새벽","2512":"악마사냥꾼의 화살","2517":"끝없는 갈망","2520":"요새파괴자","2522":"실체화 장비","2523":"마법광학 장치 C44","2524":"밴들파이프","2525":"원형질 안전벨트","2526":"속삭이는 머리띠","2530":"악곡의 왕관","3001":"저녁갑주","3002":"개척자","3003":"대천사의 지팡이","3004":"마나무네","3005":"유령 배회자","3006":"광전사의 군화","3008":"탐욕의 군화","3009":"신속의 장화","3010":"공생형 밑창","3011":"화학공학 부패기","3012":"축복의 성배","3013":"하나 된 영혼","3020":"마법사의 신발","3023":"생명의 샘 펜던트","3024":"얼음 방패","3026":"수호 천사","3031":"무한의 대검","3032":"윤 탈 야생화살","3033":"필멸자의 운명","3035":"최후의 속삭임","3036":"도미닉 경의 인사","3039":"아트마의 심판","3040":"대천사의 포옹","3041":"메자이의 영혼약탈자","3042":"무라마나","3044":"탐식의 망치","3046":"유령 무희","3047":"판금 장화","3050":"지크의 융합","3051":"온기가 필요한 자의 도끼","3053":"스테락의 도전","3057":"광휘의 검","3065":"정령의 형상","3066":"비상의 월갑","3067":"점화석","3068":"태양불꽃 방패","3070":"여신의 눈물","3071":"칠흑의 양날 도끼","3072":"피바라기","3073":"실험적 마공학판","3074":"굶주린 히드라","3075":"가시 갑옷","3076":"덤불 조끼","3077":"티아맷","3078":"삼위일체","3082":"파수꾼의 갑옷","3083":"워모그의 갑옷","3084":"강철심장","3085":"루난의 허리케인","3086":"열정의 검","3087":"스태틱의 단검","3089":"라바돈의 죽음모자","3091":"마법사의 최후","3094":"고속 연사포","3095":"폭풍갈퀴","3100":"리치베인","3102":"밴시의 장막","3105":"군단의 방패","3107":"구원","3108":"악마의 마법서","3109":"기사의 맹세","3110":"얼어붙은 심장","3111":"헤르메스의 발걸음","3112":"수호자의 보주","3113":"에테르 환영","3114":"금지된 우상","3115":"내셔의 이빨","3116":"라일라이의 수정홀","3117":"기동력의 장화","3118":"악의","3119":"혹한의 손길","3121":"종말의 겨울","3123":"처형인의 대검","3124":"구인수의 격노검","3128":"죽음불꽃 손아귀","3131":"신성의 검","3133":"콜필드의 전투 망치","3134":"톱날 단검","3135":"공허의 지팡이","3137":"무덤꽃","3139":"헤르메스의 시미터","3140":"수은 장식띠","3142":"요우무의 유령검","3143":"란두인의 예언","3144":"정찰병의 새총","3145":"마법공학 교류 발전기","3146":"마법공학 총검","3147":"기괴한 가면","3152":"마법공학 로켓 벨트","3153":"몰락한 왕의 검","3155":"주문포식자","3156":"맬모셔스의 아귀","3157":"존야의 모래시계","3158":"명석함의 아이오니아 장화","3161":"쇼진의 창","3165":"모렐로노미콘","3168":"불멸의 길","3170":"신속행진","3171":"핏빛 명석함","3172":"건메탈 군화","3173":"사슬끈 분쇄자","3174":"무장 진격","3175":"주문투척자의 신발","3176":"영원한 전진","3177":"수호자의 검","3179":"그림자 검","3181":"선체파괴자","3184":"수호자의 망치","3190":"강철의 솔라리 펜던트","3193":"가고일 돌갑옷","3211":"망령의 두건","3222":"미카엘의 축복","3302":"경계","3330":"허수아비","3340":"투명 와드","3348":"비전 탐지기","3349":"광휘의 특이점","3363":"망원형 개조","3364":"예언자의 렌즈","3398":"작은 파티 선물","3399":"파티 선물","3400":"수당","3430":"파멸의식 고서","3504":"불타는 향로","3508":"정수 약탈자","3513":"전령의 눈","3599":"칼리스타의 칠흑의 창","3600":"칼리스타의 칠흑의 창","3742":"망자의 갑옷","3748":"거대한 히드라","3801":"수정 팔 보호구","3802":"사라진 양피지","3803":"억겁의 카탈리스트","3814":"밤의 끝자락","3850":"주문도둑의 검","3851":"얼음 송곳니","3853":"얼음 정수의 파편","3854":"강철 어깨 보호대","3855":"룬 강철 어깨 갑옷","3857":"화이트록의 갑옷","3858":"고대유물 방패","3859":"타곤 산의 방패","3860":"타곤 산의 방벽","3862":"영혼의 낫","3863":"해로윙 초승달낫","3864":"검은 안개 낫","3865":"세계 지도집","3866":"룬 나침반","3867":"세계의 결실","3869":"천상의 이의","3870":"꿈 생성기","3871":"자자크의 세계가시","3876":"태양의 썰매","3877":"피의 노래","3901":"가차없는 포격바다뱀 은화 500닢","3902":"죽음의 여신바다뱀 은화 500닢","3903":"사기진작바다뱀 은화 500닢","3916":"망각의 구","4003":"생명선","4004":"망령 해적검","4005":"제국의 명령","4010":"핏빛 저주","4011":"꽃피는 새벽의 검","4012":"죄악 포식자","4013":"번개 끈","4014":"얼어붙은 망치","4015":"당혹","4016":"무언의 서약","4017":"지옥불 손도끼","4401":"대자연의 힘","4402":"활력증진의 펜던트","4403":"황금 뒤집개","4628":"지평선의 초점","4629":"우주의 추진력","4630":"역병의 보석","4632":"신록의 장벽","4633":"균열 생성기","4635":"흡수의 시선","4636":"밤의 수확자","4637":"악마의 포옹","4638":"감시하는 와드석","4641":"고무의 와드석","4642":"밴들유리 거울","4643":"경계의 와드석","4644":"부서진 여왕의 왕관","4645":"그림자불꽃","4646":"폭풍 쇄도","6029":"강철가시 채찍","6032":"추가 능력치","6035":"은빛 여명","6333":"죽음의 무도","6609":"화공 펑크 사슬검","6610":"갈라진 하늘","6616":"흐르는 물의 지팡이","6617":"월석 재생기","6620":"헬리아의 메아리","6621":"새벽심장","6630":"선혈포식자","6631":"발걸음 분쇄기","6632":"신성한 파괴자","6653":"리안드리의 고통","6655":"루덴의 메아리","6656":"만년서리","6657":"영겁의 지팡이","6660":"바미의 불씨","6662":"얼어붙은 건틀릿","6664":"공허한 광휘","6665":"해신 작쇼","6667":"광휘의 미덕","6670":"절정의 화살","6671":"돌풍","6672":"크라켄 학살자","6673":"불멸의 철갑궁","6675":"나보리 명멸검","6676":"징수의 총","6677":"분노의 칼","6690":"꽁지깃","6691":"드락사르의 황혼검","6692":"월식","6693":"자객의 발톱","6694":"세릴다의 원한","6695":"독사의 송곳니","6696":"원칙의 원형낫","6697":"오만","6698":"불경한 히드라","6699":"벼락폭풍검","6700":"라코어의 방패","6701":"기회","6702":"전방 정찰","7050":"갱플랭크 Placeholder","8001":"증오의 사슬","8010":"핏빛 저주","8020":"심연의 가면","9168":"잠긴 무기 슬롯","9171":"회오리 칼날","9172":"유미봇","9173":"광휘 역장","9174":"스태틱의 검","9175":"사자의 비가","9176":"개틀링 토끼 건","9177":"타오르는 단궁","9178":"절멸자","9179":"전투 토끼 석궁","9180":"귀여운 발사기","9181":"소용돌이 장갑","9183":"칼날 부메랑","9184":"토끼 초강력 폭발","9185":"상어잡이 해양 기뢰","9187":"티.버","9188":"동물 지뢰","9189":"최후의 도시 대중교통","9190":"메아리치는 박쥐칼날","9192":"발자국 중독 장치","9193":"얼음작렬 갑옷","9271":"그치지 않는 폭풍","9272":"유미봇_최종_최종","9273":"폭발의 포옹","9274":"프룸비스의 전기도축칼","9275":"휘감는 빛","9276":"이중 깡충깡충 포화","9277":"진화한 불꽃 사격","9278":"동물의 종말","9279":"토끼 프라임 거대 석궁","9280":"왕 귀여운 발사기","9281":"폭풍의 건틀릿","9283":"사중 부메랑","9284":"고속 토끼 속사포","9285":"무한의 괴물 퇴치기","9287":"티.버 (특.대.형 에디션)","9288":"징크스의 삼중 다이너마이트","9289":"FC 급행열차","9290":"베인의 크로마칼날","9292":"맨발 화학 물질 분사기","9293":"완전 빙결","9300":"야옹 야옹","9301":"방패 타격","9302":"음향의 물결","9303":"족쇄 할퀴기","9304":"강철 폭풍","9305":"촉수 후려치기","9306":"날개 달린 단검","9307":"인도의 저주","9308":"토끼뜀","9400":"전투 고양이 총알 세례","9401":"사자의 광명","9402":"동물 메아리","9403":"포악한 베기","9404":"떠도는 폭풍","9405":"곰의 강타","9406":"연인의 도탄","9407":"고양된 저주","9408":"당근 격돌","123430":"파멸의식 고서","124011":"꽃피는 새벽의 검","126697":"오만","220000":"추가 능력치","220001":"전설 전사 아이템","220002":"전설 원거리 딜러 아이템","220003":"전설 암살자 아이템","220004":"전설 마법사 아이템","220005":"전설 탱커 아이템","220006":"전설 서포터 아이템","220007":"프리즘 아이템","220008":"모루 교환권","220009":"골드 능력치 모루 교환권","220010":"프리즘 능력치 모루 교환권","220011":"용기 교환권","220012":"파편검","220013":"포로 간식","221011":"거인의 허리띠","221026":"방출의 마법봉","221031":"쇠사슬 조끼","221038":"B.F. 대검","221043":"곡궁","221053":"흡혈의 낫","221057":"음전자 망토","221058":"쓸데없이 큰 지팡이","222022":"빛나는 티끌","222051":"수호자의 뿔피리","222065":"슈렐리아의 군가","222141":"카파 주스","222502":"끝없는 절망","222503":"어둠불꽃 횃불","222504":"케이닉 루컨","222510":"황혼과 새벽","222512":"악마사냥꾼의 화살","222517":"끝없는 갈망","222522":"실체화 장비","222523":"마법광학 장치 C44","222524":"밴들파이프","222525":"원형질 안전벨트","222526":"속삭이는 머리띠","222530":"악곡의 왕관","223001":"저녁갑주","223002":"개척자","223003":"대천사의 지팡이","223004":"마나무네","223005":"유령 배회자","223006":"광전사의 군화","223008":"탐욕의 군화","223009":"신속의 장화","223011":"화학공학 부패기","223020":"마법사의 신발","223026":"수호 천사","223031":"무한의 대검","223032":"윤 탈 야생화살","223033":"필멸자의 운명","223036":"도미닉 경의 인사","223039":"아트마의 심판","223040":"대천사의 포옹","223042":"무라마나","223046":"유령 무희","223047":"판금 장화","223050":"지크의 융합","223053":"스테락의 도전","223057":"광휘의 검","223065":"정령의 형상","223067":"점화석","223068":"태양불꽃 방패","223069":"공허의 불길","223071":"칠흑의 양날 도끼","223072":"피바라기","223073":"실험적 마공학판","223074":"굶주린 히드라","223075":"가시 갑옷","223078":"삼위일체","223084":"강철심장","223085":"루난의 허리케인","223087":"스태틱의 단검","223089":"라바돈의 죽음모자","223091":"마법사의 최후","223094":"고속 연사포","223095":"폭풍갈퀴","223100":"리치베인","223102":"밴시의 장막","223105":"군단의 방패","223107":"구원","223109":"기사의 맹세","223110":"얼어붙은 심장","223111":"헤르메스의 발걸음","223112":"수호자의 보주","223115":"내셔의 이빨","223116":"라일라이의 수정홀","223118":"악의","223119":"혹한의 손길","223121":"종말의 겨울","223124":"구인수의 격노검","223135":"공허의 지팡이","223137":"무덤꽃","223139":"헤르메스의 시미터","223142":"요우무의 유령검","223143":"란두인의 예언","223146":"마법공학 총검","223152":"마법공학 로켓 벨트","223153":"몰락한 왕의 검","223156":"맬모셔스의 아귀","223157":"존야의 모래시계","223158":"명석함의 아이오니아 장화","223161":"쇼진의 창","223165":"모렐로노미콘","223172":"서풍","223177":"수호자의 검","223181":"선체파괴자","223184":"수호자의 망치","223185":"수호자의 단검","223190":"강철의 솔라리 펜던트","223193":"가고일 돌갑옷","223222":"미카엘의 축복","223302":"경계","223504":"불타는 향로","223508":"정수 약탈자","223742":"망자의 갑옷","223748":"거대한 히드라","223814":"밤의 끝자락","224004":"망령 해적검","224005":"제국의 명령","224401":"대자연의 힘","224403":"황금 뒤집개","224628":"지평선의 초점","224629":"우주의 추진력","224633":"균열 생성기","224636":"밤의 수확자","224637":"악마의 포옹","224644":"부서진 여왕의 왕관","224645":"그림자불꽃","224646":"폭풍 쇄도","226035":"은빛 여명","226333":"죽음의 무도","226609":"화공 펑크 사슬검","226610":"갈라진 하늘","226616":"흐르는 물의 지팡이","226617":"월석 재생기","226620":"헬리아의 메아리","226621":"새벽심장","226630":"선혈포식자","226631":"발걸음 분쇄기","226632":"신성한 파괴자","226653":"리안드리의 고뇌","226655":"루덴의 메아리","226656":"만년서리","226657":"영겁의 지팡이","226662":"얼어붙은 건틀릿","226664":"공허한 광휘","226665":"해신 작쇼","226667":"광휘의 미덕","226668":"궁극의 히드라","226671":"돌풍","226672":"크라켄 학살자","226673":"불멸의 철갑궁","226675":"나보리 명멸검","226676":"징수의 총","226691":"드락사르의 황혼검","226692":"월식","226693":"자객의 발톱","226694":"세릴다의 원한","226695":"독사의 송곳니","226696":"원칙의 원형낫","226697":"오만","226698":"불경한 히드라","226699":"벼락폭풍검","226701":"기회","228001":"증오의 사슬","228002":"우글렛의 마녀 모자","228003":"죽음의 검","228004":"적응형 투구","228005":"흑요석 양날 도끼","228006":"핏빛 칼날","228008":"룬 글레이브","228009":"다용도 도구","228020":"심연의 가면","322065":"슈렐리아의 군가","322526":"속삭이는 머리띠","322530":"악곡의 왕관","323002":"개척자","323003":"대천사의 지팡이","323004":"마나무네","323040":"대천사의 포옹","323042":"무라마나","323050":"지크의 융합","323070":"여신의 눈물","323075":"가시 갑옷","323107":"구원","323109":"기사의 맹세","323110":"얼어붙은 심장","323119":"혹한의 손길","323121":"종말의 겨울","323190":"강철의 솔라리 펜던트","323222":"미카엘의 축복","323504":"불타는 향로","324005":"제국의 명령","326616":"흐르는 물의 지팡이","326617":"월석 재생기","326620":"헬리아의 메아리","326621":"새벽심장","326657":"영겁의 지팡이","328020":"심연의 가면","443054":"흑강철 발톱","443055":"질책","443056":"불사대마왕의 왕관","443058":"용암의 방패","443059":"별빛밤 망토","443060":"신성의 검","443061":"엔트로피의 힘","443062":"핏빛 선물","443063":"일라이자의 기적","443064":"승천의 부적","443069":"불귀신","443079":"터보 화공 탱크","443080":"쌍둥이 가면","443081":"마공화살 동료","443083":"워모그의 갑옷","443090":"사신의 대가","443193":"가고일 돌갑옷","444636":"밤의 수확자","444637":"악마의 포옹","444644":"부서진 여왕의 왕관","446632":"신성한 파괴자","446656":"만년서리","446667":"광휘의 미덕","446671":"돌풍","446691":"드락사르의 황혼검","446693":"자객의 발톱","447100":"신기루 검","447101":"도박꾼의 칼날","447102":"현실 균열","447103":"혈마법사의 투구","447104":"활력증진의 펜던트","447105":"창공의 서약","447106":"용의 심장","447107":"참수자","447108":"룬 조각기","447109":"잔혹 행위","447110":"달빛 마법검","447111":"지배자의 피갑옷","447112":"살점포식자","447113":"폭발의 구","447114":"반향","447115":"섭정 시해","447116":"킨코우 십수","447118":"화염술사의 망토","447119":"번개 막대","447120":"다이아몬드 창","447121":"황혼의 끝자락","447122":"블랙홀 건틀릿","447123":"조종의 손아귀","550001":"체력 바 색칠: 파랑","550002":"체력 바 색칠: 주황","550003":"체력 바 색칠: 초록","550004":"체력 바 색칠: 분홍","550005":"체력 바 청소: 색상 초기화","550006":"체력 바 색칠: 무지개","550007":"파티 선물","663039":"아트마의 심판","663056":"불사대마왕의 왕관","663058":"용암의 방패","663059":"별빛밤 망토","663060":"신성의 검","663064":"베이가의 승천의 부적","663146":"마법공학 총검","663172":"서풍","663193":"가고일 돌갑옷","664011":"꽃피는 새벽의 검","664403":"황금 뒤집개","664644":"부서진 여왕의 왕관","667101":"도박꾼의 칼날","667109":"잔혹 행위","667112":"살점포식자","667666":"징수의 총","771001":"속도의 장화","771004":"요정의 부적","771006":"원기 회복의 구슬","771011":"거인의 허리띠","771018":"민첩성의 망토","771026":"방출의 마법봉","771027":"사파이어 수정","771028":"루비 수정","771029":"천 갑옷","771031":"쇠사슬 조끼","771033":"마법무효화의 망토","771036":"롱소드","771037":"곡괭이","771038":"B.F. 대검","771039":"사냥꾼의 마체테","771042":"단검","771043":"곡궁","771051":"싸움꾼의 장갑","771052":"증폭의 고서","771053":"흡혈의 낫","771054":"도란의 방패","771055":"도란의 검","771056":"도란의 반지","771057":"음전자 망토","771058":"쓸데없이 큰 지팡이","771080":"정령석","771500":"관통 탄환","772001":"귀환","772003":"체력 물약","772004":"마나 물약","772009":"원기회복의 완전한 비스킷","772037":"불굴의 영약","772038":"민첩의 영약","772039":"지능의 영약","772041":"수정 플라스크","772042":"예언자의 영약","772043":"투명 감지 와드","772044":"시야 와드","772045":"루비 시야석","772049":"시야석","772050":"탐험가의 와드","773001":"심연의 홀","773003":"대천사의 지팡이","773004":"마나무네","773005":"아트마의 창","773006":"광전사의 군화","773009":"신속의 장화","773010":"수호자 카탈리스트","773020":"마법사의 신발","773022":"얼어붙은 망치","773023":"쌍둥이 그림자","773024":"빙하의 장막","773025":"얼어붙은 건틀릿","773026":"수호 천사","773027":"영겁의 지팡이","773028":"조화의 성배","773031":"무한의 대검","773035":"최후의 속삭임","773037":"마나의 보주","773040":"대천사의 포옹","773041":"메자이의 영혼약탈자","773042":"무라마나","773044":"탐식의 망치","773046":"유령 무희","773047":"닌자의 신발","773050":"스타크의 열정","773052":"용맹의 징표","773056":"저항 공성기","773057":"광휘의 검","773060":"지휘관의 깃발","773063":"영혼의 갑옷","773064":"대자연의 힘","773065":"정령의 형상","773067":"점화석","773068":"태양불꽃 망토","773069":"슈렐리아의 몽상","773070":"여신의 눈물","773071":"칠흑의 양날 도끼","773072":"피바라기","773073":"태양불꽃 망토 무더기","773074":"굶주린 히드라","773075":"가시 갑옷","773077":"티아맷","773078":"삼위일체","773082":"파수꾼의 갑옷","773083":"워모그의 갑옷","773084":"활력증진의 펜던트","773085":"루난의 허리케인","773086":"열정의 검","773087":"스태틱의 단검","773089":"라바돈의 죽음모자","773091":"마법사의 최후","773092":"얼음 정수의 파편","773093":"탐욕의 검","773096":"현자의 돌","773098":"행운 피크","773100":"리치베인","773101":"쐐기검","773102":"밴시의 장막","773105":"군단의 방패","773106":"마드레드의 갈퀴손","773107":"룬 방벽","773108":"악마의 마법서","773109":"마드레드의 피갈퀴손","773110":"얼어붙은 심장","773111":"헤르메스의 발걸음","773114":"역병의 비수","773115":"내셔의 이빨","773116":"라일라이의 수정홀","773117":"기동력의 장화","773123":"처형인의 대검","773124":"구인수의 격노검","773128":"죽음불꽃 손아귀","773131":"신성의 검","773132":"황금의 심장","773134":"야수화","773135":"공허의 지팡이","773136":"기괴한 가면","773138":"레비아탄 갑옷","773139":"헤르메스의 시미터","773140":"수은 장식띠","773141":"비술의 검","773142":"요우무의 유령검","773143":"란두인의 예언","773144":"빌지워터 해적검","773145":"마법공학 리볼버","773146":"마법공학 총검","773151":"리안드리의 고통","773152":"고대인의 의지","773153":"몰락한 왕의 검","773154":"리글의 랜턴","773155":"주문포식자","773156":"맬모셔스의 아귀","773157":"존야의 모래시계","773158":"명석함의 아이오니아 장화","773160":"야생의 섬광","773165":"모렐로노미콘","773172":"서풍","773173":"일라이자의 기적","773174":"슈세이의 마나 통","773178":"이온 충격기","773190":"강철의 솔라리 펜던트","773191":"추적자의 팔목 보호대","773206":"망령의 영혼","773207":"고대 골렘의 영혼","773209":"도마뱀 장로의 영혼","773211":"망령의 두건","773222":"미카엘의 도가니","773340":"노란색 장신구","773348":"빨간색 장신구","773504":"불타는 향로","773512":"즈롯 차원문","773513":"프로토타입 마공학 핵","773514":"마공학 핵 mk-1","773515":"마공학 핵 mk-2","773516":"완성형 마공학 핵","773517":"에그노그","773518":"티백","773519":"캔디 콘","773521":"체력 물약","994403":"황금 뒤집개"};
+
+  function lolDataDragonAssetUrl(assetPath) {
+    const clean = String(assetPath || "").replace(/^\/+/, "");
+    return clean ? "https://ddragon.leagueoflegends.com/cdn/img/" + clean : "";
+  }
+
+  function lolRuneIconUrl(id) {
+    const key = String(Number(id) || "");
+    return LOL_RUNE_ICON_PATHS[key] ? lolDataDragonAssetUrl(LOL_RUNE_ICON_PATHS[key]) : "";
+  }
+
+  function lolItemIconUrl(id) {
+    const number = Number(id);
+    if (!Number.isFinite(number) || number <= 0) return "";
+    return "https://ddragon.leagueoflegends.com/cdn/" + LOL_DATA_DRAGON_VERSION + "/img/item/" + encodeURIComponent(String(Math.round(number))) + ".png";
+  }
+
+  function lolItemName(id) {
+    const key = String(Math.round(Number(id) || 0));
+    return LOL_ITEM_NAMES[key] || "";
+  }
+
+  function lolChampionPortraitUrl(item) {
+    const id = Number(item && item.championId);
+    if (Number.isFinite(id) && id > 0) return "https://cdn.communitydragon.org/latest/champion/" + encodeURIComponent(String(id)) + "/square";
+    const name = String((item && item.championName) || "").trim();
+    return name ? "https://cdn.communitydragon.org/latest/champion/" + encodeURIComponent(name) + "/square" : "";
+  }
+
+  function lolMatchVisualHtml(item) {
+    const position = lolPositionLabel(item && item.teamPosition);
+    const champion = String((item && item.championName) || "").trim() || "챔피언 미정";
+    const portrait = lolChampionPortraitUrl(item);
+    const championHtml = portrait
+      ? '<img class="cs-lol-champion-portrait" src="' + escapeHtml(portrait) + '" alt="' + escapeHtml(champion) + '" title="' + escapeHtml(champion) + '" loading="lazy" />'
+      : '<span class="cs-lol-champion-portrait cs-lol-champion-fallback" title="' + escapeHtml(champion) + '">?</span>';
+    return '<div class="cs-lol-log-visual" title="' + escapeHtml(position + ' · ' + champion) + '">' +
+      '<img class="cs-lol-position-icon" src="' + escapeHtml(lolPositionIconSvg(item && item.teamPosition)) + '" alt="' + escapeHtml(position) + '" />' +
+      championHtml +
+      '</div>';
+  }
+
+  function lolLpDeltaText(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "";
+    return (number > 0 ? "+" : "") + number + " LP";
+  }
+
+
+  function lolNumberCompact(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) return "-";
+    if (number >= 10000) return (number / 10000).toFixed(number >= 100000 ? 0 : 1).replace(/\.0$/, "") + "만";
+    if (number >= 1000) return (number / 1000).toFixed(number >= 10000 ? 0 : 1).replace(/\.0$/, "") + "천";
+    return String(Math.round(number));
+  }
+
+  function lolDamageCap(logs) {
+    const max = Math.max(...(logs || []).map((item) => Number(item.damageToChampions || 0)));
+    return Number.isFinite(max) && max > 0 ? max : 1;
+  }
+  function lolLoadoutHtml(item) {
+    const runeIds = Array.isArray(item && item.runeIds) ? item.runeIds : [];
+    const primaryRuneId = Number(item && item.primaryRuneId) || Number(runeIds[0]) || 0;
+    const secondaryStyleId = Number(item && item.secondaryStyleId) || 0;
+    const itemIds = (Array.isArray(item && item.itemIds) ? item.itemIds : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .slice(0, 7);
+    const primaryRuneUrl = lolRuneIconUrl(primaryRuneId);
+    const secondaryRuneUrl = lolRuneIconUrl(secondaryStyleId);
+    const runeSlots = [
+      primaryRuneUrl
+        ? '<img class="cs-lol-rune-icon cs-lol-rune-primary" src="' + escapeHtml(primaryRuneUrl) + '" alt="" title="핵심 룬" loading="lazy" />'
+        : '<span class="cs-lol-rune-icon cs-lol-empty-slot" title="핵심 룬 기록 없음"></span>',
+      secondaryRuneUrl
+        ? '<img class="cs-lol-rune-icon" src="' + escapeHtml(secondaryRuneUrl) + '" alt="" title="보조 룬 계열" loading="lazy" />'
+        : '<span class="cs-lol-rune-icon cs-lol-empty-slot" title="보조 룬 기록 없음"></span>',
+    ].join('');
+    const itemSlots = Array.from({ length: 7 }, (_, index) => {
+      const id = itemIds[index];
+      if (!id) {
+        return '<span class="cs-lol-loadout-slot"><span class="cs-lol-item-icon cs-lol-empty-slot"></span><span class="cs-lol-loadout-tip" role="tooltip">빈 아이템 슬롯</span></span>';
+      }
+      const name = lolItemName(id) || "아이템 " + String(id);
+      return '<span class="cs-lol-loadout-slot" aria-label="' + escapeHtml(name) + '">' +
+        '<img class="cs-lol-item-icon" src="' + escapeHtml(lolItemIconUrl(id)) + '" alt="" loading="lazy" />' +
+        '<span class="cs-lol-loadout-tip" role="tooltip">' + escapeHtml(name) + '</span>' +
+        '</span>';
+    }).join('');
+    return '<div class="cs-lol-loadout" aria-label="룬 및 최종 아이템 빌드">' +
+      '<div class="cs-lol-loadout-runes">' + runeSlots + '</div>' +
+      '<span class="cs-lol-loadout-divider"></span>' +
+      '<div class="cs-lol-loadout-items">' + itemSlots + '</div>' +
+      '</div>';
+  }
+
+  function lolCoreStatsHtml(item, damageCap) {
+    const kdaHtml = '<span class="cs-lol-kda-stat"><b>KDA</b><strong>' + escapeHtml(String(item.kills || 0)) + '/' + escapeHtml(String(item.deaths || 0)) + '/' + escapeHtml(String(item.assists || 0)) + '</strong></span>';
+    if (lolSupportPosition(item)) {
+      const killParticipation = Number(item && item.killParticipation);
+      const kpText = Number.isFinite(killParticipation) ? killParticipation.toFixed(1).replace(/\.0$/, "") + "%" : "-";
+      const visionPerMinute = Number(item && item.visionScorePerMinute);
+      const visionText = Number.isFinite(visionPerMinute) ? visionPerMinute.toFixed(1).replace(/\.0$/, "") : "-";
+      const wardsKilled = Number(item && item.wardsKilled);
+      const wardsText = Number.isFinite(wardsKilled) ? String(Math.round(wardsKilled)) : "-";
+      return '<div class="cs-lol-log-meta">' +
+        kdaHtml +
+        '<span class="cs-lol-kp-stat"><b>킬 관여율</b><strong>' + escapeHtml(kpText) + '</strong></span>' +
+        '<span class="cs-lol-vision-stat"><b>분당 시야</b><strong>' + escapeHtml(visionText) + '</strong></span>' +
+        '<span class="cs-lol-ward-stat"><b>와드 제거</b><strong>' + escapeHtml(wardsText) + '</strong></span>' +
+        '</div>';
+    }
+    const damage = Number(item && item.damageToChampions);
+    const damageText = Number.isFinite(damage) && damage > 0 ? lolNumberCompact(damage) : "-";
+    const damageWidth = Number.isFinite(damage) && damage > 0 ? Math.max(6, Math.min(100, Math.round((damage / Math.max(1, damageCap)) * 100))) : 0;
+    const csPerMinute = Number(item && item.csPerMinute);
+    const csText = Number.isFinite(csPerMinute) ? csPerMinute.toFixed(1).replace(/\.0$/, "") : "-";
+    const goldPerMinute = Number(item && item.goldPerMinute);
+    const goldText = Number.isFinite(goldPerMinute) ? String(Math.round(goldPerMinute)) : "-";
+    const teamDamageShare = Number(item && item.teamDamageShare);
+    const shareText = Number.isFinite(teamDamageShare) ? teamDamageShare.toFixed(1).replace(/\.0$/, "") + "%" : "-";
+    return '<div class="cs-lol-log-meta">' +
+      kdaHtml +
+      '<span class="cs-lol-damage"><b>총 딜량</b><i><em style="width:' + escapeHtml(String(damageWidth)) + '%"></em></i><strong>' + escapeHtml(damageText) + '</strong></span>' +
+      '<span class="cs-lol-cs-stat"><b>분당 CS</b><strong>' + escapeHtml(csText) + '</strong></span>' +
+      '<span class="cs-lol-gold-stat"><b>분당 골드</b><strong>' + escapeHtml(goldText) + '</strong></span>' +
+      '<span class="cs-lol-share-stat"><b>팀 내 피해</b><strong>' + escapeHtml(shareText) + '</strong></span>' +
+      '</div>';
+  }
+  function lolWinRateText(wins, games) {
+    if (!games) return "0%";
+    return Math.round((wins / games) * 100) + "%";
+  }
+
+  function lolAverageKdaText(items) {
+    const games = items.length;
+    if (!games) return "-";
+    const kills = items.reduce((sum, item) => sum + Number(item.kills || 0), 0) / games;
+    const deaths = items.reduce((sum, item) => sum + Number(item.deaths || 0), 0) / games;
+    const assists = items.reduce((sum, item) => sum + Number(item.assists || 0), 0) / games;
+    if (deaths <= 0) return "Perfect";
+    return ((kills + assists) / deaths).toFixed(2);
+  }
+
+  function lolTopPositionText(items) {
+    const counts = new Map();
+    items.forEach((item) => {
+      const key = String((item && item.teamPosition) || "").toUpperCase();
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    let best = "";
+    let count = 0;
+    counts.forEach((value, key) => {
+      if (value > count) { best = key; count = value; }
+    });
+    return best ? lolPositionLabel(best) + " " + count + "판" : "-";
+  }
+
+  function lolChampionSummary(items) {
+    const byChampion = new Map();
+    items.forEach((item) => {
+      const key = String((item && item.championId) || (item && item.championName) || "").trim();
+      if (!key) return;
+      if (!byChampion.has(key)) byChampion.set(key, { sample: item, games: 0, wins: 0, items: [] });
+      const entry = byChampion.get(key);
+      entry.games += 1;
+      if (item.win === true) entry.wins += 1;
+      entry.items.push(item);
+    });
+    return Array.from(byChampion.values()).sort((a, b) => b.games - a.games || b.wins - a.wins || String(a.sample.championName || "").localeCompare(String(b.sample.championName || ""))).slice(0, 3);
+  }
+
+  function lolTierScore(tier, rank, lp) {
+    const tierOrder = { IRON: 0, BRONZE: 1, SILVER: 2, GOLD: 3, PLATINUM: 4, EMERALD: 5, DIAMOND: 6, MASTER: 7, GRANDMASTER: 8, CHALLENGER: 9 };
+    const divisionOrder = { IV: 0, III: 1, II: 2, I: 3 };
+    const tierKey = String(tier || "").trim().toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(tierOrder, tierKey)) return null;
+    const lpNumber = Number(lp);
+    const division = ["MASTER", "GRANDMASTER", "CHALLENGER"].includes(tierKey) ? 0 : (divisionOrder[String(rank || "").trim().toUpperCase()] || 0) * 100;
+    return tierOrder[tierKey] * 400 + division + (Number.isFinite(lpNumber) ? Math.max(0, lpNumber) : 0);
+  }
+
+  function lolTierShortLabel(tier, rank, lp) {
+    const tierKey = String(tier || "").trim().toUpperCase();
+    const labels = { IRON: "I", BRONZE: "B", SILVER: "S", GOLD: "G", PLATINUM: "P", EMERALD: "E", DIAMOND: "D", MASTER: "M", GRANDMASTER: "GM", CHALLENGER: "C" };
+    if (!labels[tierKey]) return "-";
+    const division = ["MASTER", "GRANDMASTER", "CHALLENGER"].includes(tierKey) ? "" : String(rank || "").replace(/^I+V?$/, (value) => value).trim();
+    const lpNumber = Number(lp);
+    return labels[tierKey] + division + (Number.isFinite(lpNumber) ? " " + lpNumber + "LP" : "");
+  }
+
+  function lolTierTrendPoints(items) {
+    return items.slice().sort((a, b) => lolMatchStartMs(a) - lolMatchStartMs(b)).map((item) => {
+      const score = lolTierScore(item.tierAfter, item.rankAfter, item.lpAfter);
+      if (!Number.isFinite(score)) return null;
+      return { score, label: lolTierShortLabel(item.tierAfter, item.rankAfter, item.lpAfter) };
+    }).filter(Boolean);
+  }
+
+  function lolTierTrendHtml(items) {
+    const points = lolTierTrendPoints(items);
+    if (points.length < 2) {
+      return '<strong>기록 수집 중</strong><small>최근 30일</small>';
+    }
+    const scores = points.map((point) => point.score);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const range = Math.max(1, max - min);
+    const width = 150;
+    const height = 44;
+    const coords = points.map((point, index) => {
+      const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
+      const y = height - ((point.score - min) / range) * 34 - 5;
+      return x.toFixed(1) + "," + y.toFixed(1);
+    });
+    const first = points[0].label;
+    const last = points[points.length - 1].label;
+    return '<div class="cs-lol-tier-trend"><svg viewBox="0 0 150 44" aria-hidden="true"><polyline points="' + escapeHtml(coords.join(" ")) + '" /></svg><small>' + escapeHtml(first + ' -> ' + last) + '</small></div>';
+  }
+
+  function lolRecentSummaryHtml(logs) {
+    const monthItems = lolRecentDaysMatchLogs(logs, 30);
+    const items = monthItems.length ? monthItems : logs.slice(0, 10);
+    if (!items.length) return "";
+    const recentItems = logs.slice(0, 10);
+    const rank = lolStreamerRankForCurrentChannel();
+    const rankText = lolRankText(rank) || "-";
+    const wins = items.filter((item) => item.win === true).length;
+    const losses = items.filter((item) => item.win === false).length;
+    const recentWins = recentItems.filter((item) => item.win === true).length;
+    const recentLosses = recentItems.filter((item) => item.win === false).length;
+    const champs = lolChampionSummary(items);
+    const champHtml = champs.length ? champs.map((entry) => {
+      const champion = String((entry.sample && entry.sample.championName) || "챔피언").trim();
+      const portrait = lolChampionPortraitUrl(entry.sample);
+      return '<div class="cs-lol-summary-champ" title="' + escapeHtml(champion) + '">' +
+        (portrait ? '<img src="' + escapeHtml(portrait) + '" alt="' + escapeHtml(champion) + '" loading="lazy" />' : '<span>?</span>') +
+        '<div><strong>' + escapeHtml(String(entry.games) + '판') + '</strong><small>' + escapeHtml(lolWinRateText(entry.wins, entry.games)) + '</small></div>' +
+        '</div>';
+    }).join("") : '<span class="cs-lol-summary-muted">기록 없음</span>';
+    return '<section class="cs-lol-summary" aria-label="최근 30일 요약">' +
+      '<div class="cs-lol-summary-stat cs-lol-summary-rank-card"><span>현재 티어</span>' + lolRankSummaryHtml(rank, rankText) + '</div>' +
+      '<div class="cs-lol-summary-stat"><span>최근 30일</span><strong>' + escapeHtml(String(wins) + '승 ' + String(losses) + '패') + '</strong><small>' + escapeHtml(lolWinRateText(wins, items.length)) + '</small></div>' +
+      '<div class="cs-lol-summary-stat"><span>티어 변화</span>' + lolTierTrendHtml(items) + '</div>' +
+      '<div class="cs-lol-summary-stat"><span>주 포지션</span><strong>' + escapeHtml(lolTopPositionText(items)) + '</strong><small>KDA ' + escapeHtml(lolAverageKdaText(items)) + '</small></div>' +
+      '<div class="cs-lol-summary-stat"><span>최근 폼</span><strong>' + escapeHtml(String(recentWins) + '승 ' + String(recentLosses) + '패') + '</strong><small>최근 ' + escapeHtml(String(recentItems.length)) + '경기</small></div>' +
+      '<div class="cs-lol-summary-champs"><span>최근 30일 TOP3 챔피언</span><div>' + champHtml + '</div></div>' +
+      '</section>';
+  }
+
+  function lolMatchLogHtml() {
+    const logs = lolRecentMatchLogs(100);
+    if (!logs.length) {
+      return '<div class="cs-lol-log-empty">아직 표시할 리그 오브 레전드 경기 로그가 없습니다.</div>';
+    }
+    const byDate = new Map();
+    logs.forEach((item) => {
+      const key = String(item.scheduleDate || "").trim() || "unknown";
+      if (!byDate.has(key)) byDate.set(key, []);
+      byDate.get(key).push(item);
+    });
+    const damageCap = lolDamageCap(logs);
+    return lolRecentSummaryHtml(logs) + '<div class="cs-lol-log">' + Array.from(byDate.entries()).map(([key, items]) => {
+      const rows = items.map((item) => {
+        const resultClass = item.win === true ? " cs-win" : item.win === false ? " cs-loss" : "";
+        const resultText = item.win === true ? "승리" : item.win === false ? "패배" : "결과 미정";
+        return '<div class="cs-lol-log-row">' +
+          '<div class="cs-lol-log-time">' + escapeHtml(lolMatchTimeLabel(item.gameStartAt)) + '</div>' +
+          lolMatchVisualHtml(item) +
+          '<div class="cs-lol-log-main">' +
+          '<div class="cs-lol-log-title"><span class="cs-lol-log-title-text">' + escapeHtml(lolQueueLabel(item)) + '</span><span class="cs-lol-result' + resultClass + '">' + resultText + '</span></div>' +
+          lolCoreStatsHtml(item, damageCap) +
+          lolLoadoutHtml(item) +
+          '</div>' +
+          '</div>';
+      }).join("");
+      return '<section class="cs-lol-log-day"><div class="cs-lol-log-date"><span>' + escapeHtml(lolMatchDateLabel(key)) + '</span><small>' + escapeHtml(String(items.length) + '경기') + '</small></div>' + rows + '</section>';
+    }).join("") + '</div>';
+  }
+
   // ----------------------------------------------------------
   // 스타일 (Shadow DOM 내부에만 적용)
   // ----------------------------------------------------------
@@ -684,7 +1201,103 @@
     .cs-view-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
     .cs-view-toggle:hover .cs-view-tip, .cs-view-toggle:focus-visible .cs-view-tip { opacity: 1; visibility: visible; transform: translateY(0); }
     .cs-view-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
+    .cs-lol-log-toggle { flex: 0 0 auto; min-height: 28px; padding: 0 10px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #c9cacd; font-size: 12px; font-weight: 800; line-height: 1; cursor: pointer; white-space: nowrap; }
+    .cs-lol-log-toggle:hover, .cs-lol-log-toggle:focus-visible, .cs-lol-log-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
+    .cs-lol-rank-toggle { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 2px 8px 2px 5px; color: #dfe4ec; background: rgba(35,36,39,0.96); border-color: rgba(96,165,250,0.34); }
+    .cs-lol-rank-toggle:hover, .cs-lol-rank-toggle:focus-visible { color: #ffffff; background: #2b2d31; border-color: rgba(96,165,250,0.56); }
+    .cs-lol-toggle-emblem { flex: 0 0 auto; display: block; width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.38)); }
+    .cs-lol-toggle-emblem-fallback { width: 24px; height: 24px; border: 1px solid rgba(96,165,250,0.32); border-radius: 6px; background: rgba(96,165,250,0.10); }
+    .cs-lol-toggle-division { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border: 1px solid rgba(250,204,21,0.42); border-radius: 6px; background: rgba(250,204,21,0.10); color: #fde68a; font-size: 10px; font-weight: 950; line-height: 1; }
+    .cs-lol-toggle-id { min-width: 0; max-width: 116px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 900; line-height: 1; }
+    .cs-lol-rank-badge { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; border: 1px solid rgba(96,165,250,0.34); border-radius: 7px; background: rgba(37,99,235,0.13); color: #bfdbfe; font-size: 12px; font-weight: 900; line-height: 1; white-space: nowrap; }
+    .cs-lol-rank-badge span { color: #93c5fd; font-size: 11px; }
     .cs-month-label { position: absolute; left: 50%; top: 13px; transform: translateX(-50%); color: #c9cacd; font-size: 18px; line-height: 1; font-weight: 900; white-space: nowrap; pointer-events: none; }
+
+    .cs-lol-summary { display: grid; grid-template-columns: 132px repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .cs-lol-summary-stat, .cs-lol-summary-champs { min-width: 0; border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); padding: 9px 10px; }
+    .cs-lol-summary-stat { display: flex; flex-direction: column; gap: 5px; min-height: 76px; }
+    .cs-lol-summary-rank-card { grid-row: span 2; min-height: 162px; align-items: center; text-align: center; padding: 10px 8px 12px; }
+    .cs-lol-summary-stat span, .cs-lol-summary-champs > span { color: #8f939b; font-size: 11px; font-weight: 900; line-height: 1.2; }
+    .cs-lol-summary-stat strong { min-width: 0; color: #efeff1; font-size: 14px; font-weight: 950; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-lol-summary-rank { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; width: 100%; }
+    .cs-lol-summary-rank-emblem { width: 88px; height: 88px; display: grid; place-items: center; }
+    .cs-lol-summary-rank img { width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 5px 12px rgba(0,0,0,0.42)); }
+    .cs-lol-summary-rank strong { max-width: 100%; font-size: 13px; line-height: 1.25; text-align: center; white-space: normal; }
+    .cs-lol-summary-stat small { color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.2; }
+    .cs-lol-tier-trend { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+    .cs-lol-tier-trend svg { display: block; width: 100%; height: 44px; overflow: visible; }
+    .cs-lol-tier-trend polyline { fill: none; stroke: #60a5fa; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 6px rgba(37,99,235,0.34)); }
+    .cs-lol-tier-trend small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-lol-summary-champs { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 8px; }
+    .cs-lol-summary-champs > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .cs-lol-summary-champ { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 42px; border-radius: 7px; background: rgba(255,255,255,0.045); padding: 4px 6px; }
+    .cs-lol-summary-champ img, .cs-lol-summary-champ > span { width: 34px; height: 34px; border-radius: 7px; object-fit: cover; background: #111216; }
+    .cs-lol-summary-champ > span { display: grid; place-items: center; color: #9d9ea3; font-size: 13px; font-weight: 900; }
+    .cs-lol-summary-champ div { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+    .cs-lol-summary-champ strong { color: #efeff1; font-size: 13px; font-weight: 950; line-height: 1.2; }
+    .cs-lol-summary-champ small { color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.2; }
+    .cs-lol-summary-muted { color: #9d9ea3; font-size: 12px; font-weight: 800; }
+    .cs-lol-log { display: flex; flex-direction: column; gap: 0; max-height: 456px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); }
+    .cs-lol-log::-webkit-scrollbar { width: 8px; }
+    .cs-lol-log::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(157,158,163,0.38); }
+    .cs-lol-log::-webkit-scrollbar-track { background: transparent; }
+    .cs-lol-log-day { display: block; min-width: 0; }
+    .cs-lol-log-date { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; padding: 0 10px 0 13px; border-bottom: 1px solid #343741; background: #25272d; color: #efeff1; font-size: 13px; font-weight: 900; box-shadow: 0 1px 0 rgba(255,255,255,0.04); }
+    .cs-lol-log-date::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 999px 999px 0; background: #00c878; }
+    .cs-lol-log-date span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-lol-log-date small { flex: 0 0 auto; color: #8fffd5; font-size: 11px; font-weight: 900; line-height: 1; }
+    .cs-lol-log-day + .cs-lol-log-day .cs-lol-log-date { border-top: 1px solid #343741; }
+    .cs-lol-log-row { display: grid; grid-template-columns: 58px 46px minmax(0, 1fr); gap: 10px; align-items: center; height: 84px; min-height: 84px; padding: 9px 10px; }
+    .cs-lol-log-row + .cs-lol-log-row { border-top: 1px solid rgba(255,255,255,0.06); }
+    .cs-lol-log-time { color: #9d9ea3; font-size: 12px; font-weight: 800; line-height: 1.2; }
+    .cs-lol-log-visual { position: relative; width: 44px; height: 44px; }
+    .cs-lol-champion-portrait { display: block; width: 44px; height: 44px; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; background: #111216; object-fit: cover; }
+    .cs-lol-champion-fallback { display: grid; place-items: center; color: #9d9ea3; font-size: 14px; font-weight: 900; }
+    .cs-lol-position-icon { position: absolute; right: -4px; bottom: -4px; z-index: 1; width: 20px; height: 20px; padding: 2px; border: 1px solid rgba(96,165,250,0.44); border-radius: 6px; background: rgba(15,23,42,0.92); box-shadow: 0 2px 8px rgba(0,0,0,0.28); }
+    .cs-lol-log-main { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+    .cs-lol-log-title { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #efeff1; font-size: 13px; font-weight: 900; line-height: 1.35; }
+    .cs-lol-log-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-lol-result { flex: 0 0 auto; color: #9d9ea3; font-size: 12px; font-weight: 900; }
+    .cs-lol-result.cs-win { color: #60a5fa; }
+    .cs-lol-result.cs-loss { color: #fb7185; }
+    .cs-lol-log-meta { min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; color: #aeb1b8; font-size: 12px; font-weight: 700; line-height: 1.35; }
+    .cs-lol-log-meta span { display: inline-flex; align-items: center; min-height: 18px; padding: 0 6px; border-radius: 6px; background: rgba(255,255,255,0.055); }
+    .cs-lol-loadout { position: relative; min-width: 0; max-width: 100%; width: max-content; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 3px 5px; border: 1px solid rgba(255,255,255,0.10); border-radius: 7px; background: rgba(255,255,255,0.045); overflow: visible; box-shadow: inset 0 1px 0 rgba(255,255,255,0.035); }
+    .cs-lol-loadout-runes, .cs-lol-loadout-items { min-width: 0; display: inline-flex; align-items: center; gap: 4px; }
+    .cs-lol-loadout-runes { flex: 0 0 auto; }
+    .cs-lol-loadout-items { flex: 1 1 auto; overflow: visible; }
+    .cs-lol-loadout-divider { flex: 0 0 auto; width: 1px; height: 19px; border-radius: 999px; background: rgba(255,255,255,0.14); }
+    .cs-lol-loadout-slot { position: relative; flex: 0 0 auto; display: inline-flex; width: 22px; height: 22px; }
+    .cs-lol-rune-icon, .cs-lol-item-icon { flex: 0 0 auto; display: block; width: 22px; height: 22px; border: 1px solid rgba(255,255,255,0.12); border-radius: 5px; background: #111216; object-fit: cover; }
+    .cs-lol-loadout-tip { position: absolute; left: 50%; bottom: calc(100% + 7px); z-index: 8; width: max-content; max-width: 180px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translate(-50%, 3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; white-space: nowrap; }
+    .cs-lol-loadout-slot:hover .cs-lol-loadout-tip, .cs-lol-loadout-slot:focus-visible .cs-lol-loadout-tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+    .cs-lol-rune-primary { border-color: rgba(250,204,21,0.58); box-shadow: 0 0 0 1px rgba(250,204,21,0.12); }
+    .cs-lol-empty-slot { background: rgba(17,18,22,0.56); border-color: rgba(255,255,255,0.075); }
+    .cs-lol-damage { gap: 5px; }
+    .cs-lol-damage b { color: #8f939b; font-size: 11px; font-weight: 900; }
+    .cs-lol-damage i { position: relative; display: block; width: 42px; height: 5px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.10); }
+    .cs-lol-damage em { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, #f97316, #facc15); }
+    .cs-lol-damage strong { color: #fcd34d; font-size: 12px; font-weight: 900; }
+    .cs-lol-kda-stat, .cs-lol-cs-stat, .cs-lol-gold-stat, .cs-lol-share-stat, .cs-lol-kp-stat, .cs-lol-vision-stat, .cs-lol-ward-stat { gap: 4px; }
+    .cs-lol-kda-stat b, .cs-lol-cs-stat b, .cs-lol-gold-stat b, .cs-lol-share-stat b, .cs-lol-kp-stat b, .cs-lol-vision-stat b, .cs-lol-ward-stat b { color: #8f939b; font-size: 11px; font-weight: 900; }
+    .cs-lol-kda-stat strong { color: #efeff1; font-size: 12px; font-weight: 950; }
+    .cs-lol-cs-stat strong { color: #8fffd5; font-size: 12px; font-weight: 950; }
+    .cs-lol-gold-stat strong { color: #fde68a; font-size: 12px; font-weight: 950; }
+    .cs-lol-share-stat strong { color: #93c5fd; font-size: 12px; font-weight: 950; }
+    .cs-lol-kp-stat strong { color: #c4b5fd; font-size: 12px; font-weight: 950; }
+    .cs-lol-vision-stat strong { color: #a7f3d0; font-size: 12px; font-weight: 950; }
+    .cs-lol-ward-stat strong { color: #f0abfc; font-size: 12px; font-weight: 950; }
+    .cs-lol-lp.cs-lp-up { color: #86efac; background: rgba(34,197,94,0.12); }
+    .cs-lol-lp.cs-lp-down { color: #fda4af; background: rgba(244,63,94,0.12); }
+    .cs-lol-log-empty { display: flex; align-items: center; justify-content: center; min-height: 150px; border: 1px dashed #34363a; border-radius: 8px; color: #9d9ea3; font-size: 13px; font-weight: 800; text-align: center; padding: 18px; }
+    @media (max-width: 560px) {
+      .cs-lol-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .cs-lol-summary-rank-card { grid-row: span 1; min-height: 150px; }
+      .cs-lol-summary-rank-emblem, .cs-lol-summary-rank img { width: 74px; height: 74px; }
+      .cs-lol-summary-champs { grid-column: 1 / -1; }
+      .cs-lol-summary-champs > div { grid-template-columns: 1fr; }
+      .cs-lol-log { max-height: 456px; }
+    }
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
     .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -1170,6 +1783,50 @@
     :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
     :host(.cs-light-theme) .cs-view-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
     :host(.cs-light-theme) .cs-view-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
+    :host(.cs-light-theme) .cs-lol-log-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
+    :host(.cs-light-theme) .cs-lol-log-toggle:hover, :host(.cs-light-theme) .cs-lol-log-toggle:focus-visible, :host(.cs-light-theme) .cs-lol-log-toggle.cs-open { background: #03a950; border-color: #03a950; color: #ffffff; }
+    :host(.cs-light-theme) .cs-lol-rank-toggle { background: #ffffff; border-color: rgba(37,99,235,0.24); color: #25282d; }
+    :host(.cs-light-theme) .cs-lol-rank-toggle:hover, :host(.cs-light-theme) .cs-lol-rank-toggle:focus-visible { background: #f2f5f9; border-color: rgba(37,99,235,0.42); color: #1e2024; }
+    :host(.cs-light-theme) .cs-lol-toggle-emblem-fallback { border-color: rgba(37,99,235,0.22); background: rgba(37,99,235,0.08); }
+    :host(.cs-light-theme) .cs-lol-toggle-division { border-color: rgba(180,83,9,0.30); background: rgba(180,83,9,0.08); color: #92400e; }
+    :host(.cs-light-theme) .cs-lol-rank-badge { border-color: rgba(37,99,235,0.22); background: rgba(37,99,235,0.08); color: #1d4ed8; }
+    :host(.cs-light-theme) .cs-lol-rank-badge span { color: #2563eb; }
+    :host(.cs-light-theme) .cs-lol-summary-stat, :host(.cs-light-theme) .cs-lol-summary-champs { background: #f8f9fa; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-lol-summary-stat span, :host(.cs-light-theme) .cs-lol-summary-champs > span { color: #6f747b; }
+    :host(.cs-light-theme) .cs-lol-summary-stat strong, :host(.cs-light-theme) .cs-lol-summary-champ strong { color: #1e2024; }
+    :host(.cs-light-theme) .cs-lol-summary-stat small, :host(.cs-light-theme) .cs-lol-summary-champ small, :host(.cs-light-theme) .cs-lol-summary-muted { color: #6f747b; }
+    :host(.cs-light-theme) .cs-lol-summary-champ { background: #eceef0; }
+    :host(.cs-light-theme) .cs-lol-summary-champ img, :host(.cs-light-theme) .cs-lol-summary-champ > span { background: #dde1e5; }
+    :host(.cs-light-theme) .cs-lol-tier-trend polyline { stroke: #2563eb; filter: drop-shadow(0 2px 5px rgba(37,99,235,0.20)); }
+    :host(.cs-light-theme) .cs-lol-log { background: #f8f9fa; border-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-lol-log-date { color: #1e2024; border-color: #dfe3e8; background: #eef1f4; box-shadow: 0 1px 0 rgba(0,0,0,0.035); }
+    :host(.cs-light-theme) .cs-lol-log-date::before { background: #03a950; }
+    :host(.cs-light-theme) .cs-lol-log-date small { color: #047f42; }
+    :host(.cs-light-theme) .cs-lol-log-day + .cs-lol-log-day .cs-lol-log-date { border-top-color: #dfe3e8; }
+    :host(.cs-light-theme) .cs-lol-log-row + .cs-lol-log-row { border-top-color: #e6e8eb; }
+    :host(.cs-light-theme) .cs-lol-log-time { color: #6f747b; }
+    :host(.cs-light-theme) .cs-lol-champion-portrait { border-color: rgba(0,0,0,0.12); background: #eef0f2; }
+    :host(.cs-light-theme) .cs-lol-position-icon { border-color: rgba(37,99,235,0.34); background: rgba(15,23,42,0.88); }
+    :host(.cs-light-theme) .cs-lol-log-title { color: #1e2024; }
+    :host(.cs-light-theme) .cs-lol-log-meta { color: #555a61; }
+    :host(.cs-light-theme) .cs-lol-log-meta span { background: #eceef0; }
+    :host(.cs-light-theme) .cs-lol-loadout { border-color: #dde1e5; background: #f1f3f5; box-shadow: inset 0 1px 0 rgba(255,255,255,0.70); }
+    :host(.cs-light-theme) .cs-lol-loadout-divider { background: #d4d9df; }
+    :host(.cs-light-theme) .cs-lol-rune-icon, :host(.cs-light-theme) .cs-lol-item-icon { border-color: rgba(0,0,0,0.13); background: #eef0f2; }
+    :host(.cs-light-theme) .cs-lol-loadout-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    :host(.cs-light-theme) .cs-lol-empty-slot { background: #e2e6ea; border-color: #d4d9df; }
+    :host(.cs-light-theme) .cs-lol-damage b { color: #6f747b; }
+    :host(.cs-light-theme) .cs-lol-damage i { background: rgba(0,0,0,0.09); }
+    :host(.cs-light-theme) .cs-lol-damage strong { color: #b45309; }
+    :host(.cs-light-theme) .cs-lol-kda-stat b, :host(.cs-light-theme) .cs-lol-cs-stat b, :host(.cs-light-theme) .cs-lol-gold-stat b, :host(.cs-light-theme) .cs-lol-share-stat b, :host(.cs-light-theme) .cs-lol-kp-stat b, :host(.cs-light-theme) .cs-lol-vision-stat b, :host(.cs-light-theme) .cs-lol-ward-stat b { color: #6f747b; }
+    :host(.cs-light-theme) .cs-lol-kda-stat strong { color: #1e2024; }
+    :host(.cs-light-theme) .cs-lol-cs-stat strong { color: #047f42; }
+    :host(.cs-light-theme) .cs-lol-gold-stat strong { color: #b45309; }
+    :host(.cs-light-theme) .cs-lol-share-stat strong { color: #2563eb; }
+    :host(.cs-light-theme) .cs-lol-kp-stat strong { color: #7c3aed; }
+    :host(.cs-light-theme) .cs-lol-vision-stat strong { color: #047857; }
+    :host(.cs-light-theme) .cs-lol-ward-stat strong { color: #a21caf; }
+    :host(.cs-light-theme) .cs-lol-log-empty { border-color: #d8dadd; color: #6f747b; }
     :host(.cs-light-theme) .cs-month-label { color: #6f747b; }
     :host(.cs-light-theme) .cs-month-weekday { color: #8b9097; }
     :host(.cs-light-theme) .cs-month-blank { background: #fafafa; border: 1px solid #f0f1f2; }
@@ -1554,7 +2211,9 @@
     if (!state.monthExpanded && state.gameOnly) state.gameOnly = false;
     const pill = pillState();
     const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
-    const gameSummary = state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
+    const lolLogMode = state.scheduleViewMode === "lolMatchLogs";
+    const lolMatchLogs = lolRecentMatchLogs(100);
+    const gameSummary = !lolLogMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
@@ -1562,13 +2221,17 @@
 
     const updatedLabel = formatUpdated();
     const monthToggleLabel = state.monthExpanded ? "주간 보기" : "월간 보기";
+    const scheduleTitle = lolLogMode ? "LoL 경기 로그" : "방송 일정";
+    const lolRankBadge = lolLogMode ? lolRankBadgeHtml() : "";
+    const schedulePillHtml = lolLogMode ? '<span class="cs-pill cs-pill-unknown">' + (lolMatchLogs.length ? escapeHtml(String(lolMatchLogs.length) + "경기") : "기록 없음") + '</span>' : '<span class="cs-pill ' + pill.cls + '">' + pill.html + '</span>';
     const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
     const settingsLabel = "알림 설정";
     const showNotificationSettings = targetLiveNotificationSettingsVisible();
     if (!showNotificationSettings && state.settingsOpen) state.settingsOpen = false;
     const scheduleToolbarHtml =
       '<div class="cs-schedule-toolbar">' +
-      (state.extensionCollapsed ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
+      (state.extensionCollapsed ? "" : lolLogToggleHtml(lolLogMode)) +
+      (state.extensionCollapsed || lolLogMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
       (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
       '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? "\u25BC" : "\u25B2") + '<span class="cs-extension-collapse-tip">' + collapseLabel + "</span></button>" +
       "</div>";
@@ -1582,6 +2245,9 @@
         "</div>"
       : "";
 
+    rememberRenderedFingerprint();
+
+
     root.innerHTML =
       scheduleToolbarHtml +
       settingsPanelHtml +
@@ -1589,21 +2255,22 @@
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
       '<div class="cs-header">' +
-      '<span class="cs-title">방송 일정</span>' +
-      '<span class="cs-pill ' + pill.cls + '">' + pill.html + "</span>" +
+      '<span class="cs-title">' + scheduleTitle + '</span>' +
+      lolRankBadge +
+      schedulePillHtml +
       '<span class="cs-spacer"></span>' +
-      (state.extensionCollapsed ? "" : monthLabel +
+      (state.extensionCollapsed || lolLogMode ? "" : monthLabel +
         (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
         '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
         '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>") +
       "</div>" +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
-      '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
+      (lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       gameSummary +
       '<div class="cs-popover" id="cs-popover">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
       '<div id="cs-pop-body"></div>' +
-      "</div>" +
+      "</div>") +
       "</div>" +
       "</div>" +
       (state.extensionCollapsed ? "" : infoSectionHtml() +
@@ -2279,6 +2946,7 @@
     const updateHistoryViewport = s.getElementById("cs-update-history-viewport");
     const updateHistoryToggle = s.getElementById("cs-update-history-toggle");
     const monthToggle = s.getElementById("cs-month-toggle");
+    const lolLogToggle = s.getElementById("cs-lol-log-toggle");
     const extensionCollapse = s.getElementById("cs-extension-collapse");
     const settingsToggle = s.getElementById("cs-settings-toggle");
     const settingsPanel = s.getElementById("cs-settings-panel");
@@ -2322,6 +2990,12 @@
       render();
     });
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; } render(); });
+    if (lolLogToggle) lolLogToggle.addEventListener("click", () => {
+      closePopover();
+      state.settingsOpen = false;
+      state.scheduleViewMode = state.scheduleViewMode === "lolMatchLogs" ? "schedule" : "lolMatchLogs";
+      render();
+    });
     if (extensionCollapse) extensionCollapse.addEventListener("click", () => {
       closePopover();
       state.settingsOpen = false;
@@ -4597,9 +5271,12 @@
     lastAutoRefreshAttempt = Date.now();
     autoRefreshInFlight = true;
     try {
+      const beforeFingerprint = currentViewFingerprint();
+      const lolScrollTop = state.scheduleViewMode === "lolMatchLogs" ? captureLolLogScroll() : 0;
       const updated = await refreshData(true);
-      if (updated && state.shadow) {
+      if (updated && state.shadow && shouldRenderAfterAutoRefresh(beforeFingerprint)) {
         render();
+        restoreLolLogScroll(lolScrollTop);
       }
     } catch (e) {
     } finally {

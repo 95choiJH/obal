@@ -669,6 +669,112 @@ function liveCategoryHistoriesByChannel(rows) {
   return byChannel;
 }
 
+function nullableNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function numberList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => Number(item)).filter((number) => Number.isFinite(number) && number > 0);
+  }
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  return raw.replace(/[{}]/g, "").split(",").map((item) => Number(item.trim())).filter((number) => Number.isFinite(number) && number > 0);
+}
+
+
+function normalizeLolMatchLog(item) {
+  if (!item || typeof item !== "object") return null;
+  const matchId = String(item.match_id || item.matchId || "").trim();
+  const scheduleDate = String(item.schedule_date || item.scheduleDate || "").trim();
+  if (!matchId || !scheduleDate) return null;
+  return {
+    id: item.id,
+    liveKey: String(item.live_key || item.liveKey || "").trim(),
+    scheduleDate,
+    matchId,
+    queueId: nullableNumber(item.queue_id ?? item.queueId),
+    queueLabel: String(item.queue_label || item.queueLabel || "").trim(),
+    gameStartAt: String(item.game_start_at || item.gameStartAt || "").trim(),
+    gameEndAt: String(item.game_end_at || item.gameEndAt || "").trim(),
+    teamPosition: String(item.team_position || item.teamPosition || "").trim().toUpperCase(),
+    championName: String(item.champion_name || item.championName || "").trim(),
+    championId: nullableNumber(item.champion_id ?? item.championId),
+    kills: nullableNumber(item.kills) || 0,
+    deaths: nullableNumber(item.deaths) || 0,
+    assists: nullableNumber(item.assists) || 0,
+    damageToChampions: nullableNumber(item.damage_to_champions ?? item.damageToChampions),
+    totalCs: nullableNumber(item.total_cs ?? item.totalCs),
+    csPerMinute: nullableNumber(item.cs_per_minute ?? item.csPerMinute),
+    gameDurationSeconds: nullableNumber(item.game_duration_seconds ?? item.gameDurationSeconds),
+    teamId: nullableNumber(item.team_id ?? item.teamId),
+    goldEarned: nullableNumber(item.gold_earned ?? item.goldEarned),
+    goldPerMinute: nullableNumber(item.gold_per_minute ?? item.goldPerMinute),
+    teamDamageToChampions: nullableNumber(item.team_damage_to_champions ?? item.teamDamageToChampions),
+    teamDamageShare: nullableNumber(item.team_damage_share ?? item.teamDamageShare),
+    teamKills: nullableNumber(item.team_kills ?? item.teamKills),
+    killParticipation: nullableNumber(item.kill_participation ?? item.killParticipation),
+    visionScore: nullableNumber(item.vision_score ?? item.visionScore),
+    visionScorePerMinute: nullableNumber(item.vision_score_per_minute ?? item.visionScorePerMinute),
+    wardsKilled: nullableNumber(item.wards_killed ?? item.wardsKilled),
+    primaryRuneId: nullableNumber(item.primary_rune_id ?? item.primaryRuneId),
+    secondaryStyleId: nullableNumber(item.secondary_style_id ?? item.secondaryStyleId),
+    runeIds: numberList(item.rune_ids ?? item.runeIds),
+    itemIds: numberList(item.item_ids ?? item.itemIds),
+    win: typeof item.win === "boolean" ? item.win : null,
+    lpBefore: nullableNumber(item.lp_before ?? item.lpBefore),
+    lpAfter: nullableNumber(item.lp_after ?? item.lpAfter),
+    lpDelta: nullableNumber(item.lp_delta ?? item.lpDelta),
+    tierBefore: String(item.tier_before || item.tierBefore || "").trim(),
+    rankBefore: String(item.rank_before || item.rankBefore || "").trim(),
+    tierAfter: String(item.tier_after || item.tierAfter || "").trim(),
+    rankAfter: String(item.rank_after || item.rankAfter || "").trim(),
+  };
+}
+
+function lolMatchLogsByChannel(rows) {
+  const byChannel = {};
+  for (const row of rows || []) {
+    const channelId = String((row && (row.channel_id || row.channelId)) || "").trim();
+    const item = normalizeLolMatchLog(row);
+    if (!channelId || !item) continue;
+    if (!byChannel[channelId]) byChannel[channelId] = [];
+    byChannel[channelId].push(item);
+  }
+  Object.values(byChannel).forEach((list) => {
+    list.sort((a, b) => String(b.scheduleDate || "").localeCompare(String(a.scheduleDate || "")) || String(b.gameStartAt || "").localeCompare(String(a.gameStartAt || "")) || String(b.id || "").localeCompare(String(a.id || "")));
+  });
+  return byChannel;
+}
+
+function normalizeLolStreamerRank(item) {
+  if (!item || typeof item !== "object") return null;
+  const tier = String(item.latest_tier || item.latestTier || "").trim().toUpperCase();
+  const rank = String(item.latest_rank || item.latestRank || "").trim().toUpperCase();
+  const leaguePoints = nullableNumber(item.latest_league_points ?? item.latestLeaguePoints);
+  return {
+    riotGameName: String(item.riot_game_name || item.riotGameName || "").trim(),
+    riotTagLine: String(item.riot_tag_line || item.riotTagLine || "").trim(),
+    platformRegion: String(item.platform_region || item.platformRegion || "").trim(),
+    tier,
+    rank,
+    leaguePoints,
+    wins: nullableNumber(item.latest_wins ?? item.latestWins),
+    losses: nullableNumber(item.latest_losses ?? item.latestLosses),
+    updatedAt: String(item.latest_rank_updated_at || item.latestRankUpdatedAt || "").trim(),
+  };
+}
+
+function lolStreamerRanksByChannel(rows) {
+  const byChannel = {};
+  for (const row of rows || []) {
+    const channelId = String((row && (row.channel_id || row.channelId)) || "").trim();
+    const item = normalizeLolStreamerRank(row);
+    if (channelId && item) byChannel[channelId] = item;
+  }
+  return byChannel;
+}
+
 function extensionVersionFromInfoItems(rows) {
   for (const r of rows || []) {
     const content = String((r && r.content) || "").trim();
@@ -909,6 +1015,20 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
 
+  let lolMatchLogs = {};
+  try {
+    const lolMatchLogRows = await fetchTable(c.lolMatchLogsTableName || "lol_match_logs", "schedule_date.desc,game_start_at.desc,id.desc");
+    lolMatchLogs = lolMatchLogsByChannel(lolMatchLogRows);
+  } catch (e) {
+  }
+
+  let lolStreamerRanks = {};
+  try {
+    const lolStreamerRankRows = await fetchTable(c.lolStreamerRankPublicViewName || "lol_streamer_rank_public", "channel_id.asc");
+    lolStreamerRanks = lolStreamerRanksByChannel(lolStreamerRankRows);
+  } catch (e) {
+  }
+
   let targetLiveNotificationsEnabled = true;
   let targetLiveNotificationsPublicEnabled = false;
   try {
@@ -928,7 +1048,7 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 2, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 2, lolMatchLogVersion: 1, lolStreamerRankVersion: 1, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, lolMatchLogs, lolStreamerRanks, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -950,7 +1070,7 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

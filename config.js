@@ -26,6 +26,8 @@ const CHZZK_SCHEDULE_CONFIG = {
   // 방제목 변경 기록 테이블 이름
   liveTitleHistoryTableName: "live_title_history",
   liveCategoryHistoryTableName: "live_category_history",
+  lolMatchLogsTableName: "lol_match_logs",
+  lolStreamerRankPublicViewName: "lol_streamer_rank_public",
 
   // 캐시 유지 시간(분). 이 시간 안에는 네트워크 요청 없이 캐시를 사용합니다.
   cacheTtlMinutes: 10,

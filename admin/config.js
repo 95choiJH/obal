@@ -34,6 +34,9 @@ const ADMIN_CONFIG = {
   // 다시보기 챕터 미리보기용 카테고리 변경 기록 테이블
   liveCategoryHistoryTableName: "live_category_history",
 
+  // 리그 오브 레전드 계정 매핑 테이블
+  lolStreamerAccountsTableName: "lol_streamer_accounts",
+
   // 그님티 이미지 업로드용 공개 Storage 버킷
   gnimtiImageBucketName: "game-images",
 };
