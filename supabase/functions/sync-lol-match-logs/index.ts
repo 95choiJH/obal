@@ -1,4 +1,4 @@
-// Sync completed League of Legends solo-rank matches for configured streamer accounts.
+// Sync active and completed League of Legends solo-rank matches.
 // Deploy: supabase functions deploy sync-lol-match-logs
 // Required env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RIOT_API_KEY, LOL_MATCH_LOG_SYNC_SECRET
 // Optional env: LIVE_CATEGORY_SYNC_SECRET, reused by Supabase cron jobs
@@ -91,6 +91,48 @@ type MatchDto = {
     participants?: ParticipantDto[];
   };
 };
+
+type ActiveGameDto = {
+  gameId?: number;
+  platformId?: string;
+  gameQueueConfigId?: number;
+  gameStartTime?: number;
+  participants?: Array<{
+    puuid?: string;
+    championId?: number;
+    perks?: { perkIds?: number[]; perkSubStyle?: number };
+  }>;
+};
+
+function payloadFromActiveGame(
+  account: StreamerAccount,
+  puuid: string,
+  session: LiveSessionState | null,
+  game: ActiveGameDto | null,
+) {
+  if (!game || game.gameQueueConfigId !== SOLO_RANK_QUEUE_ID) return null;
+  const participant = (game.participants || []).find((item) => item.puuid === puuid);
+  const runeIds = (participant?.perks?.perkIds || []).filter((id) => finitePositiveInteger(id));
+  if (!participant?.championId || !runeIds.length || !finitePositiveInteger(game.gameId) || !game.gameStartTime) return null;
+  const matchSession = activeSessionForMatch(session, game.gameStartTime);
+  return {
+    channel_id: account.channel_id,
+    match_id: cleanRegion(game.platformId || account.platform_region, "kr").toUpperCase() + "_" + game.gameId,
+    live_key: matchSession?.live_key || null,
+    schedule_date: matchSession?.schedule_date || scheduleDateFromTimestampMs(game.gameStartTime),
+    queue_id: SOLO_RANK_QUEUE_ID,
+    queue_label: "솔로랭크",
+    game_start_at: dateFromTimestampMs(game.gameStartTime),
+    game_end_at: null,
+    champion_id: participant.championId,
+    primary_rune_id: runeIds[0],
+    secondary_style_id: finitePositiveInteger(participant.perks?.perkSubStyle),
+    rune_ids: runeIds,
+    win: null,
+    metadata: { source: "riot-spectator-v5" },
+    updated_at: new Date().toISOString(),
+  };
+}
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -345,6 +387,7 @@ async function existingMatchIds(
     ids.map((id) => JSON.stringify(id)).join(",") + ")";
   const query = "/rest/v1/" + MATCH_LOG_TABLE +
     "?select=match_id&channel_id=eq." + encodeURIComponent(channelId) +
+    "&win=not.is.null" +
     "&match_id=in." + encodeURIComponent(inList);
   const rows = await supabaseFetch(
     query,
@@ -616,6 +659,28 @@ async function scanAccount(
       skipped: "missing-puuid",
     };
   }
+  // A spectator failure must not prevent completed match collection.
+  let activeGameError: string | null = null;
+  try {
+    const game = await riotFetch(platform,
+      "/lol/spectator/v5/active-games/by-summoner/" + encodeURIComponent(puuid),
+      env.riotApiKey, true) as ActiveGameDto | null;
+    const activePayload = payloadFromActiveGame(account, puuid, session, game);
+    if (activePayload) {
+      await supabaseFetch(
+        "/rest/v1/" + MATCH_LOG_TABLE + "?on_conflict=channel_id,match_id",
+        {
+          method: "POST",
+          // Never overwrite a completed record with a stale spectator response.
+          headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+          body: JSON.stringify(activePayload),
+        }, env.supabaseUrl, env.serviceRoleKey,
+      );
+    }
+  } catch (error) {
+    activeGameError = String((error as Error).message || error);
+    console.error("lol active game scan failed", account.channel_id, error);
+  }
   const beforeRankSnapshot = rankSnapshotFromAccount(account);
   const rank = await fetchSoloRank(account, puuid, env.riotApiKey);
   await updateAccountRank(account, rank, env.supabaseUrl, env.serviceRoleKey);
@@ -675,6 +740,7 @@ async function scanAccount(
     inserted,
     updated,
     checked: ids.length,
+    activeGameError,
     lookbackDays: MATCH_LOOKBACK_DAYS,
     pagesLimit: MAX_MATCH_LIST_PAGES,
     live: !!(session && session.live_key),

@@ -1,4 +1,4 @@
-﻿// content.js — 치지직 페이지에 일정 그리드를 주입
+// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -640,6 +640,12 @@
     return [item && item.gameStartAt, item && item.championId, item && item.teamPosition].map((value) => String(value || "")).join("|");
   }
 
+  function lolMatchInProgress(item) {
+    return !!item && item.win == null && !item.gameEndAt &&
+      !!lolChampionPortraitUrl(item) &&
+      !!(Number(item.primaryRuneId) || (item.runeIds || []).length);
+  }
+
   function lolUniqueMatchLogs(logs) {
     const seen = new Set();
     const list = [];
@@ -680,6 +686,7 @@
         matchId: item && item.matchId || "",
         scheduleDate: item && item.scheduleDate || "",
         gameStartAt: item && item.gameStartAt || "",
+        gameEndAt: item && item.gameEndAt || "",
         position: item && item.teamPosition || "",
         championId: item && item.championId || null,
         result: item && item.win,
@@ -771,8 +778,9 @@
   }
 
   function lolQueueLabel(item) {
+    if (Number(item.queueId) === 420 || item.queueLabel === "솔로랭크") return "랭크";
     if (item.queueLabel) return item.queueLabel;
-    const labels = { 400: "일반", 420: "솔로랭크", 430: "일반", 440: "자유랭크", 450: "칼바람" };
+    const labels = { 400: "일반", 420: "랭크", 430: "일반", 440: "자유랭크", 450: "칼바람" };
     return labels[item.queueId] || (item.queueId ? "큐 " + item.queueId : "경기");
   }
 
@@ -823,16 +831,37 @@
     return name ? "https://cdn.communitydragon.org/latest/champion/" + encodeURIComponent(name) + "/square" : "";
   }
 
+  // Korean server Data Dragon names, bundled for immediate offline lookup.
+  const LOL_CHAMPION_NAMES_KO = {"266":"아트록스","Aatrox":"아트록스","103":"아리","Ahri":"아리","84":"아칼리","Akali":"아칼리","166":"아크샨","Akshan":"아크샨","12":"알리스타","Alistar":"알리스타","799":"암베사","Ambessa":"암베사","32":"아무무","Amumu":"아무무","34":"애니비아","Anivia":"애니비아","1":"애니","Annie":"애니","523":"아펠리오스","Aphelios":"아펠리오스","22":"애쉬","Ashe":"애쉬","136":"아우렐리온 솔","AurelionSol":"아우렐리온 솔","893":"오로라","Aurora":"오로라","268":"아지르","Azir":"아지르","432":"바드","Bard":"바드","200":"벨베스","Belveth":"벨베스","53":"블리츠크랭크","Blitzcrank":"블리츠크랭크","63":"브랜드","Brand":"브랜드","201":"브라움","Braum":"브라움","233":"브라이어","Briar":"브라이어","51":"케이틀린","Caitlyn":"케이틀린","164":"카밀","Camille":"카밀","69":"카시오페아","Cassiopeia":"카시오페아","31":"초가스","Chogath":"초가스","42":"코르키","Corki":"코르키","122":"다리우스","Darius":"다리우스","131":"다이애나","Diana":"다이애나","119":"드레이븐","Draven":"드레이븐","36":"문도 박사","DrMundo":"문도 박사","245":"에코","Ekko":"에코","60":"엘리스","Elise":"엘리스","28":"이블린","Evelynn":"이블린","81":"이즈리얼","Ezreal":"이즈리얼","9":"피들스틱","Fiddlesticks":"피들스틱","114":"피오라","Fiora":"피오라","105":"피즈","Fizz":"피즈","3":"갈리오","Galio":"갈리오","41":"갱플랭크","Gangplank":"갱플랭크","86":"가렌","Garen":"가렌","150":"나르","Gnar":"나르","79":"그라가스","Gragas":"그라가스","104":"그레이브즈","Graves":"그레이브즈","887":"그웬","Gwen":"그웬","120":"헤카림","Hecarim":"헤카림","74":"하이머딩거","Heimerdinger":"하이머딩거","910":"흐웨이","Hwei":"흐웨이","420":"일라오이","Illaoi":"일라오이","39":"이렐리아","Irelia":"이렐리아","427":"아이번","Ivern":"아이번","40":"잔나","Janna":"잔나","59":"자르반 4세","JarvanIV":"자르반 4세","24":"잭스","Jax":"잭스","126":"제이스","Jayce":"제이스","202":"진","Jhin":"진","222":"징크스","Jinx":"징크스","145":"카이사","Kaisa":"카이사","429":"칼리스타","Kalista":"칼리스타","43":"카르마","Karma":"카르마","30":"카서스","Karthus":"카서스","38":"카사딘","Kassadin":"카사딘","55":"카타리나","Katarina":"카타리나","10":"케일","Kayle":"케일","141":"케인","Kayn":"케인","85":"케넨","Kennen":"케넨","121":"카직스","Khazix":"카직스","203":"킨드레드","Kindred":"킨드레드","240":"클레드","Kled":"클레드","96":"코그모","KogMaw":"코그모","897":"크산테","KSante":"크산테","7":"르블랑","Leblanc":"르블랑","64":"리 신","LeeSin":"리 신","89":"레오나","Leona":"레오나","876":"릴리아","Lillia":"릴리아","127":"리산드라","Lissandra":"리산드라","805":"로크","Locke":"로크","236":"루시안","Lucian":"루시안","117":"룰루","Lulu":"룰루","99":"럭스","Lux":"럭스","54":"말파이트","Malphite":"말파이트","90":"말자하","Malzahar":"말자하","57":"마오카이","Maokai":"마오카이","11":"마스터 이","MasterYi":"마스터 이","800":"멜","Mel":"멜","902":"밀리오","Milio":"밀리오","21":"미스 포츈","MissFortune":"미스 포츈","62":"오공","MonkeyKing":"오공","82":"모데카이저","Mordekaiser":"모데카이저","25":"모르가나","Morgana":"모르가나","950":"나피리","Naafiri":"나피리","267":"나미","Nami":"나미","75":"나서스","Nasus":"나서스","111":"노틸러스","Nautilus":"노틸러스","518":"니코","Neeko":"니코","76":"니달리","Nidalee":"니달리","895":"닐라","Nilah":"닐라","56":"녹턴","Nocturne":"녹턴","20":"누누와 윌럼프","Nunu":"누누와 윌럼프","2":"올라프","Olaf":"올라프","61":"오리아나","Orianna":"오리아나","516":"오른","Ornn":"오른","80":"판테온","Pantheon":"판테온","78":"뽀삐","Poppy":"뽀삐","555":"파이크","Pyke":"파이크","246":"키아나","Qiyana":"키아나","133":"퀸","Quinn":"퀸","497":"라칸","Rakan":"라칸","33":"람머스","Rammus":"람머스","421":"렉사이","RekSai":"렉사이","526":"렐","Rell":"렐","888":"레나타 글라스크","Renata":"레나타 글라스크","58":"레넥톤","Renekton":"레넥톤","107":"렝가","Rengar":"렝가","92":"리븐","Riven":"리븐","68":"럼블","Rumble":"럼블","13":"라이즈","Ryze":"라이즈","360":"사미라","Samira":"사미라","113":"세주아니","Sejuani":"세주아니","235":"세나","Senna":"세나","147":"세라핀","Seraphine":"세라핀","875":"세트","Sett":"세트","35":"샤코","Shaco":"샤코","98":"쉔","Shen":"쉔","102":"쉬바나","Shyvana":"쉬바나","27":"신지드","Singed":"신지드","14":"사이온","Sion":"사이온","15":"시비르","Sivir":"시비르","72":"스카너","Skarner":"스카너","901":"스몰더","Smolder":"스몰더","37":"소나","Sona":"소나","16":"소라카","Soraka":"소라카","50":"스웨인","Swain":"스웨인","517":"사일러스","Sylas":"사일러스","134":"신드라","Syndra":"신드라","223":"탐 켄치","TahmKench":"탐 켄치","163":"탈리야","Taliyah":"탈리야","91":"탈론","Talon":"탈론","44":"타릭","Taric":"타릭","17":"티모","Teemo":"티모","412":"쓰레쉬","Thresh":"쓰레쉬","18":"트리스타나","Tristana":"트리스타나","48":"트런들","Trundle":"트런들","23":"트린다미어","Tryndamere":"트린다미어","4":"트위스티드 페이트","TwistedFate":"트위스티드 페이트","29":"트위치","Twitch":"트위치","77":"우디르","Udyr":"우디르","6":"우르곳","Urgot":"우르곳","110":"바루스","Varus":"바루스","67":"베인","Vayne":"베인","45":"베이가","Veigar":"베이가","161":"벨코즈","Velkoz":"벨코즈","711":"벡스","Vex":"벡스","254":"바이","Vi":"바이","234":"비에고","Viego":"비에고","112":"빅토르","Viktor":"빅토르","8":"블라디미르","Vladimir":"블라디미르","106":"볼리베어","Volibear":"볼리베어","19":"워윅","Warwick":"워윅","498":"자야","Xayah":"자야","101":"제라스","Xerath":"제라스","5":"신 짜오","XinZhao":"신 짜오","157":"야스오","Yasuo":"야스오","777":"요네","Yone":"요네","83":"요릭","Yorick":"요릭","804":"유나라","Yunara":"유나라","350":"유미","Yuumi":"유미","904":"자헨","Zaahen":"자헨","154":"자크","Zac":"자크","238":"제드","Zed":"제드","221":"제리","Zeri":"제리","115":"직스","Ziggs":"직스","26":"질리언","Zilean":"질리언","142":"조이","Zoe":"조이","143":"자이라","Zyra":"자이라"};
+  const LOL_RUNE_NAMES_KO = {"8100":"지배","8112":"감전","8128":"어둠의 수확","9923":"칼날비","8126":"비열한 한 방","8139":"피의 맛","8143":"돌발 일격","8137":"육감","8140":"섬뜩한 기념품","8141":"깊은 와드","8135":"보물 사냥꾼","8105":"끈질긴 사냥꾼","8106":"궁극의 사냥꾼","8300":"영감","8351":"빙결 강화","8360":"봉인 풀린 주문서","8369":"선제공격","8306":"마법공학 점멸기","8304":"마법의 신발","8321":"환급","8313":"삼중 물약","8352":"시간 왜곡 물약","8345":"비스킷 배달","8347":"우주적 통찰력","8410":"쾌속 접근","8316":"다재다능","8000":"정밀","8005":"집중 공격","8008":"치명적 속도","8021":"기민한 발놀림","8010":"정복자","9101":"생명 흡수","9111":"승전보","8009":"침착","9104":"전설: 민첩함","9105":"전설: 가속","9103":"전설: 핏빛 길","8014":"최후의 일격","8017":"체력차 극복","8299":"최후의 저항","8400":"결의","8437":"착취의 손아귀","8439":"여진","8465":"수호자","8446":"철거","8463":"생명의 샘","8401":"보호막 강타","8429":"사전 준비","8444":"재생의 바람","8473":"뼈 방패","8451":"과잉성장","8453":"소생","8242":"불굴의 의지","8200":"마법","8214":"콩콩이 소환","8229":"신비로운 유성","8230":"폭풍전사의 포효","8992":"죽음불꽃 손길","8224":"액시옴 비전 마법사","8226":"마나순환 팔찌","8275":"빛의 망토","8210":"깨달음","8234":"기민함","8233":"절대 집중","8237":"주문 작열","8232":"물 위를 걷는 자","8236":"폭풍의 결집"};
+
+  function lolChampionName(item) {
+    const name = String((item && item.championName) || "").trim();
+    return LOL_CHAMPION_NAMES_KO[String(item && item.championId)] || LOL_CHAMPION_NAMES_KO[name] || name || "챔피언 미정";
+  }
+
+  function lolRuneSlotHtml(id, primary) {
+    const url = lolRuneIconUrl(id);
+    const name = LOL_RUNE_NAMES_KO[String(id)] || (primary ? "핵심 룬" : "보조 룬 계열");
+    const label = url ? name : (primary ? "핵심 룬 기록 없음" : "보조 룬 기록 없음");
+    return '<span class="cs-lol-rune-slot" tabindex="0" aria-label="' + escapeHtml(label) + '">' +
+      (url ? '<img class="cs-lol-rune-icon' + (primary ? ' cs-lol-rune-primary' : '') + '" src="' + escapeHtml(url) + '" alt="" loading="lazy" />' : '<span class="cs-lol-rune-icon cs-lol-empty-slot"></span>') +
+      '<span class="cs-lol-loadout-tip" role="tooltip">' + escapeHtml(label) + '</span></span>';
+  }
+
   function lolMatchVisualHtml(item) {
     const position = lolPositionLabel(item && item.teamPosition);
-    const champion = String((item && item.championName) || "").trim() || "챔피언 미정";
+    const champion = lolChampionName(item);
     const portrait = lolChampionPortraitUrl(item);
     const championHtml = portrait
-      ? '<img class="cs-lol-champion-portrait" src="' + escapeHtml(portrait) + '" alt="' + escapeHtml(champion) + '" title="' + escapeHtml(champion) + '" loading="lazy" />'
-      : '<span class="cs-lol-champion-portrait cs-lol-champion-fallback" title="' + escapeHtml(champion) + '">?</span>';
-    return '<div class="cs-lol-log-visual" title="' + escapeHtml(position + ' · ' + champion) + '">' +
-      '<img class="cs-lol-position-icon" src="' + escapeHtml(lolPositionIconSvg(item && item.teamPosition)) + '" alt="' + escapeHtml(position) + '" />' +
+      ? '<img class="cs-lol-champion-portrait" src="' + escapeHtml(portrait) + '" alt="' + escapeHtml(champion) + '" loading="lazy" />'
+      : '<span class="cs-lol-champion-portrait cs-lol-champion-fallback">?</span>';
+    return '<div class="cs-lol-log-visual" tabindex="0" aria-label="' + escapeHtml(position + ' · ' + champion) + '">' +
+      (lolMatchInProgress(item) && position === "포지션 미정"
+        ? '<span class="cs-lol-position-icon cs-lol-skeleton" role="img" aria-label="포지션 집계 대기"></span>'
+        : '<img class="cs-lol-position-icon" src="' + escapeHtml(lolPositionIconSvg(item && item.teamPosition)) + '" alt="' + escapeHtml(position) + '" />') +
       championHtml +
+      '<span class="cs-lol-loadout-tip" role="tooltip">' + escapeHtml(champion + ' · ' + position) + '</span>' +
       '</div>';
   }
 
@@ -855,7 +884,7 @@
     const max = Math.max(...(logs || []).map((item) => Number(item.damageToChampions || 0)));
     return Number.isFinite(max) && max > 0 ? max : 1;
   }
-  function lolLoadoutHtml(item) {
+  function lolLoadoutHtml(item, runesOnly = false) {
     const runeIds = Array.isArray(item && item.runeIds) ? item.runeIds : [];
     const primaryRuneId = Number(item && item.primaryRuneId) || Number(runeIds[0]) || 0;
     const secondaryStyleId = Number(item && item.secondaryStyleId) || 0;
@@ -863,16 +892,8 @@
       .map((value) => Number(value))
       .filter((value) => Number.isFinite(value) && value > 0)
       .slice(0, 7);
-    const primaryRuneUrl = lolRuneIconUrl(primaryRuneId);
-    const secondaryRuneUrl = lolRuneIconUrl(secondaryStyleId);
-    const runeSlots = [
-      primaryRuneUrl
-        ? '<img class="cs-lol-rune-icon cs-lol-rune-primary" src="' + escapeHtml(primaryRuneUrl) + '" alt="" title="핵심 룬" loading="lazy" />'
-        : '<span class="cs-lol-rune-icon cs-lol-empty-slot" title="핵심 룬 기록 없음"></span>',
-      secondaryRuneUrl
-        ? '<img class="cs-lol-rune-icon" src="' + escapeHtml(secondaryRuneUrl) + '" alt="" title="보조 룬 계열" loading="lazy" />'
-        : '<span class="cs-lol-rune-icon cs-lol-empty-slot" title="보조 룬 기록 없음"></span>',
-    ].join('');
+    const runeSlots = lolRuneSlotHtml(primaryRuneId, true) + lolRuneSlotHtml(secondaryStyleId, false);
+    if (runesOnly) return '<div class="cs-lol-loadout-runes">' + runeSlots + '</div>';
     const itemSlots = Array.from({ length: 7 }, (_, index) => {
       const id = itemIds[index];
       if (!id) {
@@ -921,7 +942,7 @@
       '<span class="cs-lol-damage"><b>총 딜량</b><i><em style="width:' + escapeHtml(String(damageWidth)) + '%"></em></i><strong>' + escapeHtml(damageText) + '</strong></span>' +
       '<span class="cs-lol-cs-stat"><b>분당 CS</b><strong>' + escapeHtml(csText) + '</strong></span>' +
       '<span class="cs-lol-gold-stat"><b>분당 골드</b><strong>' + escapeHtml(goldText) + '</strong></span>' +
-      '<span class="cs-lol-share-stat"><b>팀 내 피해</b><strong>' + escapeHtml(shareText) + '</strong></span>' +
+      '<span class="cs-lol-share-stat"><b>팀 내 피해량 지분</b><strong>' + escapeHtml(shareText) + '</strong></span>' +
       '</div>';
   }
   function lolWinRateText(wins, games) {
@@ -964,7 +985,7 @@
       if (item.win === true) entry.wins += 1;
       entry.items.push(item);
     });
-    return Array.from(byChampion.values()).sort((a, b) => b.games - a.games || b.wins - a.wins || String(a.sample.championName || "").localeCompare(String(b.sample.championName || ""))).slice(0, 3);
+    return Array.from(byChampion.values()).sort((a, b) => b.games - a.games || b.wins - a.wins || String(a.sample.championName || "").localeCompare(String(b.sample.championName || ""))).slice(0, 5);
   }
 
   function lolTierScore(tier, rank, lp) {
@@ -1016,6 +1037,7 @@
   }
 
   function lolRecentSummaryHtml(logs) {
+    logs = logs.filter((item) => typeof item.win === "boolean");
     const monthItems = lolRecentDaysMatchLogs(logs, 30);
     const items = monthItems.length ? monthItems : logs.slice(0, 10);
     if (!items.length) return "";
@@ -1028,20 +1050,21 @@
     const recentLosses = recentItems.filter((item) => item.win === false).length;
     const champs = lolChampionSummary(items);
     const champHtml = champs.length ? champs.map((entry) => {
-      const champion = String((entry.sample && entry.sample.championName) || "챔피언").trim();
+      const champion = lolChampionName(entry.sample);
       const portrait = lolChampionPortraitUrl(entry.sample);
-      return '<div class="cs-lol-summary-champ" title="' + escapeHtml(champion) + '">' +
+      return '<div class="cs-lol-summary-champ" tabindex="0" aria-label="' + escapeHtml(champion) + '">' +
         (portrait ? '<img src="' + escapeHtml(portrait) + '" alt="' + escapeHtml(champion) + '" loading="lazy" />' : '<span>?</span>') +
-        '<div><strong>' + escapeHtml(String(entry.games) + '판') + '</strong><small>' + escapeHtml(lolWinRateText(entry.wins, entry.games)) + '</small></div>' +
+        '<div><strong>' + escapeHtml(String(entry.games) + '판') + '</strong><small>승률 ' + escapeHtml(lolWinRateText(entry.wins, entry.games)) + '</small></div>' +
+        '<span class="cs-lol-loadout-tip cs-lol-champion-tip" role="tooltip">' + escapeHtml(champion) + '</span>' +
         '</div>';
     }).join("") : '<span class="cs-lol-summary-muted">기록 없음</span>';
     return '<section class="cs-lol-summary" aria-label="최근 30일 요약">' +
       '<div class="cs-lol-summary-stat cs-lol-summary-rank-card"><span>현재 티어</span>' + lolRankSummaryHtml(rank, rankText) + '</div>' +
-      '<div class="cs-lol-summary-stat"><span>최근 30일</span><strong>' + escapeHtml(String(wins) + '승 ' + String(losses) + '패') + '</strong><small>' + escapeHtml(lolWinRateText(wins, items.length)) + '</small></div>' +
+      '<div class="cs-lol-summary-stat cs-lol-summary-bottom"><span>최근 30일</span><strong>' + escapeHtml(String(wins) + '승 ' + String(losses) + '패') + '</strong><small>' + escapeHtml(lolWinRateText(wins, items.length)) + '</small></div>' +
       '<div class="cs-lol-summary-stat"><span>티어 변화</span>' + lolTierTrendHtml(items) + '</div>' +
-      '<div class="cs-lol-summary-stat"><span>주 포지션</span><strong>' + escapeHtml(lolTopPositionText(items)) + '</strong><small>KDA ' + escapeHtml(lolAverageKdaText(items)) + '</small></div>' +
-      '<div class="cs-lol-summary-stat"><span>최근 폼</span><strong>' + escapeHtml(String(recentWins) + '승 ' + String(recentLosses) + '패') + '</strong><small>최근 ' + escapeHtml(String(recentItems.length)) + '경기</small></div>' +
-      '<div class="cs-lol-summary-champs"><span>최근 30일 TOP3 챔피언</span><div>' + champHtml + '</div></div>' +
+      '<div class="cs-lol-summary-stat cs-lol-summary-bottom"><span>주 포지션</span><strong>' + escapeHtml(lolTopPositionText(items)) + '</strong><small>KDA ' + escapeHtml(lolAverageKdaText(items)) + '</small></div>' +
+      '<div class="cs-lol-summary-stat cs-lol-summary-bottom"><span>최근 폼</span><strong>' + escapeHtml(String(recentWins) + '승 ' + String(recentLosses) + '패') + '</strong><small>최근 ' + escapeHtml(String(recentItems.length)) + '경기</small></div>' +
+      '<div class="cs-lol-summary-champs"><span>최근 30일 TOP5 챔피언</span><div>' + champHtml + '</div></div>' +
       '</section>';
   }
 
@@ -1059,6 +1082,19 @@
     const damageCap = lolDamageCap(logs);
     return lolRecentSummaryHtml(logs) + '<div class="cs-lol-log">' + Array.from(byDate.entries()).map(([key, items]) => {
       const rows = items.map((item) => {
+        if (lolMatchInProgress(item)) {
+          return '<div class="cs-lol-log-row cs-lol-in-progress">' +
+            '<div class="cs-lol-log-time">' + escapeHtml(lolMatchTimeLabel(item.gameStartAt)) + '</div>' +
+            '<div class="cs-lol-live-visual">' + lolMatchVisualHtml(item) + lolLoadoutHtml(item, true) + '</div>' +
+            '<div class="cs-lol-log-main" aria-label="게임 진행 중, 종료 후 데이터 집계" aria-busy="true">' +
+            '<div class="cs-lol-log-title"><span class="cs-lol-log-title-text">' + escapeHtml(lolQueueLabel(item)) + '</span><span class="cs-lol-skeleton cs-lol-skeleton-result" aria-hidden="true"></span></div>' +
+            '<div class="cs-lol-skeleton-stats" aria-hidden="true">' +
+            Array.from({ length: 5 }, (_, index) =>
+              '<span class="cs-lol-skeleton-stat"><b class="cs-lol-scramble" style="--cs-scramble-offset:' + (-index * 0.37) + 's">' +
+              '<span></span><span></span><span></span><span></span></b><i class="cs-lol-skeleton cs-lol-skeleton-value"></i></span>').join('') + '</div>' +
+            '<div class="cs-lol-skeleton-items" aria-hidden="true">' + Array.from({ length: 7 }, () => '<span class="cs-lol-skeleton cs-lol-skeleton-item"></span>').join('') + '</div>' +
+            '</div><div class="cs-lol-live-note" title="경기 종료 후 통계 반영까지 잠시만 기다려주세요.">경기 종료 후 통계 반영까지 잠시만 기다려주세요.</div></div>';
+        }
         const resultClass = item.win === true ? " cs-win" : item.win === false ? " cs-loss" : "";
         const resultText = item.win === true ? "승리" : item.win === false ? "패배" : "결과 미정";
         return '<div class="cs-lol-log-row">' +
@@ -1079,6 +1115,35 @@
   // 스타일 (Shadow DOM 내부에만 적용)
   // ----------------------------------------------------------
   const STYLE = `
+    .cs-lol-live-visual { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .cs-lol-log-row.cs-lol-in-progress { position: relative; }
+    .cs-lol-in-progress .cs-lol-log-visual, .cs-lol-in-progress .cs-lol-champion-portrait { width: 36px; height: 36px; }
+    .cs-lol-in-progress .cs-lol-rune-icon { width: 18px; height: 18px; }
+    .cs-lol-in-progress .cs-lol-log-main { gap: 3px; }
+    .cs-lol-in-progress .cs-lol-skeleton-stats { flex-wrap: nowrap; overflow: hidden; }
+    .cs-lol-in-progress .cs-lol-skeleton-stat { flex: 0 0 auto; }
+    .cs-lol-skeleton { display: inline-block; flex: 0 0 auto; border-radius: 5px; background: rgba(160,166,180,.2); animation: cs-lol-skeleton-pulse 1.8s ease-in-out infinite; }
+    .cs-lol-position-icon.cs-lol-skeleton { background: #454851; border-color: rgba(160,166,180,.3); box-shadow: none; }
+    .cs-lol-skeleton-result { width: 30px; height: 14px; }
+    .cs-lol-skeleton-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cs-lol-skeleton-stat { display: inline-flex; align-items: center; gap: 5px; min-height: 18px; padding: 0 6px; }
+    .cs-lol-skeleton-stat b { color: #8f939b; font-size: 11px; font-weight: 900; }
+    .cs-lol-scramble { display: inline-flex; width: 44px; height: 14px; overflow: hidden; font-family: monospace; line-height: 14px; }
+    .cs-lol-scramble > span { display: inline-block; width: 11px; text-align: center; }
+    .cs-lol-scramble > span::after { content: "#"; animation: cs-lol-scramble-text 2.8s step-end infinite; animation-delay: var(--cs-scramble-offset, 0s); }
+    .cs-lol-scramble > span:nth-child(2)::after { animation-delay: calc(var(--cs-scramble-offset, 0s) - .53s); }
+    .cs-lol-scramble > span:nth-child(3)::after { animation-delay: calc(var(--cs-scramble-offset, 0s) - 1.17s); }
+    .cs-lol-scramble > span:nth-child(4)::after { animation-delay: calc(var(--cs-scramble-offset, 0s) - 1.91s); }
+    @keyframes cs-lol-scramble-text { 0%, 100% { content: "#"; } 10% { content: "@"; } 20% { content: "%"; } 30% { content: "&"; } 40% { content: "*"; } 50% { content: "+"; } 60% { content: "?"; } 70% { content: "!"; } 80% { content: "="; } 90% { content: "~"; } }
+    .cs-lol-live-note { position: absolute; right: 10px; bottom: 9px; max-width: max(0px, calc(100% - 326px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9d9ea3; font-size: 14px; line-height: 1.5; text-align: right; }
+    :host(.cs-light-theme) .cs-lol-live-note { color: #707580; }
+    .cs-lol-skeleton-value { width: 38px; height: 12px; }
+    .cs-lol-skeleton-items { display: flex; flex-wrap: nowrap; gap: 4px; padding: 0; overflow: hidden; }
+    .cs-lol-skeleton-item { width: 22px; height: 22px; }
+    :host(.cs-light-theme) .cs-lol-skeleton { background: rgba(90,100,118,.18); }
+    :host(.cs-light-theme) .cs-lol-position-icon.cs-lol-skeleton { background: #c8cdd5; }
+    @keyframes cs-lol-skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    @media (prefers-reduced-motion: reduce) { .cs-lol-skeleton, .cs-lol-scramble > span::after { animation: none; } .cs-lol-scramble > span::after { content: "·"; } }
     :host { all: initial; }
     :host(.cs-fullscreen-hidden),
     :host(.cs-large-chat-hidden) { display: none !important; }
@@ -1216,6 +1281,8 @@
     .cs-lol-summary { display: grid; grid-template-columns: 132px repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
     .cs-lol-summary-stat, .cs-lol-summary-champs { min-width: 0; border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); padding: 9px 10px; }
     .cs-lol-summary-stat { display: flex; flex-direction: column; gap: 5px; min-height: 76px; }
+    .cs-lol-summary-bottom { text-align: left; }
+    .cs-lol-summary-bottom > strong { margin-top: auto; }
     .cs-lol-summary-rank-card { grid-row: span 2; min-height: 162px; align-items: center; text-align: center; padding: 10px 8px 12px; }
     .cs-lol-summary-stat span, .cs-lol-summary-champs > span { color: #8f939b; font-size: 11px; font-weight: 900; line-height: 1.2; }
     .cs-lol-summary-stat strong { min-width: 0; color: #efeff1; font-size: 14px; font-weight: 950; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1229,13 +1296,13 @@
     .cs-lol-tier-trend polyline { fill: none; stroke: #60a5fa; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 6px rgba(37,99,235,0.34)); }
     .cs-lol-tier-trend small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-lol-summary-champs { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 8px; }
-    .cs-lol-summary-champs > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .cs-lol-summary-champs > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 8px; }
     .cs-lol-summary-champ { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 42px; border-radius: 7px; background: rgba(255,255,255,0.045); padding: 4px 6px; }
     .cs-lol-summary-champ img, .cs-lol-summary-champ > span { width: 34px; height: 34px; border-radius: 7px; object-fit: cover; background: #111216; }
     .cs-lol-summary-champ > span { display: grid; place-items: center; color: #9d9ea3; font-size: 13px; font-weight: 900; }
     .cs-lol-summary-champ div { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
-    .cs-lol-summary-champ strong { color: #efeff1; font-size: 13px; font-weight: 950; line-height: 1.2; }
-    .cs-lol-summary-champ small { color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.2; }
+    .cs-lol-summary-champ strong { color: #efeff1; font-size: 13px; font-weight: 950; line-height: 1.2; white-space: nowrap; }
+    .cs-lol-summary-champ small { margin-left: auto; color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.2; text-align: right; white-space: nowrap; }
     .cs-lol-summary-muted { color: #9d9ea3; font-size: 12px; font-weight: 800; }
     .cs-lol-log { display: flex; flex-direction: column; gap: 0; max-height: 456px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); }
     .cs-lol-log::-webkit-scrollbar { width: 8px; }
@@ -1271,6 +1338,14 @@
     .cs-lol-rune-icon, .cs-lol-item-icon { flex: 0 0 auto; display: block; width: 22px; height: 22px; border: 1px solid rgba(255,255,255,0.12); border-radius: 5px; background: #111216; object-fit: cover; }
     .cs-lol-loadout-tip { position: absolute; left: 50%; bottom: calc(100% + 7px); z-index: 8; width: max-content; max-width: 180px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translate(-50%, 3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; white-space: nowrap; }
     .cs-lol-loadout-slot:hover .cs-lol-loadout-tip, .cs-lol-loadout-slot:focus-visible .cs-lol-loadout-tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+    .cs-lol-rune-slot { position: relative; display: inline-flex; flex: 0 0 auto; }
+    .cs-lol-summary-champ { position: relative; }
+    .cs-lol-summary-champ > .cs-lol-champion-tip { display: block; width: max-content; height: auto; background: #232427; }
+    .cs-lol-log-visual > .cs-lol-loadout-tip, .cs-lol-rune-slot > .cs-lol-loadout-tip { top: calc(100% + 7px); bottom: auto; left: 0; transform: translateY(-3px); }
+    .cs-lol-log-visual:hover > .cs-lol-loadout-tip, .cs-lol-log-visual:focus-visible > .cs-lol-loadout-tip,
+    .cs-lol-rune-slot:hover > .cs-lol-loadout-tip, .cs-lol-rune-slot:focus-visible > .cs-lol-loadout-tip { opacity: 1; visibility: visible; transform: translateY(0); }
+    .cs-lol-summary-champ:hover > .cs-lol-loadout-tip, .cs-lol-summary-champ:focus-visible > .cs-lol-loadout-tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+    .cs-lol-log-visual:focus-visible, .cs-lol-rune-slot:focus-visible, .cs-lol-summary-champ:focus-visible { outline: 2px solid #03a950; outline-offset: 2px; }
     .cs-lol-rune-primary { border-color: rgba(250,204,21,0.58); box-shadow: 0 0 0 1px rgba(250,204,21,0.12); }
     .cs-lol-empty-slot { background: rgba(17,18,22,0.56); border-color: rgba(255,255,255,0.075); }
     .cs-lol-damage { gap: 5px; }
@@ -1814,6 +1889,7 @@
     :host(.cs-light-theme) .cs-lol-loadout-divider { background: #d4d9df; }
     :host(.cs-light-theme) .cs-lol-rune-icon, :host(.cs-light-theme) .cs-lol-item-icon { border-color: rgba(0,0,0,0.13); background: #eef0f2; }
     :host(.cs-light-theme) .cs-lol-loadout-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    :host(.cs-light-theme) .cs-lol-summary-champ > .cs-lol-champion-tip { background: #ffffff; }
     :host(.cs-light-theme) .cs-lol-empty-slot { background: #e2e6ea; border-color: #d4d9df; }
     :host(.cs-light-theme) .cs-lol-damage b { color: #6f747b; }
     :host(.cs-light-theme) .cs-lol-damage i { background: rgba(0,0,0,0.09); }
@@ -2212,7 +2288,6 @@
     const pill = pillState();
     const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
     const lolLogMode = state.scheduleViewMode === "lolMatchLogs";
-    const lolMatchLogs = lolRecentMatchLogs(100);
     const gameSummary = !lolLogMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
@@ -2221,9 +2296,7 @@
 
     const updatedLabel = formatUpdated();
     const monthToggleLabel = state.monthExpanded ? "주간 보기" : "월간 보기";
-    const scheduleTitle = lolLogMode ? "LoL 경기 로그" : "방송 일정";
-    const lolRankBadge = lolLogMode ? lolRankBadgeHtml() : "";
-    const schedulePillHtml = lolLogMode ? '<span class="cs-pill cs-pill-unknown">' + (lolMatchLogs.length ? escapeHtml(String(lolMatchLogs.length) + "경기") : "기록 없음") + '</span>' : '<span class="cs-pill ' + pill.cls + '">' + pill.html + '</span>';
+    const schedulePillHtml = '<span class="cs-pill ' + pill.cls + '">' + pill.html + '</span>';
     const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
     const settingsLabel = "알림 설정";
     const showNotificationSettings = targetLiveNotificationSettingsVisible();
@@ -2254,16 +2327,15 @@
       (state.extensionCollapsed ? "" : updateNoticeHtml()) +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
-      '<div class="cs-header">' +
-      '<span class="cs-title">' + scheduleTitle + '</span>' +
-      lolRankBadge +
+      (lolLogMode ? "" : '<div class="cs-header">' +
+      '<span class="cs-title">방송 일정</span>' +
       schedulePillHtml +
       '<span class="cs-spacer"></span>' +
       (state.extensionCollapsed || lolLogMode ? "" : monthLabel +
         (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
         '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
         '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>") +
-      "</div>" +
+      "</div>") +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
       (lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       gameSummary +
