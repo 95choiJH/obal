@@ -3856,3 +3856,5 @@ body {
 body.media-popup-open {
   overflow: hidden;
 }
+
+.mobile-service-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:4px 12px 16px;padding:4px;background:var(--surface,#222529);border-radius:12px}.mobile-service-tabs a{padding:12px;text-align:center;font-size:14px;font-weight:750;color:var(--muted,#a6b0ab);text-decoration:none;border-radius:8px}.mobile-service-tabs [aria-current]{background:var(--surface-strong,#2b2f34);color:var(--accent-strong,#67e4a4)}

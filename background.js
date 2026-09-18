@@ -729,6 +729,7 @@ function normalizeLolMatchLog(item) {
     rankBefore: String(item.rank_before || item.rankBefore || "").trim(),
     tierAfter: String(item.tier_after || item.tierAfter || "").trim(),
     rankAfter: String(item.rank_after || item.rankAfter || "").trim(),
+    rankCapturedAt: String((item.metadata && item.metadata.rankCapturedAt) || item.rankCapturedAt || "").trim(),
   };
 }
 

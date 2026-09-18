@@ -382,11 +382,11 @@ async function existingMatchIds(
   supabaseUrl: string,
   serviceRoleKey: string,
 ) {
-  if (!ids.length) return new Set<string>();
+  if (!ids.length) return new Map<string, Record<string, unknown>>();
   const inList = "(" +
     ids.map((id) => JSON.stringify(id)).join(",") + ")";
   const query = "/rest/v1/" + MATCH_LOG_TABLE +
-    "?select=match_id&channel_id=eq." + encodeURIComponent(channelId) +
+    "?select=match_id,lp_before,lp_after,lp_delta,tier_before,rank_before,tier_after,rank_after,metadata&channel_id=eq." + encodeURIComponent(channelId) +
     "&win=not.is.null" +
     "&match_id=in." + encodeURIComponent(inList);
   const rows = await supabaseFetch(
@@ -394,9 +394,9 @@ async function existingMatchIds(
     { method: "GET" },
     supabaseUrl,
     serviceRoleKey,
-  ) as Array<{ match_id?: string }>;
-  return new Set(
-    (rows || []).map((row) => String(row.match_id || "")).filter(Boolean),
+  ) as Array<Record<string, unknown>>;
+  return new Map(
+    (rows || []).filter((row) => row.match_id).map((row) => [String(row.match_id), row] as [string, Record<string, unknown>]),
   );
 }
 
@@ -433,7 +433,7 @@ async function fetchSoloRankMatchIds(
 }
 
 function rankSnapshotFromAccount(account: StreamerAccount): RankSnapshot {
-  const leaguePoints = Number(account.latest_league_points);
+  const leaguePoints = account.latest_league_points == null ? NaN : Number(account.latest_league_points);
   return {
     tier: String(account.latest_tier || "").trim().toUpperCase(),
     rank: String(account.latest_rank || "").trim().toUpperCase(),
@@ -634,6 +634,24 @@ function payloadFromMatch(
   };
 }
 
+function preserveMatchRank(
+  payload: NonNullable<ReturnType<typeof payloadFromMatch>>,
+  existing: Record<string, unknown> | undefined,
+  capturedAt: string,
+) {
+  const metadata = (existing?.metadata || {}) as Record<string, unknown>;
+  const fields = ["lp_before", "lp_after", "lp_delta", "tier_before", "rank_before", "tier_after", "rank_after"] as const;
+  if (existing) {
+    // Only marked snapshots are trustworthy; legacy ranks were overwritten.
+    for (const field of fields) {
+      (payload as Record<string, unknown>)[field] = metadata.rankCapturedAt ? existing[field] ?? null : null;
+    }
+  }
+  Object.assign(payload.metadata, {
+    rankCapturedAt: existing ? metadata.rankCapturedAt || null : payload.tier_after ? capturedAt : null,
+  });
+}
+
 async function scanAccount(
   account: StreamerAccount,
   env: { supabaseUrl: string; serviceRoleKey: string; riotApiKey: string },
@@ -683,6 +701,7 @@ async function scanAccount(
   }
   const beforeRankSnapshot = rankSnapshotFromAccount(account);
   const rank = await fetchSoloRank(account, puuid, env.riotApiKey);
+  const rankCapturedAt = new Date().toISOString();
   await updateAccountRank(account, rank, env.supabaseUrl, env.serviceRoleKey);
 
   const startTime = lookbackStartSeconds();
@@ -715,10 +734,11 @@ async function scanAccount(
       session,
       matchId,
       match,
-      rank,
-      beforeRank,
+      !existing.has(matchId) && matchId === ids[0] ? rank : null,
+      !existing.has(matchId) && matchId === ids[0] ? beforeRank : null,
     );
     if (!payload) continue;
+    preserveMatchRank(payload, existing.get(matchId), rankCapturedAt);
     await supabaseFetch(
       "/rest/v1/" + MATCH_LOG_TABLE + "?on_conflict=channel_id,match_id",
       {

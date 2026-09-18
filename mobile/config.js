@@ -8,6 +8,7 @@ const OBAENGAL_MOBILE_CONFIG = {
   feedbackFunctionName: "submit-feedback",
   chzzkSearchFunctionName: "chzzk-search",
   defaultChannelId: "0dad8baf12a436f722faa8e5001c5011",
+  streamerName: "따효니",
   defaultChannelName: "오뱅알",
   timezone: "Asia/Seoul",
   cacheTtlMinutes: 5,

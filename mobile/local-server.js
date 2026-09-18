@@ -5,6 +5,7 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const port = Number(process.env.PORT || 8003);
 const types = {
+  ".txt": "text/plain; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -16,6 +17,8 @@ const types = {
 
 function resolveRequest(urlPath) {
   let pathname = decodeURIComponent(new URL(urlPath, `http://127.0.0.1:${port}`).pathname);
+  if (pathname === "/mobile/lol.html/riot.txt") pathname = "/riot.txt";
+  if (pathname === "/netlify-mobile/mobile/lol.html/riot.txt") pathname = "/netlify-mobile/riot.txt";
   if (pathname === "/") pathname = "/mobile/";
   if (pathname.endsWith("/")) pathname += "index.html";
   const file = path.resolve(root, pathname.replace(/^\/+/, ""));

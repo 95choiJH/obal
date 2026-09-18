@@ -80,6 +80,7 @@
     pageOffset: 0,       // 0 = 오늘 페이지, -1 = 5일 전 페이지 ...
     monthExpanded: false,
     scheduleViewMode: "schedule",
+    lolVisibleMatchCount: 5,
     lastRenderedScheduleFingerprint: "",
     lastRenderedLolFingerprint: "",
     extensionCollapsed: readExtensionCollapsed(),
@@ -603,29 +604,86 @@
   }
 
   function lolLogToggleHtml(lolLogMode) {
-    if (lolLogMode) {
-      return '<button type="button" class="cs-lol-log-toggle cs-open" id="cs-lol-log-toggle" aria-pressed="true">방송 일정</button>';
-    }
+    const label = lolLogMode ? "방송 일정으로 전환" : "리그 오브 레전드 모드로 전환";
     const rank = lolStreamerRankForCurrentChannel();
-    const rankText = lolRankText(rank) || "현재 솔로랭크";
-    const riotId = lolRiotIdText(rank);
-    const tierIcon = lolTierIconUrl(rank);
-    const division = lolDivisionLabel(rank);
-    const emblemHtml = tierIcon
-      ? '<img class="cs-lol-toggle-emblem" src="' + escapeHtml(tierIcon) + '" alt="" loading="lazy" />'
-      : '<span class="cs-lol-toggle-emblem cs-lol-toggle-emblem-fallback" aria-hidden="true"></span>';
-    const divisionHtml = division ? '<span class="cs-lol-toggle-division" aria-label="세부 티어 ' + escapeHtml(division) + '">' + escapeHtml(division) + '</span>' : "";
-    return '<button type="button" class="cs-lol-log-toggle cs-lol-rank-toggle" id="cs-lol-log-toggle" aria-pressed="false" aria-label="' + escapeHtml(rankText + " 경기 로그") + '">' +
-      emblemHtml + divisionHtml + '<span class="cs-lol-toggle-id">' + escapeHtml(riotId) + '</span></button>';
+    const emblem = lolTierEmblemHtml(rank, "cs-mode-two-emblem") || '<span class="cs-mode-two-fallback" aria-hidden="true"></span>';
+    return '<button type="button" class="cs-lol-log-toggle cs-mode-design-two' + (lolLogMode ? ' cs-open' : '') + '" id="cs-lol-log-toggle" aria-pressed="' + String(lolLogMode) + '" aria-label="' + label + '">' +
+      '<span class="cs-mode-two-indicator" aria-hidden="true"></span>' +
+      '<span class="cs-mode-two-option cs-mode-two-schedule" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" />일정</span>' +
+      '<span class="cs-mode-two-option cs-mode-two-log" aria-hidden="true">' + emblem + '리그 오브 레전드</span>' +
+      '<span class="cs-mode-switch-tip">' + label + '</span></button>';
+  }
+
+  let scheduleModeTransitioning = false;
+  async function switchScheduleViewMode(button) {
+    if (scheduleModeTransitioning) return;
+    scheduleModeTransitioning = true;
+    button.disabled = true;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const toLogs = state.scheduleViewMode !== "lolMatchLogs";
+    const direction = toLogs ? 1 : -1;
+    const animate = async (element, frames, duration) => {
+      if (reduced || !element || typeof element.animate !== "function") return;
+      await element.animate(frames, { duration, easing: "cubic-bezier(.2,.8,.2,1)" }).finished.catch(() => {});
+    };
+    try {
+      closePopover();
+      state.settingsOpen = false;
+      await Promise.all([
+        animate(state.shadow.querySelector(".cs-schedule-section"), [{ opacity: 1, transform: "translateX(0) scale(1)" }, { opacity: 0, transform: "translateX(" + (-direction * 18) + "px) scale(.97)" }], 140),
+        animate(button, [{ transform: "scale(1)" }, { transform: "scale(.96)" }], 140),
+      ]);
+      if (!button.isConnected) return;
+      state.scheduleViewMode = toLogs ? "lolMatchLogs" : "schedule";
+      render();
+      const nextButton = state.shadow.getElementById("cs-lol-log-toggle");
+      if (nextButton) { nextButton.disabled = true; nextButton.focus({ preventScroll: true }); }
+      const start = toLogs ? "0%" : "100%";
+      const end = toLogs ? "100%" : "0%";
+      const overshoot = toLogs ? "105%" : "-5%";
+      await Promise.all([
+        animate(nextButton && nextButton.querySelector(".cs-mode-two-indicator"), [{ transform: "translateX(" + start + ")" }, { transform: "translateX(" + overshoot + ")", offset: .65 }, { transform: "translateX(" + end + ")" }], 420),
+        animate(state.shadow.querySelector(".cs-schedule-section"), [{ opacity: 0, transform: "translateX(" + (direction * 22) + "px) scale(.97)" }, { opacity: 1, transform: "translateX(" + (-direction * 4) + "px) scale(1.01)", offset: .65 }, { opacity: 1, transform: "translateX(0) scale(1)" }], 420),
+        animate(nextButton, [{ transform: "scale(.96)" }, { transform: "scale(1.035)", offset: .65 }, { transform: "scale(1)" }], 420),
+      ]);
+    } finally {
+      scheduleModeTransitioning = false;
+      button.disabled = false;
+      const currentButton = state.shadow && state.shadow.getElementById("cs-lol-log-toggle");
+      if (currentButton) currentButton.disabled = false;
+    }
+  }
+
+  function lolTierEmblemHtml(rank, className = "cs-lol-summary-emblem-image") {
+    const icon = lolTierIconUrl(rank);
+    if (!icon) return "";
+    const tier = String(rank.tier || "").trim().toLowerCase();
+    // Visible artwork bounds, excluding the transparent source canvas.
+    const bounds = {
+      iron: [1280, 720, 543, 297, 196, 119],
+      bronze: [1280, 720, 522, 276, 238, 156],
+      silver: [1280, 720, 509, 245, 262, 183],
+      gold: [1280, 720, 509, 231, 259, 222],
+      platinum: [2560, 1440, 1017, 443, 527, 454],
+      emerald: [2560, 1440, 990, 460, 584, 434],
+      diamond: [1280, 720, 484, 262, 314, 189],
+      master: [1280, 720, 491, 236, 300, 221],
+      grandmaster: [1280, 720, 485, 242, 311, 224],
+      challenger: [1280, 720, 480, 216, 322, 243],
+    }[tier] || [1280, 720, 0, 0, 1280, 720];
+    const [width, height, x, y, cropWidth, cropHeight] = bounds;
+    const padding = Math.max(cropWidth, cropHeight) * 0.06;
+    const viewBox = [x - padding, y - padding, cropWidth + padding * 2, cropHeight + padding * 2].join(" ");
+    return '<svg class="' + escapeHtml(className) + '" viewBox="' + viewBox + '" aria-hidden="true" focusable="false"><image href="' + escapeHtml(icon) + '" width="' + width + '" height="' + height + '" /></svg>';
   }
 
   function lolRankSummaryHtml(rank, text) {
-    const icon = lolTierIconUrl(rank);
     return '<div class="cs-lol-summary-rank">' +
       '<div class="cs-lol-summary-rank-emblem">' +
-      (icon ? '<img src="' + escapeHtml(icon) + '" alt="" loading="lazy" />' : '') +
+      lolTierEmblemHtml(rank) +
       '</div>' +
       '<strong>' + escapeHtml(text || "-") + '</strong>' +
+      (rank && rank.riotGameName ? '<small class="cs-lol-summary-riot-id">' + escapeHtml(lolRiotIdText(rank)) + '</small>' : '') +
       '</div>';
   }
 
@@ -1008,7 +1066,7 @@
   }
 
   function lolTierTrendPoints(items) {
-    return items.slice().sort((a, b) => lolMatchStartMs(a) - lolMatchStartMs(b)).map((item) => {
+    return items.filter((item) => item.rankCapturedAt).sort((a, b) => Date.parse(a.rankCapturedAt) - Date.parse(b.rankCapturedAt)).map((item) => {
       const score = lolTierScore(item.tierAfter, item.rankAfter, item.lpAfter);
       if (!Number.isFinite(score)) return null;
       return { score, label: lolTierShortLabel(item.tierAfter, item.rankAfter, item.lpAfter) };
@@ -1060,12 +1118,28 @@
     }).join("") : '<span class="cs-lol-summary-muted">기록 없음</span>';
     return '<section class="cs-lol-summary" aria-label="최근 30일 요약">' +
       '<div class="cs-lol-summary-stat cs-lol-summary-rank-card"><span>현재 티어</span>' + lolRankSummaryHtml(rank, rankText) + '</div>' +
+      '<div class="cs-lol-summary-stat cs-lol-summary-trend-card"><span>티어 변화</span>' + lolTierTrendHtml(items) + '</div>' +
       '<div class="cs-lol-summary-stat cs-lol-summary-bottom"><span>최근 30일</span><strong>' + escapeHtml(String(wins) + '승 ' + String(losses) + '패') + '</strong><small>' + escapeHtml(lolWinRateText(wins, items.length)) + '</small></div>' +
-      '<div class="cs-lol-summary-stat"><span>티어 변화</span>' + lolTierTrendHtml(items) + '</div>' +
       '<div class="cs-lol-summary-stat cs-lol-summary-bottom"><span>주 포지션</span><strong>' + escapeHtml(lolTopPositionText(items)) + '</strong><small>KDA ' + escapeHtml(lolAverageKdaText(items)) + '</small></div>' +
       '<div class="cs-lol-summary-stat cs-lol-summary-bottom"><span>최근 폼</span><strong>' + escapeHtml(String(recentWins) + '승 ' + String(recentLosses) + '패') + '</strong><small>최근 ' + escapeHtml(String(recentItems.length)) + '경기</small></div>' +
       '<div class="cs-lol-summary-champs"><span>최근 30일 TOP5 챔피언</span><div>' + champHtml + '</div></div>' +
       '</section>';
+  }
+
+  function lolCollapsedSummaryHtml() {
+    const logs = lolRecentMatchLogs(100);
+    const recent = logs.filter((item) => typeof item.win === "boolean").slice(0, 10);
+    const rank = lolStreamerRankForCurrentChannel();
+    const rankText = lolRankText(rank);
+    const riotId = lolRiotIdText(rank);
+    const wins = recent.filter((item) => item.win === true).length;
+    const details = [];
+    if (rankText) details.push(rankText);
+    if (recent.length) details.push("최근 " + recent.length + "경기 " + wins + "승 " + (recent.length - wins) + "패");
+    else details.push("경기 기록 없음");
+    if (logs.some(lolMatchInProgress)) details.push("게임 진행 중");
+    const summary = details.join(" / ");
+    return '<div class="cs-header cs-lol-collapsed-header"><span class="cs-title" title="' + escapeHtml(riotId) + '">' + escapeHtml(riotId) + '</span><span class="cs-lol-collapsed-summary" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</span></div>';
   }
 
   function lolMatchLogHtml() {
@@ -1073,8 +1147,10 @@
     if (!logs.length) {
       return '<div class="cs-lol-log-empty">아직 표시할 리그 오브 레전드 경기 로그가 없습니다.</div>';
     }
+    const visibleCount = Math.max(5, Number(state.lolVisibleMatchCount) || 5);
+    const visibleLogs = logs.slice(0, visibleCount);
     const byDate = new Map();
-    logs.forEach((item) => {
+    visibleLogs.forEach((item) => {
       const key = String(item.scheduleDate || "").trim() || "unknown";
       if (!byDate.has(key)) byDate.set(key, []);
       byDate.get(key).push(item);
@@ -1108,7 +1184,9 @@
           '</div>';
       }).join("");
       return '<section class="cs-lol-log-day"><div class="cs-lol-log-date"><span>' + escapeHtml(lolMatchDateLabel(key)) + '</span><small>' + escapeHtml(String(items.length) + '경기') + '</small></div>' + rows + '</section>';
-    }).join("") + '</div>';
+    }).join("") + '</div>' + (visibleLogs.length < logs.length
+      ? '<button type="button" class="cs-lol-load-more" id="cs-lol-load-more"><span>더보기</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+      : "");
   }
 
   // ----------------------------------------------------------
@@ -1153,7 +1231,12 @@
 
     .cs-wrapper { position: relative; background: #1b1c1f; border: 1px solid #2e3033;
       border-radius: 10px; margin: 0 30px 20px; }
-    .cs-schedule-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 30px 6px; }
+    .cs-schedule-toolbar { container-type: inline-size; margin: 0 30px 8px; }
+    .cs-toolbar-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+    .cs-mode-switch-slot { justify-self: center; }
+    .cs-schedule-tools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; justify-self: end; }
+    @container (max-width: 480px) { .cs-toolbar-layout { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; } .cs-toolbar-balance { display: none; } .cs-mode-switch-slot { justify-self: start; } }
+    @container (max-width: 380px) { .cs-toolbar-layout { grid-template-columns: 1fr; } .cs-mode-switch-slot { justify-self: center; } .cs-schedule-tools { grid-row: 2; } }
     .cs-schedule-toolbar .cs-view-tip,
     .cs-schedule-toolbar .cs-extension-collapse-tip { top: calc(100% + 6px); bottom: auto; }
     .cs-settings-toggle { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -1186,7 +1269,7 @@
     .cs-settings-switch.cs-on { background: #03a950; }
     .cs-settings-switch.cs-on::after { transform: translateX(18px); }
     .cs-section { position: relative; padding: 12px 14px; }
-    .cs-schedule-section { position: relative; border-radius: 10px; }
+    .cs-schedule-section { position: relative; border-radius: 10px; transform-origin: top center; }
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
       background: rgba(15,16,18,0.28); }
     .cs-info-layout { display: flex; flex-direction: column; gap: 10px; }
@@ -1194,6 +1277,10 @@
 
     .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .cs-schedule-section.cs-collapsed .cs-header { margin-bottom: 0; }
+    .cs-header.cs-lol-collapsed-header { flex-wrap: nowrap; gap: 10px; min-width: 0; }
+    .cs-lol-collapsed-header .cs-title { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-lol-collapsed-summary { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aeb1b8; font-size: 12px; font-weight: 700; line-height: 1.4; }
+    :host(.cs-light-theme) .cs-lol-collapsed-summary { color: #606873; }
     .cs-extension-collapse { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; border: 1px solid #3a3c41; border-radius: 7px; background: #242529;
       color: #c9cbd1; font-size: 10px; font-weight: 800; line-height: 1; cursor: pointer; }
@@ -1266,50 +1353,71 @@
     .cs-view-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
     .cs-view-toggle:hover .cs-view-tip, .cs-view-toggle:focus-visible .cs-view-tip { opacity: 1; visibility: visible; transform: translateY(0); }
     .cs-view-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
-    .cs-lol-log-toggle { flex: 0 0 auto; min-height: 28px; padding: 0 10px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #c9cacd; font-size: 12px; font-weight: 800; line-height: 1; cursor: pointer; white-space: nowrap; }
-    .cs-lol-log-toggle:hover, .cs-lol-log-toggle:focus-visible, .cs-lol-log-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
-    .cs-lol-rank-toggle { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 2px 8px 2px 5px; color: #dfe4ec; background: rgba(35,36,39,0.96); border-color: rgba(96,165,250,0.34); }
-    .cs-lol-rank-toggle:hover, .cs-lol-rank-toggle:focus-visible { color: #ffffff; background: #2b2d31; border-color: rgba(96,165,250,0.56); }
-    .cs-lol-toggle-emblem { flex: 0 0 auto; display: block; width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.38)); }
-    .cs-lol-toggle-emblem-fallback { width: 24px; height: 24px; border: 1px solid rgba(96,165,250,0.32); border-radius: 6px; background: rgba(96,165,250,0.10); }
-    .cs-lol-toggle-division { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border: 1px solid rgba(250,204,21,0.42); border-radius: 6px; background: rgba(250,204,21,0.10); color: #fde68a; font-size: 10px; font-weight: 950; line-height: 1; }
-    .cs-lol-toggle-id { min-width: 0; max-width: 116px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 900; line-height: 1; }
+    .cs-lol-log-toggle { position: relative; z-index: 3; align-items: center; justify-content: center; border: 1px solid #45494e; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; cursor: pointer; transition: transform .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease; }
+    .cs-lol-log-toggle:focus-visible { outline: 2px solid #00c878; outline-offset: 3px; }
+    .cs-lol-log-toggle.cs-open { border-color: rgba(0,200,120,.5); }
+    .cs-lol-log-toggle:active { transform: scale(.97); }
+    .cs-lol-log-toggle:disabled { cursor: wait; }
+    @media (prefers-reduced-motion: reduce) { .cs-lol-log-toggle, .cs-mode-switch-tip { transition: none; } }
+    .cs-mode-switch-tip { position: absolute; top: calc(100% + 8px); left: 50%; transform: translate(-50%, -3px); padding: 5px 8px; border: 1px solid #3a3c40; border-radius: 6px; background: #232427; color: #efeff1; font-size: 11px; font-weight: 700; white-space: nowrap; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .15s ease, transform .15s ease, visibility .15s ease; }
+    .cs-lol-log-toggle:hover .cs-mode-switch-tip, .cs-lol-log-toggle:focus-visible .cs-mode-switch-tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+    .cs-lol-log-toggle.cs-mode-design-two { width: 268px; height: 36px; padding: 3px; display: grid; grid-template-columns: 1fr 1fr; border-radius: 14px; background: #1b1c1f; color: #8f939b; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+    .cs-lol-log-toggle.cs-mode-design-two::before, .cs-lol-log-toggle.cs-mode-design-two::after { display: none; }
+    .cs-lol-log-toggle.cs-mode-design-two:hover, .cs-lol-log-toggle.cs-mode-design-two:focus-visible { transform: translateY(-1px); background: #202225; border-color: #00c878; }
+    .cs-mode-two-indicator { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 2); border: 1px solid rgba(0,200,120,.45); border-radius: 10px; background: #123b2e; box-shadow: 0 2px 6px rgba(0,0,0,.15); pointer-events: none; }
+    .cs-mode-design-two.cs-open .cs-mode-two-indicator { transform: translateX(100%); }
+    .cs-mode-two-option { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 5px; height: 28px; font-size: 12px; font-weight: 800; }
+    .cs-mode-design-two:not(.cs-open) .cs-mode-two-schedule, .cs-mode-design-two.cs-open .cs-mode-two-log { color: #d5f9e8; }
+    .cs-mode-two-option img, .cs-mode-two-emblem { display: block; width: 19px; height: 19px; object-fit: contain; overflow: hidden; }
+    .cs-mode-two-fallback { width: 15px; height: 15px; border: 1px solid currentColor; border-radius: 50%; }
+    :host(.cs-light-theme) .cs-lol-log-toggle.cs-mode-design-two { background: #ffffff; color: #7b8188; }
+    :host(.cs-light-theme) .cs-lol-log-toggle.cs-mode-design-two:hover { background: #f6f8f7; }
+    :host(.cs-light-theme) .cs-mode-two-indicator { background: #e8f7ef; border-color: rgba(3,169,80,.4); }
+    :host(.cs-light-theme) .cs-mode-design-two:not(.cs-open) .cs-mode-two-schedule, :host(.cs-light-theme) .cs-mode-design-two.cs-open .cs-mode-two-log { color: #087f4d; }
     .cs-lol-rank-badge { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; border: 1px solid rgba(96,165,250,0.34); border-radius: 7px; background: rgba(37,99,235,0.13); color: #bfdbfe; font-size: 12px; font-weight: 900; line-height: 1; white-space: nowrap; }
     .cs-lol-rank-badge span { color: #93c5fd; font-size: 11px; }
     .cs-month-label { position: absolute; left: 50%; top: 13px; transform: translateX(-50%); color: #c9cacd; font-size: 18px; line-height: 1; font-weight: 900; white-space: nowrap; pointer-events: none; }
 
-    .cs-lol-summary { display: grid; grid-template-columns: 132px repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .cs-lol-summary { display: grid; grid-template-columns: repeat(2, 164px) repeat(3, minmax(0, 1fr)); grid-template-rows: 80px auto; gap: 8px; margin-bottom: 10px; }
     .cs-lol-summary-stat, .cs-lol-summary-champs { min-width: 0; border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); padding: 9px 10px; }
     .cs-lol-summary-stat { display: flex; flex-direction: column; gap: 5px; min-height: 76px; }
+    .cs-lol-summary-stat:not(.cs-lol-summary-rank-card):not(.cs-lol-summary-trend-card) { height: 80px; min-height: 0; align-self: start; padding: 7px 10px; gap: 3px; }
     .cs-lol-summary-bottom { text-align: left; }
     .cs-lol-summary-bottom > strong { margin-top: auto; }
-    .cs-lol-summary-rank-card { grid-row: span 2; min-height: 162px; align-items: center; text-align: center; padding: 10px 8px 12px; }
+    .cs-lol-summary-rank-card, .cs-lol-summary-trend-card { grid-row: span 2; min-height: 162px; align-items: center; text-align: center; padding: 10px 8px 12px; }
     .cs-lol-summary-stat span, .cs-lol-summary-champs > span { color: #8f939b; font-size: 11px; font-weight: 900; line-height: 1.2; }
     .cs-lol-summary-stat strong { min-width: 0; color: #efeff1; font-size: 14px; font-weight: 950; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-lol-summary-rank { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; width: 100%; }
-    .cs-lol-summary-rank-emblem { width: 88px; height: 88px; display: grid; place-items: center; }
-    .cs-lol-summary-rank img { width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 5px 12px rgba(0,0,0,0.42)); }
+    .cs-lol-summary-rank-emblem { width: 140px; max-width: 100%; aspect-ratio: 1; flex: 0 0 auto; display: grid; place-items: center; }
+    .cs-lol-summary-emblem-image { display: block; width: 100%; height: 100%; overflow: hidden; filter: drop-shadow(0 5px 12px rgba(0,0,0,0.42)); }
     .cs-lol-summary-rank strong { max-width: 100%; font-size: 13px; line-height: 1.25; text-align: center; white-space: normal; }
+    .cs-lol-summary-rank .cs-lol-summary-riot-id { max-width: 100%; font-size: 11px; font-weight: 600; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
     .cs-lol-summary-stat small { color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.2; }
-    .cs-lol-tier-trend { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
-    .cs-lol-tier-trend svg { display: block; width: 100%; height: 44px; overflow: visible; }
+    .cs-lol-summary-trend-card { justify-content: flex-start; }
+    .cs-lol-summary-trend-card > span { flex: 0 0 auto; }
+    .cs-lol-summary-trend-card > strong { margin-top: auto; }
+    .cs-lol-tier-trend { min-width: 0; min-height: 0; width: 100%; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; }
+    .cs-lol-tier-trend svg { display: block; flex: 1 1 auto; min-height: 0; width: 100%; height: 100px; overflow: visible; }
+    .cs-lol-tier-trend small { flex: 0 0 auto; margin-top: auto; }
     .cs-lol-tier-trend polyline { fill: none; stroke: #60a5fa; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 6px rgba(37,99,235,0.34)); }
     .cs-lol-tier-trend small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cs-lol-summary-champs { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 8px; }
-    .cs-lol-summary-champs > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 8px; }
-    .cs-lol-summary-champ { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 42px; border-radius: 7px; background: rgba(255,255,255,0.045); padding: 4px 6px; }
-    .cs-lol-summary-champ img, .cs-lol-summary-champ > span { width: 34px; height: 34px; border-radius: 7px; object-fit: cover; background: #111216; }
+    .cs-lol-summary-champs { grid-column: 3 / -1; display: flex; flex-direction: column; align-self: stretch; padding: 7px 10px; gap: 6px; }
+    .cs-lol-summary-champs > div { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; gap: 4px; }
+    .cs-lol-summary-champ { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-content: center; gap: 8px; min-height: 64px; border-radius: 6px; background: rgba(255,255,255,0.045); padding: 5px 3px; }
+    .cs-lol-summary-champ img, .cs-lol-summary-champ > span { width: 40px; max-width: 100%; height: auto; aspect-ratio: 1; border-radius: 7px; object-fit: cover; background: #111216; }
     .cs-lol-summary-champ > span { display: grid; place-items: center; color: #9d9ea3; font-size: 13px; font-weight: 900; }
-    .cs-lol-summary-champ div { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
-    .cs-lol-summary-champ strong { color: #efeff1; font-size: 13px; font-weight: 950; line-height: 1.2; white-space: nowrap; }
-    .cs-lol-summary-champ small { margin-left: auto; color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.2; text-align: right; white-space: nowrap; }
+    .cs-lol-summary-champ div { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .cs-lol-summary-champ strong { color: #efeff1; font-size: 12px; font-weight: 950; line-height: 1.2; white-space: nowrap; }
+    .cs-lol-summary-champ small { margin-left: 0; color: #aeb1b8; font-size: 12px; font-weight: 800; line-height: 1.3; text-align: center; }
     .cs-lol-summary-muted { color: #9d9ea3; font-size: 12px; font-weight: 800; }
-    .cs-lol-log { display: flex; flex-direction: column; gap: 0; max-height: 456px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); }
-    .cs-lol-log::-webkit-scrollbar { width: 8px; }
-    .cs-lol-log::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(157,158,163,0.38); }
-    .cs-lol-log::-webkit-scrollbar-track { background: transparent; }
+    .cs-lol-log { display: flex; flex-direction: column; gap: 0;  border: 1px solid #303238; border-radius: 8px; background: rgba(255,255,255,0.025); }
+    .cs-lol-load-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 11px 16px; border: 1px solid #3b3d42; border-radius: 8px; background: #25272b; color: #efeff1; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .cs-lol-load-more:hover { background: #2d3035; border-color: #00c878; }
+    .cs-lol-load-more:focus-visible { outline: 2px solid #00c878; outline-offset: 3px; }
+    :host(.cs-light-theme) .cs-lol-load-more { background: #fff; color: #1e2024; border-color: #d8dadd; }
+    :host(.cs-light-theme) .cs-lol-load-more:hover { background: #f2f5f3; border-color: #03a950; }
     .cs-lol-log-day { display: block; min-width: 0; }
-    .cs-lol-log-date { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; padding: 0 10px 0 13px; border-bottom: 1px solid #343741; background: #25272d; color: #efeff1; font-size: 13px; font-weight: 900; box-shadow: 0 1px 0 rgba(255,255,255,0.04); }
+    .cs-lol-log-date { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; padding: 0 10px 0 13px; border-bottom: 1px solid #343741; background: #25272d; color: #efeff1; font-size: 13px; font-weight: 900; box-shadow: 0 1px 0 rgba(255,255,255,0.04); }
     .cs-lol-log-date::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 999px 999px 0; background: #00c878; }
     .cs-lol-log-date span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-lol-log-date small { flex: 0 0 auto; color: #8fffd5; font-size: 11px; font-weight: 900; line-height: 1; }
@@ -1365,13 +1473,16 @@
     .cs-lol-lp.cs-lp-up { color: #86efac; background: rgba(34,197,94,0.12); }
     .cs-lol-lp.cs-lp-down { color: #fda4af; background: rgba(244,63,94,0.12); }
     .cs-lol-log-empty { display: flex; align-items: center; justify-content: center; min-height: 150px; border: 1px dashed #34363a; border-radius: 8px; color: #9d9ea3; font-size: 13px; font-weight: 800; text-align: center; padding: 18px; }
-    @media (max-width: 560px) {
-      .cs-lol-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .cs-lol-summary-rank-card { grid-row: span 1; min-height: 150px; }
-      .cs-lol-summary-rank-emblem, .cs-lol-summary-rank img { width: 74px; height: 74px; }
+    @media (max-width: 900px) {
+      .cs-lol-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; }
+      .cs-lol-summary-rank-card, .cs-lol-summary-trend-card { grid-row: auto; }
       .cs-lol-summary-champs { grid-column: 1 / -1; }
-      .cs-lol-summary-champs > div { grid-template-columns: 1fr; }
-      .cs-lol-log { max-height: 456px; }
+    }
+    @media (max-width: 560px) {
+      .cs-lol-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; }
+      .cs-lol-summary-rank-card, .cs-lol-summary-trend-card { grid-row: auto; min-height: 150px; }
+      .cs-lol-summary-rank-emblem { width: 112px; }
+      .cs-lol-summary-champs { grid-column: 1 / -1; }
     }
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
@@ -1858,12 +1969,10 @@
     :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
     :host(.cs-light-theme) .cs-view-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
     :host(.cs-light-theme) .cs-view-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
-    :host(.cs-light-theme) .cs-lol-log-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
-    :host(.cs-light-theme) .cs-lol-log-toggle:hover, :host(.cs-light-theme) .cs-lol-log-toggle:focus-visible, :host(.cs-light-theme) .cs-lol-log-toggle.cs-open { background: #03a950; border-color: #03a950; color: #ffffff; }
-    :host(.cs-light-theme) .cs-lol-rank-toggle { background: #ffffff; border-color: rgba(37,99,235,0.24); color: #25282d; }
-    :host(.cs-light-theme) .cs-lol-rank-toggle:hover, :host(.cs-light-theme) .cs-lol-rank-toggle:focus-visible { background: #f2f5f9; border-color: rgba(37,99,235,0.42); color: #1e2024; }
-    :host(.cs-light-theme) .cs-lol-toggle-emblem-fallback { border-color: rgba(37,99,235,0.22); background: rgba(37,99,235,0.08); }
-    :host(.cs-light-theme) .cs-lol-toggle-division { border-color: rgba(180,83,9,0.30); background: rgba(180,83,9,0.08); color: #92400e; }
+    :host(.cs-light-theme) .cs-lol-log-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; box-shadow: 0 3px 8px rgba(30,40,50,.12); }
+    :host(.cs-light-theme) .cs-lol-log-toggle:hover, :host(.cs-light-theme) .cs-lol-log-toggle:focus-visible { background: #f2f5f3; border-color: #03a950; color: #1e2024; }
+    :host(.cs-light-theme) .cs-lol-log-toggle.cs-open { border-color: #03a950; }
+    :host(.cs-light-theme) .cs-mode-switch-tip { background: #ffffff; border-color: #d8dadd; color: #25282d; }
     :host(.cs-light-theme) .cs-lol-rank-badge { border-color: rgba(37,99,235,0.22); background: rgba(37,99,235,0.08); color: #1d4ed8; }
     :host(.cs-light-theme) .cs-lol-rank-badge span { color: #2563eb; }
     :host(.cs-light-theme) .cs-lol-summary-stat, :host(.cs-light-theme) .cs-lol-summary-champs { background: #f8f9fa; border-color: #e1e3e6; }
@@ -2299,15 +2408,17 @@
     const schedulePillHtml = '<span class="cs-pill ' + pill.cls + '">' + pill.html + '</span>';
     const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
     const settingsLabel = "알림 설정";
-    const showNotificationSettings = targetLiveNotificationSettingsVisible();
+    const showNotificationSettings = !lolLogMode && targetLiveNotificationSettingsVisible();
     if (!showNotificationSettings && state.settingsOpen) state.settingsOpen = false;
     const scheduleToolbarHtml =
-      '<div class="cs-schedule-toolbar">' +
+      '<div class="cs-schedule-toolbar"><div class="cs-toolbar-layout">' +
+      '<span class="cs-toolbar-balance" aria-hidden="true"></span><div class="cs-mode-switch-slot">' +
       (state.extensionCollapsed ? "" : lolLogToggleHtml(lolLogMode)) +
+      '</div><div class="cs-schedule-tools">' +
       (state.extensionCollapsed || lolLogMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
       (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
       '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? "\u25BC" : "\u25B2") + '<span class="cs-extension-collapse-tip">' + collapseLabel + "</span></button>" +
-      "</div>";
+      "</div></div></div>";
     const settingsPanelHtml = showNotificationSettings && state.settingsOpen
       ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
         '<div class="cs-settings-heading"><span>알림 설정</span><button type="button" class="cs-settings-help" popovertarget="cs-notification-guide" aria-label="알림 기능 도움말" title="알림 기능 도움말">?</button></div>' +
@@ -2327,7 +2438,7 @@
       (state.extensionCollapsed ? "" : updateNoticeHtml()) +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
-      (lolLogMode ? "" : '<div class="cs-header">' +
+      (lolLogMode ? (state.extensionCollapsed ? lolCollapsedSummaryHtml() : "") : '<div class="cs-header">' +
       '<span class="cs-title">방송 일정</span>' +
       schedulePillHtml +
       '<span class="cs-spacer"></span>' +
@@ -2421,6 +2532,7 @@
     return '<li class="cs-info-group">' + groupTitle + details + '</li>';
   }
   function infoSectionHtml() {
+    if (state.scheduleViewMode === "lolMatchLogs") return "";
     const items = (state.channel && state.channel.info) || [];
     if (!items.length) return "";
 
@@ -3019,6 +3131,7 @@
     const updateHistoryToggle = s.getElementById("cs-update-history-toggle");
     const monthToggle = s.getElementById("cs-month-toggle");
     const lolLogToggle = s.getElementById("cs-lol-log-toggle");
+    const lolLoadMore = s.getElementById("cs-lol-load-more");
     const extensionCollapse = s.getElementById("cs-extension-collapse");
     const settingsToggle = s.getElementById("cs-settings-toggle");
     const settingsPanel = s.getElementById("cs-settings-panel");
@@ -3062,11 +3175,12 @@
       render();
     });
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; } render(); });
-    if (lolLogToggle) lolLogToggle.addEventListener("click", () => {
-      closePopover();
-      state.settingsOpen = false;
-      state.scheduleViewMode = state.scheduleViewMode === "lolMatchLogs" ? "schedule" : "lolMatchLogs";
+    if (lolLogToggle) lolLogToggle.addEventListener("click", () => { void switchScheduleViewMode(lolLogToggle); });
+    if (lolLoadMore) lolLoadMore.addEventListener("click", () => {
+      state.lolVisibleMatchCount = Math.max(5, Number(state.lolVisibleMatchCount) || 5) + 5;
       render();
+      const next = state.shadow.getElementById("cs-lol-load-more");
+      if (next) next.focus({ preventScroll: true });
     });
     if (extensionCollapse) extensionCollapse.addEventListener("click", () => {
       closePopover();
@@ -4734,11 +4848,11 @@
   }
 
 
-  function getCategoryHistoryItems() {
+  function getCategoryHistoryItems(includeHidden = false) {
     const dataChannelId = getCurrentDataChannelId();
     const histories = state.data && state.data.categoryHistories;
     const list = histories && dataChannelId ? histories[dataChannelId] : [];
-    return Array.isArray(list) ? list.filter((item) => item && item.hidden !== true && String(item.categoryLabel || "").trim()) : [];
+    return Array.isArray(list) ? list.filter((item) => item && (includeHidden || item.hidden !== true) && String(item.categoryLabel || "").trim()) : [];
   }
 
   function videoNoFromUrl(url) {
@@ -4830,17 +4944,20 @@
   }
 
   function vodCategoryGroup(vodMatch) {
-    const items = getCategoryHistoryItems();
+    // Keep hidden-only sessions while matching; hide their chapters after scoping.
+    const items = getCategoryHistoryItems(true);
     const scheduleEntry = vodMatch && vodMatch.entry;
     const vod = vodMatch && vodMatch.vod;
     const liveKey = liveKeyFromVod(vod);
     const scheduleDate = String((scheduleEntry && scheduleEntry.date) || "").trim();
     if (!items.length || (!liveKey && !vodStartedAt(vod) && !scheduleDate)) return [];
-    const liveKeyGroup = liveKey ? items.filter((item) => item && categoryHistoryLiveKey(item) === liveKey) : [];
-    const startedAtGroup = liveKeyGroup.length ? [] : categoryItemsForVodStartedAt(items, vod);
-    const scopedGroup = liveKeyGroup.length ? liveKeyGroup : (startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate));
+    // An explicit broadcast key is authoritative, even when it has no visible chapters.
+    const startedAtGroup = liveKey ? [] : categoryItemsForVodStartedAt(items, vod);
+    const scopedGroup = liveKey
+      ? items.filter((item) => categoryHistoryLiveKey(item) === liveKey)
+      : (startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate));
     const seen = new Set();
-    return scopedGroup.slice().sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
+    return scopedGroup.filter((item) => item.hidden !== true).sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
       const key = String(item.categoryType || "") + "|" + String(item.categoryId || "") + "|" + String(item.categoryLabel || "").trim().toLowerCase() + "|" + String(item.offsetSeconds ?? "");
       if (seen.has(key)) return false;
       seen.add(key);
@@ -5212,6 +5329,7 @@
 
     if (state.channelId !== channelId) {
       state.channelId = channelId;
+      state.lolVisibleMatchCount = 5;
       state.channel = null;
       state.pageOffset = 0;
       state.openScheduleRequestConsumed = false;

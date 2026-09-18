@@ -5,12 +5,16 @@ const APP_SHELL = [
   "./styles.css",
   "./config.js",
   "./app.js",
+  "./header.js",
+  "./lol.html",
+  "./lol.js",
+  "./lol.css",
   "./manifest.webmanifest",
   "../icons/icon48.png",
   "../icons/icon128.png",
   "../icons/오뱅알.png",
 ];
-const ACTIVE_CACHE_NAME = CACHE_NAME.replace(/v\d+$/, "v1.2.0");
+const ACTIVE_CACHE_NAME = CACHE_NAME.replace(/v\d+$/, "v1.3.0");
 const CACHE_PREFIX = CACHE_NAME.replace(/v\d+$/, "");
 let legacyAutoActivate = false;
 

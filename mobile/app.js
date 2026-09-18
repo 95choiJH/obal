@@ -2,7 +2,7 @@
   "use strict";
 
   const cfg = OBAENGAL_MOBILE_CONFIG;
-  const MOBILE_APP_VERSION = "v1.2.0";
+  const MOBILE_APP_VERSION = "v1.3.0";
   const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
   const INFO_V2_PREFIX = "@info-v2:";
   const NEW_TAG_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;

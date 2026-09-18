@@ -682,7 +682,10 @@ function numberVodLabels(vods: VodItem[]): VodItem[] {
   const multiple = vods.length > 1;
   return vods.map((vod, index) => ({
     ...vod,
-    label: multiple ? `방송 다시보기${index + 1}` : "방송 다시보기",
+    // Only renumber generated defaults; preserve administrator-edited titles.
+    label: /^방송 다시보기(?:\d+)?$/.test(vod.label.trim())
+      ? (multiple ? `방송 다시보기${index + 1}` : "방송 다시보기")
+      : vod.label,
   }));
 }
 

@@ -103,3 +103,21 @@ test('active row keeps portrait and runes while missing data uses skeletons', ()
   assert.match(html, /class="cs-lol-live-note"[^>]*>경기 종료 후 통계 반영까지 잠시만 기다려주세요\./);
   assert.doesNotMatch(html, /cs-lol-live-background|cs-lol-live-message|0\/0\/0/);
 });
+
+test('match list expands by five and keeps summary based on all matches', () => {
+  const logs = Array.from({ length: 12 }, (_, index) => ({
+    scheduleDate: '2026-09-18', championId: 103, win: index % 2 === 0
+  }));
+  let summaryCount;
+  ui.lolRecentMatchLogs = () => logs;
+  ui.lolRecentSummaryHtml = items => { summaryCount = items.length; return ''; };
+  ui.lolCoreStatsHtml = () => '';
+  ui.lolLoadoutHtml = () => '';
+  for (const [limit, expected] of [[5, 5], [10, 10], [15, 12]]) {
+    ui.state.lolVisibleMatchCount = limit;
+    const html = ui.lolMatchLogHtml();
+    assert.equal((html.match(/class="cs-lol-log-row"/g) || []).length, expected);
+    assert.equal(html.includes('id="cs-lol-load-more"'), expected < logs.length);
+    assert.equal(summaryCount, 12);
+  }
+});

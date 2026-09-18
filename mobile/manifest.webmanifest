@@ -1,8 +1,8 @@
 {
-  "name": "\uc624\ubc45\uc54c \ubaa8\ubc14\uc77c",
-  "short_name": "\uc624\ubc45\uc54c",
-  "description": "\uce58\uc9c0\uc9c1 \ubc29\uc1a1 \uc77c\uc815\uacfc \uc608\uc815 \ucf58\ud150\uce20\ub97c \ubaa8\ubc14\uc77c\uc5d0\uc11c \ud655\uc778\ud569\ub2c8\ub2e4.",
-  "start_url": "./index.html",
+  "name": "오뱅알 모바일",
+  "short_name": "오뱅알",
+  "description": "치지직 방송 일정과 등록된 스트리머의 리그 오브 레전드 전적을 모바일에서 확인합니다.",
+  "start_url": "./lol.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -22,7 +22,7 @@
       "purpose": "any"
     },
     {
-      "src": "../icons/\uc624\ubc45\uc54c.png",
+      "src": "../icons/오뱅알.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

@@ -16,26 +16,12 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar compact-topbar">
-      <a class="brand" href="./index.html" aria-label="오뱅알 홈">
-        <img class="brand-icon" src="../icons/icon48.png" alt="" />
-      </a>
-      <div class="topbar-actions">
-        <p class="topbar-updated" id="updatedLabel">최신 데이터를 확인하고 있습니다.</p>
-        <button class="icon-button" type="button" id="infoBtn" aria-label="소식 및 정보" title="소식 및 정보">
-          <span aria-hidden="true">i</span>
-        </button>
-        <button class="icon-button" type="button" id="refreshBtn" aria-label="새로고침" title="새로고침">
-          <span aria-hidden="true">↻</span>
-        </button>
-      </div>
-    </header>
+    <header class="topbar compact-topbar" data-mobile-header></header>
 
     <div class="app-update-banner" id="appUpdateBanner" hidden>
       <span id="appUpdateMessage">새 버전을 사용할 수 있습니다.</span>
       <button type="button" id="appUpdateBtn">업데이트</button>
     </div>
-
     <main class="main schedule-only">
       <section class="schedule-view active" id="monthView" aria-labelledby="monthHeading">
         <div class="month-head">
@@ -80,6 +66,7 @@
   </template>
 
   <script src="config.js"></script>
+  <script src="header.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
