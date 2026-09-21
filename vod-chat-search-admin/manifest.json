@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "치지직 VOD 채팅 검색 - 관리자용",
+  "version": "0.1.0",
+  "description": "치지직 다시보기 채팅에서 키워드를 검색하고 해당 영상 시점으로 이동하는 관리자용 도구입니다.",
+  "permissions": [],
+  "host_permissions": [
+    "https://api.chzzk.naver.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chzzk.naver.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "VOD 채팅 검색"
+  }
+}
