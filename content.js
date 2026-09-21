@@ -5438,10 +5438,12 @@
       removeVodCategoryHost();
       return;
     }
-    if (state.vodCategoryHost && state.vodCategoryHost.isConnected && ((slot.insertBefore && state.vodCategoryHost.previousElementSibling === slot.details && state.vodCategoryHost.nextElementSibling === slot.insertBefore) || (slot.insertAfter && state.vodCategoryHost.previousElementSibling === slot.insertAfter) || (slot.appendTo && state.vodCategoryHost.parentElement === slot.appendTo))) return;
+    const fingerprint = JSON.stringify([location.href, items]);
+    if (state.vodCategoryHost && state.vodCategoryHost.isConnected && state.vodCategoryHost.dataset.fingerprint === fingerprint && ((slot.insertBefore && state.vodCategoryHost.previousElementSibling === slot.details && state.vodCategoryHost.nextElementSibling === slot.insertBefore) || (slot.insertAfter && state.vodCategoryHost.previousElementSibling === slot.insertAfter) || (slot.appendTo && state.vodCategoryHost.parentElement === slot.appendTo))) return;
     removeVodCategoryHost();
     const host = document.createElement("div");
     host.id = "obaengal-vod-category-host";
+    host.dataset.fingerprint = fingerprint;
     host.style.display = "block";
     const shadow = host.attachShadow({ mode: "open" });
     const buttons = items.map((item, index) => {
@@ -5772,7 +5774,7 @@
 
   async function runAutoRefreshIfDue() {
     if (document.visibilityState !== "visible" || isFullscreenActive() || fullscreenRestorePending ||
-        !state.channelId || !state.host || autoRefreshInFlight) return;
+        (!isChzzkVodPage() && (!state.channelId || !state.host)) || autoRefreshInFlight) return;
     const cfg = typeof CHZZK_SCHEDULE_CONFIG !== "undefined" ? CHZZK_SCHEDULE_CONFIG : {};
     const minutes = Math.max(0.5, Number(cfg.autoRefreshMinutes || cfg.cacheTtlMinutes || 0.5) || 0.5);
     const interval = minutes * 60 * 1000;
@@ -5785,6 +5787,7 @@
       const beforeFingerprint = currentViewFingerprint();
       const lolScrollTop = state.scheduleViewMode === "lolMatchLogs" ? captureLolLogScroll() : 0;
       const updated = await refreshData(true);
+      if (updated) syncVodCategoryButtons();
       if (updated && state.shadow && shouldRenderAfterAutoRefresh(beforeFingerprint)) {
         render();
         restoreLolLogScroll(lolScrollTop);
