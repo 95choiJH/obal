@@ -1161,6 +1161,60 @@ if (api.notifications && api.notifications.onClicked) {
   });
 }
 
+
+const GAME_POSTER_CACHE_PREFIX = "obaengal:game-poster:";
+const GAME_POSTER_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
+function normalizeGamePosterQuery(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+}
+function allowedSteamImageUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && /(^|\.)steamstatic\.com$/i.test(url.hostname);
+  } catch (_error) { return false; }
+}
+async function downloadSteamPoster(posterUrl) {
+  if (!allowedSteamImageUrl(posterUrl)) throw new Error("invalid poster host");
+  const response = await fetch(posterUrl, { credentials: "omit" });
+  if (!response.ok) throw new Error("poster HTTP " + response.status);
+  const type = String(response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+  if (!["image/jpeg","image/png","image/webp"].includes(type)) throw new Error("invalid poster type");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.length || bytes.length > 2 * 1024 * 1024) throw new Error("invalid poster size");
+  let binary = ""; for (let offset=0;offset<bytes.length;offset+=0x8000) binary += String.fromCharCode(...bytes.subarray(offset,offset+0x8000));
+  return "data:" + type + ";base64," + btoa(binary);
+}
+async function fetchSteamGamePoster(input, preferredAppId) {
+  const query=normalizeGamePosterQuery(input);
+  if(!query)return {ok:false,error:"게임 이름이 없습니다."};
+  preferredAppId=Number(preferredAppId)>0?Number(preferredAppId):0;
+  const cacheKey=GAME_POSTER_CACHE_PREFIX+(preferredAppId||query.toLowerCase());
+  const saved=await storageGet([cacheKey]),cached=saved&&saved[cacheKey];
+  let posterUrl=cached&&allowedSteamImageUrl(cached.posterUrl)?cached.posterUrl:"";
+  let appId=cached&&Number(cached.appId)>0?Number(cached.appId):0;
+  let gameName=String(cached&&cached.gameName||"");
+  if(!posterUrl||Date.now()-Number(cached&&cached.fetchedAt||0)>GAME_POSTER_CACHE_MS){
+    let item=null;
+    if(preferredAppId){appId=preferredAppId;gameName=query;}
+    else{
+      const response=await fetch("https://store.steampowered.com/api/storesearch/?term="+encodeURIComponent(query)+"&l=korean&cc=kr",{credentials:"omit"});
+      if(!response.ok)throw new Error("Steam search HTTP "+response.status);
+      const result=await response.json(),items=Array.isArray(result&&result.items)?result.items.filter(entry=>entry&&entry.type==="app"&&Number(entry.id)>0):[];
+      const normalized=query.toLowerCase().replace(/[^a-z0-9가-힣]+/g,"");
+      item=items.find(entry=>String(entry.name||"").toLowerCase().replace(/[^a-z0-9가-힣]+/g,"")===normalized)||items[0];
+      if(!item)return {ok:false,error:"Steam에서 게임을 찾지 못했습니다."};
+      appId=Number(item.id);gameName=String(item.name||query);
+    }
+    const response=await fetch("https://store.steampowered.com/api/appdetails?appids="+appId+"&l=korean&cc=kr",{credentials:"omit"});
+    if(!response.ok)throw new Error("Steam detail HTTP "+response.status);
+    const detail=await response.json();
+    posterUrl=String(detail&&detail[appId]&&detail[appId].data&&detail[appId].data.header_image||item&&item.tiny_image||"");
+    if(!allowedSteamImageUrl(posterUrl))return {ok:false,error:"사용 가능한 Steam 이미지를 찾지 못했습니다."};
+    await storageSet({[cacheKey]:{posterUrl,appId,gameName,fetchedAt:Date.now()}});
+  }
+  return {ok:true,posterDataUrl:await downloadSteamPoster(posterUrl),posterUrl,appId,gameName};
+}
+
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === "checkTargetLiveStart") {
     const options = {
@@ -1177,6 +1231,10 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }).catch((error) => {
       sendResponse({ ok: false, notify: false, error: String((error && error.message) || error) });
     });
+    return true;
+  }
+  if (msg && msg.type === "getSteamGamePoster") {
+    fetchSteamGamePoster(msg.query, msg.steamAppId).then(sendResponse).catch(error => sendResponse({ok:false,error:String(error && error.message || error)}));
     return true;
   }
   if (msg && msg.type === "getSchedule") {

@@ -81,6 +81,7 @@
     monthExpanded: false,
     scheduleViewMode: "schedule",
     lolVisibleMatchCount: 5,
+    gameRatingFilters: { genre: "전체", search: "", sort: "recent", range: "", visible: 5 },
     lastRenderedScheduleFingerprint: "",
     lastRenderedLolFingerprint: "",
     extensionCollapsed: readExtensionCollapsed(),
@@ -603,55 +604,109 @@
     return /^(I|II|III|IV)$/.test(division) ? division : "";
   }
 
-  function lolLogToggleHtml(lolLogMode) {
-    const label = lolLogMode ? "방송 일정으로 전환" : "리그 오브 레전드 모드로 전환";
-    const rank = lolStreamerRankForCurrentChannel();
-    const emblem = lolTierEmblemHtml(rank, "cs-mode-two-emblem") || '<span class="cs-mode-two-fallback" aria-hidden="true"></span>';
-    return '<button type="button" class="cs-lol-log-toggle cs-mode-design-two' + (lolLogMode ? ' cs-open' : '') + '" id="cs-lol-log-toggle" aria-pressed="' + String(lolLogMode) + '" aria-label="' + label + '">' +
-      '<span class="cs-mode-two-indicator" aria-hidden="true"></span>' +
-      '<span class="cs-mode-two-option cs-mode-two-schedule" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" />일정</span>' +
-      '<span class="cs-mode-two-option cs-mode-two-log" aria-hidden="true">' + emblem + '리그 오브 레전드</span>' +
-      '<span class="cs-mode-switch-tip">' + label + '</span></button>';
+  const GAME_RATING_PREVIEW =[
+{id:1,steamAppId:3837350,posterQuery:"Staffer Retro",name:"스테퍼 레트로: 초능력 추리 퀘스트",genre:"추리",score:89,sample:false,note:"알려주신 89점 평가를 반영했습니다. 평가일과 세부 코멘트는 아직 입력하지 않았습니다."},
+{id:2,steamAppId:1903340,posterQuery:"Clair Obscur Expedition 33",name:"클레르 옵스퀴르: 33 원정대",genre:"RPG",score:145,sample:true,note:"스토리와 전투에 관한 평가 코멘트를 이 영역에 남길 수 있습니다."},
+{id:3,steamAppId:1145360,posterQuery:"Hades",name:"Hades",genre:"액션",score:128,sample:true,note:"전투의 재미, 반복 플레이와 난이도 등 평가의 이유를 기록하는 예시입니다."},
+{id:4,steamAppId:787480,posterQuery:"Phoenix Wright Ace Attorney Trilogy",name:"역전재판 123 나루호도 셀렉션",genre:"추리",score:86,sample:true,note:"사건별 인상이나 엔딩 소감을 짧게 정리하는 공간입니다."},
+{id:5,steamAppId:1244090,posterQuery:"Sea of Stars",name:"Sea of Stars",genre:"RPG",score:81,sample:true,note:"플레이를 마친 뒤 남긴 점수와 평가 근거를 함께 보여주는 예시입니다."},
+{id:6,steamAppId:1868140,posterQuery:"Dave the Diver",name:"Dave the Diver",genre:"어드벤처",score:77,sample:true,note:"콘텐츠 구성과 플레이 경험에 대한 코멘트를 표시할 수 있습니다."},
+{id:7,steamAppId:1627720,posterQuery:"Lies of P",name:"Lies of P",genre:"액션",score:72,sample:true,note:"재미와 난이도, 인상적인 구간을 기록할 수 있습니다."},
+{id:8,steamAppId:2653790,posterQuery:"The Exit 8",name:"The Exit 8",genre:"어드벤처",score:64,sample:true,note:"짧은 플레이 경험도 다른 게임과 같은 기준으로 모아볼 수 있습니다."}
+];
+
+  const GAME_POSTER_PLACEHOLDER_URL = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+  const gamePosterSessionCache = new Map();
+  function gameRatingPosterHtml(game, alt, className) {
+    const query=String(game.posterQuery || game.name || "");
+    const cached=gamePosterSessionCache.get(query) || GAME_POSTER_PLACEHOLDER_URL;
+    return '<img'+(className?' class="'+escapeHtml(className)+'"':'')+' src="'+escapeHtml(cached)+'" data-game-poster-query="'+escapeHtml(query)+'" data-game-steam-id="'+Number(game.steamAppId || 0)+'" alt="'+escapeHtml(alt || "")+'" loading="lazy">';
+  }
+  async function loadGameRatingPosters(shadow) {
+    const images=[...shadow.querySelectorAll("[data-game-poster-query]")];
+    const queries=[...new Set(images.map(image=>image.dataset.gamePosterQuery).filter(Boolean))];
+    await Promise.all(queries.map(async query=>{
+      const matching=images.filter(image=>image.dataset.gamePosterQuery===query);
+      const steamAppId=Number(matching[0] && matching[0].dataset.gameSteamId || 0);
+      let dataUrl=gamePosterSessionCache.get(query);
+      if(!dataUrl){
+        const result=await sendRuntimeMessage({type:"getSteamGamePoster",query,steamAppId});
+        if(result&&result.ok&&typeof result.posterDataUrl==="string"&&result.posterDataUrl.startsWith("data:image/")){
+          dataUrl=result.posterDataUrl;gamePosterSessionCache.set(query,dataUrl);
+        }
+      }
+      if(dataUrl)matching.forEach(image=>{image.src=dataUrl;image.classList.add("cs-poster-ready")});
+    }));
   }
 
-  let scheduleModeTransitioning = false;
-  async function switchScheduleViewMode(button) {
-    if (scheduleModeTransitioning) return;
-    scheduleModeTransitioning = true;
-    button.disabled = true;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const toLogs = state.scheduleViewMode !== "lolMatchLogs";
-    const direction = toLogs ? 1 : -1;
-    const animate = async (element, frames, duration) => {
-      if (reduced || !element || typeof element.animate !== "function") return;
-      await element.animate(frames, { duration, easing: "cubic-bezier(.2,.8,.2,1)" }).finished.catch(() => {});
-    };
-    try {
-      closePopover();
-      state.settingsOpen = false;
-      await Promise.all([
-        animate(state.shadow.querySelector(".cs-schedule-section"), [{ opacity: 1, transform: "translateX(0) scale(1)" }, { opacity: 0, transform: "translateX(" + (-direction * 18) + "px) scale(.97)" }], 140),
-        animate(button, [{ transform: "scale(1)" }, { transform: "scale(.96)" }], 140),
-      ]);
-      if (!button.isConnected) return;
-      state.scheduleViewMode = toLogs ? "lolMatchLogs" : "schedule";
-      render();
-      const nextButton = state.shadow.getElementById("cs-lol-log-toggle");
-      if (nextButton) { nextButton.disabled = true; nextButton.focus({ preventScroll: true }); }
-      const start = toLogs ? "0%" : "100%";
-      const end = toLogs ? "100%" : "0%";
-      const overshoot = toLogs ? "105%" : "-5%";
-      await Promise.all([
-        animate(nextButton && nextButton.querySelector(".cs-mode-two-indicator"), [{ transform: "translateX(" + start + ")" }, { transform: "translateX(" + overshoot + ")", offset: .65 }, { transform: "translateX(" + end + ")" }], 420),
-        animate(state.shadow.querySelector(".cs-schedule-section"), [{ opacity: 0, transform: "translateX(" + (direction * 22) + "px) scale(.97)" }, { opacity: 1, transform: "translateX(" + (-direction * 4) + "px) scale(1.01)", offset: .65 }, { opacity: 1, transform: "translateX(0) scale(1)" }], 420),
-        animate(nextButton, [{ transform: "scale(.96)" }, { transform: "scale(1.035)", offset: .65 }, { transform: "scale(1)" }], 420),
-      ]);
-    } finally {
-      scheduleModeTransitioning = false;
-      button.disabled = false;
-      const currentButton = state.shadow && state.shadow.getElementById("cs-lol-log-toggle");
-      if (currentButton) currentButton.disabled = false;
+  const GAME_RATING_RANGES =[{label:"100점 이상",min:100,max:Infinity},{label:"90–99점",min:90,max:100},{label:"80–89점",min:80,max:90},{label:"70–79점",min:70,max:80},{label:"70점 미만",min:-Infinity,max:70}];
+
+
+  function gameRatingsHtml() {
+    const filters=state.gameRatingFilters;
+    const ranked=[...GAME_RATING_PREVIEW].sort((a,b)=>b.score-a.score||a.id-b.id);
+    const range=filters.range===""?null:GAME_RATING_RANGES[Number(filters.range)];
+    const list=ranked.filter(g=>(filters.genre==="전체"||g.genre===filters.genre)&&g.name.toLowerCase().includes(filters.search.toLowerCase())&&(!range||(g.score>=range.min&&g.score<range.max)));
+    const selected=list.find(g=>g.id===filters.selectedId)||list.find(g=>!g.sample)||list[0];
+    const recent=GAME_RATING_PREVIEW.slice(0,3).map(g=>'<button type="button" class="cs-rating-recent-item" id="cs-rating-recent-'+g.id+'" data-rating-point="'+g.id+'">'+gameRatingPosterHtml(g,"")+'<span><strong>'+escapeHtml(g.name)+'</strong><small>'+(g.sample?'임의 등록 예시':'사용자 제공 평가')+'</small></span><b>'+g.score+'<small>점</small></b></button>').join("");
+    const rows=list.slice(0,filters.visible).map(g=>'<button type="button" class="cs-rating-row" id="cs-rating-dot-'+g.id+'" data-rating-point="'+g.id+'" aria-pressed="'+String(g.id===selected.id)+'" aria-controls="cs-rating-showcase"><span class="cs-rating-index">'+String(ranked.indexOf(g)+1).padStart(2,"0")+'</span><span class="cs-rating-game"><strong>'+escapeHtml(g.name)+'</strong><small>'+g.genre+' · '+(g.sample?'임의 평가':'사용자 제공 평가')+'</small></span><span class="cs-rating-score">'+g.score+'<small>점</small></span><span class="cs-rating-arrow" aria-hidden="true">↗</span></button>').join("");
+    const scoreGroups='<section class="cs-rating-score-groups"><div class="cs-rating-score-groups-header"><h3>점수로 모아보기</h3><button type="button" id="cs-rating-range-all" data-rating-range="" aria-pressed="'+String(filters.range==="")+'" aria-controls="cs-rating-ranked-list">전체 '+ranked.length+'개</button></div><div class="cs-rating-score-group-list" role="group" aria-label="점수 구간 선택">'+GAME_RATING_RANGES.map((r,i)=>{const count=ranked.filter(g=>g.score>=r.min&&g.score<r.max).length;return '<button type="button" id="cs-rating-range-'+i+'" data-rating-range="'+i+'" aria-pressed="'+String(filters.range===String(i))+'" aria-controls="cs-rating-ranked-list"'+(!count?' disabled':'')+'><span>'+r.label+'</span><strong>'+count+'<small>개</small></strong></button>';}).join("")+'</div></section>';
+    let showcase='';
+    if(selected){
+      const video=typeof selected.youtubeId==="string"&&/^[a-zA-Z0-9_-]{11}$/.test(selected.youtubeId);
+      const media=video?'<iframe src="https://www.youtube-nocookie.com/embed/'+selected.youtubeId+'" title="'+escapeHtml(selected.name)+' 따효니 플레이 영상" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe>':gameRatingPosterHtml(selected,selected.name+' 게임 포스터');
+      showcase='<aside id="cs-rating-showcase" class="cs-rating-showcase"><div class="cs-rating-media">'+media+'</div><div class="cs-rating-showcase-caption"><span>선택한 게임 · '+(video?'따효니 플레이 영상':'게임 포스터')+'</span><span>'+(selected.sample?'임의 평가':'사용자 제공 평가')+'</span></div><div class="cs-rating-showcase-title"><h3>'+escapeHtml(selected.name)+'</h3><strong>'+selected.score+'<small>점</small></strong></div><p>'+escapeHtml(selected.note)+'</p></aside>';
     }
+    return '<div class="cs-ratings cs-rating-shelf"><header class="cs-rating-shelf-header"><h2>따효니의<br><span>게임 서가.</span></h2><p>엔딩을 본 게임들,<br>점수로 남긴 취향.</p></header><p class="cs-rating-note">스테퍼 레트로 89점 외 점수와 등록 순서는 시안용 임의 데이터입니다.</p>'+scoreGroups+'<div class="cs-rating-shelf-grid"><section class="cs-rating-library"><div class="cs-rating-heading"><h3>'+(range?range.label+' · ':'')+'스코어 순위</h3><span>'+list.length+'개 · 점수 상한 없음</span></div><div class="cs-rating-controls"><input id="cs-rating-search" type="search" aria-label="게임 이름 검색" placeholder="게임 찾기" value="'+escapeHtml(filters.search)+'"></div><div class="cs-rating-list" id="cs-rating-ranked-list">'+(rows||'<div class="cs-rating-empty">일치하는 게임이 없습니다.<button type="button" id="cs-rating-reset">전체 게임 보기</button></div>')+'</div>'+(filters.visible<list.length?'<button type="button" id="cs-rating-more" class="cs-rating-more">더보기 <span aria-hidden="true">＋</span></button>':'')+'</section>'+showcase+'</div><section class="cs-rating-recent"><h3>최근 등재</h3><div>'+recent+'</div></section><p class="cs-rating-note cs-rating-shelf-footer">점수는 스트리머 개인의 평가입니다. 현재는 서버 저장에 연결되지 않은 시안입니다.</p></div>';
+  }
+
+  function bindGameRatingControls(shadow) {
+    const filters = state.gameRatingFilters;
+    const update = (id) => {
+      render();
+      const next = id && state.shadow.getElementById(id);
+      if (next) { next.focus({preventScroll:true}); if (id === "cs-rating-search") next.setSelectionRange(next.value.length,next.value.length); }
+    };
+    const search=shadow.getElementById("cs-rating-search"), sort=shadow.getElementById("cs-rating-sort");
+    if(search){
+      const applySearch=()=>{filters.search=search.value;filters.visible=5;update("cs-rating-search")};
+      search.addEventListener("input",event=>{if(!event.isComposing)applySearch()});
+      search.addEventListener("compositionend",applySearch);
+    }
+    if(sort)sort.addEventListener("change",()=>{filters.sort=sort.value;filters.visible=5;update("cs-rating-sort")});
+    shadow.querySelectorAll("[data-rating-genre]").forEach(button=>button.addEventListener("click",()=>{filters.genre=button.dataset.ratingGenre;filters.visible=5;update()}));
+    shadow.querySelectorAll("[data-rating-range]").forEach(button=>button.addEventListener("click",()=>{filters.range=filters.range===button.dataset.ratingRange?"":button.dataset.ratingRange;filters.search="";filters.visible=5;update(button.id)}));
+    const selectPoint=(id,focusId)=>{filters.selectedId=Number(id);if(focusId&&focusId.startsWith("cs-rating-recent-")){filters.search="";filters.genre="전체";filters.range="";}update(focusId)};
+    shadow.querySelectorAll("[data-rating-point]").forEach(point=>{
+      point.addEventListener("click",()=>selectPoint(point.dataset.ratingPoint,point.id));
+      point.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();selectPoint(point.dataset.ratingPoint,point.id)}});
+    });
+    const picker=shadow.getElementById("cs-rating-picked");
+    if(picker)picker.addEventListener("change",()=>selectPoint(picker.value,"cs-rating-picked"));
+    const clear=shadow.getElementById("cs-rating-clear"), more=shadow.getElementById("cs-rating-more"), reset=shadow.getElementById("cs-rating-reset");
+    if(clear)clear.addEventListener("click",()=>{filters.range="";filters.visible=5;update()});
+    if(more)more.addEventListener("click",()=>{filters.visible+=5;update("cs-rating-more")});
+    loadGameRatingPosters(shadow);
+    if(reset)reset.addEventListener("click",()=>{state.gameRatingFilters={genre:"전체",search:"",sort:"recent",range:"",visible:5};update()});
+  }
+
+  function lolLogToggleHtml() {
+    return '<div class="cs-mode-tabs" role="group" aria-label="오뱅알 모드 전환">' +
+      [["schedule","일정"],["lolMatchLogs","리그 오브 레전드"],["gameRatings","게임 평가"]].map(([mode,label]) =>
+        '<button type="button" data-schedule-mode="'+mode+'" aria-pressed="'+String(state.scheduleViewMode===mode)+'">'+
+        (mode==="schedule"?'<img src="'+CALENDAR_ICON_URL+'" alt="">':mode==="gameRatings"?'<img src="'+GAMEPAD_ICON_URL+'" alt="">':"")+
+        label+'</button>').join("")+'</div>';
+  }
+
+  async function switchScheduleViewMode(button) {
+    const mode=button.dataset.scheduleMode;
+    if (!["schedule","lolMatchLogs","gameRatings"].includes(mode) || mode===state.scheduleViewMode) return;
+    closePopover();
+    state.settingsOpen=false;
+    state.scheduleViewMode=mode;
+    render();
+    const next=state.shadow.querySelector('[data-schedule-mode="'+mode+'"]');
+    if(next)next.focus({preventScroll:true});
   }
 
   function lolTierEmblemHtml(rank, className = "cs-lol-summary-emblem-image") {
@@ -1193,6 +1248,65 @@
   // 스타일 (Shadow DOM 내부에만 적용)
   // ----------------------------------------------------------
   const STYLE = `
+    .cs-mode-tabs { display:flex; gap:3px; padding:3px; border:1px solid #3a3c40; border-radius:10px; background:#1b1c1f; }
+    .cs-mode-tabs button { display:flex; align-items:center; justify-content:center; gap:5px; min-height:30px; padding:4px 10px; border:0; border-radius:7px; background:transparent; color:#9d9ea3; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .cs-mode-tabs button[aria-pressed=true] { background:#303238; color:#00ffa3; }
+    .cs-mode-tabs img { width:16px; height:16px; object-fit:contain; }
+    .cs-mode-tabs button:focus-visible,.cs-ratings button:focus-visible,.cs-ratings input:focus-visible,.cs-ratings select:focus-visible,.cs-ratings summary:focus-visible { outline:2px solid #00c878; outline-offset:3px; }
+    .cs-ratings { padding:16px; color:#efeff1; }
+    .cs-rating-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+    .cs-rating-heading h2 { font-size:17px; margin:0; font-weight:700; }
+    .cs-rating-heading h3,.cs-rating-distribution h3 { font-size:14px; margin:0 0 12px; }
+    .cs-rating-heading span,.cs-rating-note { font-size:11px; color:#9d9ea3; }
+    .cs-rating-note { line-height:1.8; margin:14px 0; }
+    .cs-rating-layout { display:grid; grid-template-columns:minmax(240px,.7fr) minmax(0,1.3fr); gap:22px; align-items:start; }
+    .cs-rating-feature,.cs-rating-distribution { border:1px solid #3a3c40; border-radius:10px; padding:16px; background:#232427; }
+    .cs-rating-feature { border-color:rgba(0,255,163,.28); }
+    .cs-rating-feature>small { color:#00ffa3; font-size:11px; }
+    .cs-rating-feature>div { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:18px 0; }
+    .cs-rating-feature h3 { font-size:18px; line-height:1.5; margin:0; word-break:keep-all; }
+    .cs-rating-feature strong { font-size:48px; color:#00ffa3; line-height:1; }
+    .cs-rating-feature strong small { display:block; text-align:right; font-size:10px; color:#9d9ea3; margin-top:9px; font-weight:400; }
+    .cs-ratings progress { display:block; width:100%; height:6px; appearance:none; border:0; background:#303238; border-radius:3px; }
+    .cs-ratings progress::-webkit-progress-bar { background:#303238; border-radius:3px; }
+    .cs-ratings progress::-webkit-progress-value { background:#00c878; border-radius:3px; }
+    .cs-ratings progress::-moz-progress-bar { background:#00c878; border-radius:3px; }
+    .cs-rating-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:20px 0; }
+    .cs-rating-stats>div { border-bottom:1px solid #3a3c40; padding-bottom:14px; }
+    .cs-rating-stats small { color:#9d9ea3; font-size:10px; }
+    .cs-rating-stats strong { display:block; margin-top:10px; font-size:21px; }
+    .cs-rating-range { display:grid; grid-template-columns:65px minmax(0,1fr) 24px; align-items:center; gap:10px; width:100%; border:1px solid transparent; border-radius:5px; padding:10px 5px; background:transparent; color:#9d9ea3; font:inherit; font-size:11px; text-align:left; cursor:pointer; }
+    .cs-rating-range[aria-pressed=true] { border-color:#00c878; color:#00ffa3; }
+    .cs-rating-controls { display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:8px; }
+    .cs-rating-controls input,.cs-rating-controls select { min-width:0; width:100%; height:40px; padding:8px 10px; border:1px solid #3a3c40; border-radius:6px; background:#232427; color:#efeff1; font:inherit; font-size:12px; }
+    .cs-rating-genres { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0; }
+    .cs-rating-genres button,.cs-rating-clear,.cs-rating-empty button { padding:8px 10px; border:1px solid #3a3c40; border-radius:6px; background:#232427; color:#9d9ea3; font-size:11px; cursor:pointer; }
+    .cs-rating-genres button[aria-pressed=true],.cs-rating-clear { color:#00ffa3; border-color:rgba(0,255,163,.35); background:rgba(0,255,163,.08); }
+    .cs-rating-clear { margin-bottom:12px; }
+    .cs-rating-list { display:grid; gap:8px; }
+    .cs-rating-row { border:1px solid #3a3c40; border-radius:8px; background:#26272b; overflow:hidden; }
+    .cs-rating-row summary { display:grid; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 12px; list-style:none; cursor:pointer; }
+    .cs-rating-row summary::-webkit-details-marker { display:none; }
+    .cs-rating-index { color:#6b6d73; font-size:10px; }
+    .cs-rating-row summary strong { display:block; font-size:12px; line-height:1.6; }
+    .cs-rating-row summary small { display:block; font-size:10px; color:#9d9ea3; margin-top:5px; }
+    .cs-rating-score { font-size:26px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums; }
+    .cs-rating-score small { font-weight:400; }
+    .cs-rating-detail { padding:14px; border-top:1px solid #3a3c40; font-size:11px; line-height:1.8; color:#9d9ea3; }
+    .cs-rating-detail p { margin:8px 0 0; }
+    .cs-rating-more { width:100%; padding:12px; margin-top:12px; border:1px solid #3a3c40; border-radius:8px; background:#25272b; color:#efeff1; font-weight:700; cursor:pointer; }
+    .cs-rating-empty { padding:24px 12px; color:#9d9ea3; text-align:center; font-size:12px; }
+    .cs-rating-empty button { display:block; margin:14px auto 0; }
+    :host(.cs-light-theme) .cs-mode-tabs { background:#fff; border-color:#d8dadd; }
+    :host(.cs-light-theme) .cs-mode-tabs button { color:#707580; }
+    :host(.cs-light-theme) .cs-mode-tabs button[aria-pressed=true] { background:#e8f7ef; color:#008b53; }
+    :host(.cs-light-theme) .cs-ratings { color:#1e2024; }
+    :host(.cs-light-theme) .cs-rating-feature,:host(.cs-light-theme) .cs-rating-distribution,:host(.cs-light-theme) .cs-rating-row,:host(.cs-light-theme) .cs-rating-controls input,:host(.cs-light-theme) .cs-rating-controls select,:host(.cs-light-theme) .cs-rating-genres button,:host(.cs-light-theme) .cs-rating-more { background:#fff; border-color:#d8dadd; color:#1e2024; }
+    :host(.cs-light-theme) .cs-rating-note,:host(.cs-light-theme) .cs-rating-detail,:host(.cs-light-theme) .cs-rating-row summary small,:host(.cs-light-theme) .cs-rating-heading span,:host(.cs-light-theme) .cs-rating-stats small { color:#707580; }
+    :host(.cs-light-theme) .cs-rating-feature strong,:host(.cs-light-theme) .cs-rating-feature>small { color:#008b53; }
+    @media(max-width:850px) { .cs-rating-layout { grid-template-columns:minmax(0,1fr); } }
+    @media(max-width:480px) { .cs-mode-tabs button { padding-inline:6px; font-size:11px; } .cs-ratings { padding:12px; } }
+
     .cs-lol-live-visual { display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .cs-lol-log-row.cs-lol-in-progress { position: relative; }
     .cs-lol-in-progress .cs-lol-log-visual, .cs-lol-in-progress .cs-lol-champion-portrait { width: 36px; height: 36px; }
@@ -2215,7 +2329,212 @@
       width: 480px; max-width: calc(100vw - 40px); display: none; }
     .cs-float-panel.cs-open { display: block; }
     .cs-float-panel .cs-wrapper { margin: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-  `;
+
+    .cs-rating-layout { display:block; }
+    .cs-rating-overview { display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,.8fr); gap:20px; align-items:center; margin:20px 0 26px; }
+    .cs-rating-stats { margin:0; }
+    .cs-rating-distribution { display:none; }
+    .cs-rating-plot { padding:20px; border:1px solid #3a3c40; border-radius:10px; background:#202124; }
+    .cs-rating-plot h3 { margin:0; font-size:16px; font-weight:700; }
+    .cs-rating-plot .cs-rating-heading { margin-bottom:0; align-items:start; }
+    .cs-rating-plot .cs-rating-note { margin:8px 0 0; }
+    .cs-rating-scatter { display:block; width:100%; height:auto; max-height:280px; overflow:visible; }
+    .cs-rating-gridline { stroke:#34363b; stroke-dasharray:3 5; }
+    .cs-rating-baseline { stroke:#5a5e65; }
+    .cs-rating-axis-label { fill:#9d9ea3; font-size:13px; }
+    .cs-rating-dot { cursor:pointer; outline:none; }
+    .cs-rating-dot-core { fill:#00c878; stroke:#1b1c1f; stroke-width:2; }
+    .cs-rating-dot-ring { fill:none; stroke:transparent; stroke-width:2; }
+    .cs-rating-known .cs-rating-dot-core { fill:#e8c268; }
+    .cs-rating-selected .cs-rating-dot-ring,.cs-rating-dot:focus .cs-rating-dot-ring,.cs-rating-dot:hover .cs-rating-dot-ring { stroke:#00ffa3; }
+    .cs-rating-known.cs-rating-selected .cs-rating-dot-ring { stroke:#e8c268; }
+    .cs-rating-dot-label { fill:#c9cacd; font-size:13px; font-weight:700; }
+    .cs-rating-plot-legend { display:flex; flex-wrap:wrap; gap:12px; color:#9d9ea3; font-size:10px; line-height:1.8; }
+    .cs-rating-plot-legend span:first-child { color:#e8c268; }
+    .cs-rating-plot-legend span:nth-child(2) { color:#00c878; }
+    .cs-rating-plot-legend span:last-child { margin-left:auto; }
+    .cs-rating-selection { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-top:18px; padding:18px; border:1px solid #3a3c40; border-radius:8px; background:#26272b; }
+    .cs-rating-selection h3 { margin:8px 0; font-size:16px; line-height:1.5; }
+    .cs-rating-selection small,.cs-rating-selection p { font-size:11px; color:#9d9ea3; line-height:1.8; }
+    .cs-rating-selection strong { font-size:40px; color:#efeff1; white-space:nowrap; }
+    .cs-rating-selection strong small { display:block; text-align:right; font-weight:400; }
+    .cs-rating-picker { display:flex; align-items:center; gap:12px; color:#9d9ea3; font-size:10px; margin-top:14px; }
+    .cs-rating-picker select { flex:1; min-width:0; padding:7px 10px; border:1px solid #3a3c40; border-radius:5px; background:#232427; color:#c9cacd; font:inherit; }
+    .cs-rating-feature>div { margin-bottom:0; }
+    .cs-rating-feature strong small { display:inline; margin-left:5px; }
+    :host(.cs-light-theme) .cs-rating-plot { background:#fff; border-color:#d8dadd; }
+    :host(.cs-light-theme) .cs-rating-selection { background:#f3f5f4; border-color:#d8dadd; }
+    :host(.cs-light-theme) .cs-rating-selection strong { color:#1e2024; }
+    :host(.cs-light-theme) .cs-rating-axis-label,:host(.cs-light-theme) .cs-rating-dot-label { fill:#707580; }
+    @media(max-width:700px) { .cs-rating-overview { grid-template-columns:minmax(0,1fr); } .cs-rating-plot { padding:12px; } .cs-rating-picker { display:block; } .cs-rating-picker select { display:block; width:100%; margin-top:6px; } .cs-rating-selection { padding:12px; gap:10px; } .cs-rating-selection h3 { font-size:13px; } .cs-rating-plot-legend span:last-child { margin-left:0; } }
+
+    /* Game rating archive: one stage, one spectrum, no repeated overview cards. */
+    .cs-ratings{padding:28px 20px;color:#efeff1}
+    .cs-ratings>.cs-rating-heading{margin:0 0 8px;align-items:baseline}
+    .cs-ratings>.cs-rating-heading h2{font-size:27px;font-weight:650;letter-spacing:-1.3px}
+    .cs-ratings>.cs-rating-note{font-size:11px;color:#999da3;margin:0 0 26px}
+    .cs-rating-plot{padding:0;background:transparent;border:0;border-radius:0;overflow:visible}
+    .cs-rating-stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:34px;align-items:center;padding:18px 0 40px}
+    .cs-rating-monument{display:flex;align-items:flex-end;gap:14px;min-width:0}
+    .cs-rating-monument>strong{font-family:Arial,sans-serif;font-size:clamp(100px,15vw,190px);font-weight:800;line-height:.82;letter-spacing:-.075em;color:#00ffa3;font-variant-numeric:tabular-nums}
+    .cs-rating-monument>span{font-size:10px;color:#999da3;line-height:1.8;padding-bottom:5px;white-space:nowrap}
+    .cs-rating-stage .cs-rating-selection{display:block;padding:0;border:0;border-radius:0;background:transparent}
+    .cs-rating-stage .cs-rating-selection>small{font-size:11px;color:#a0a4aa}
+    .cs-rating-stage .cs-rating-selection h3{font-size:25px;letter-spacing:-.8px;line-height:1.3;margin:14px 0}
+    .cs-rating-stage .cs-rating-selection p{font-size:12px;line-height:1.8;color:#999da3;max-width:42ch}
+    .cs-rating-stage .cs-rating-picker{display:block;margin:20px 0 0;font-size:10px;color:#999da3}
+    .cs-rating-stage .cs-rating-picker select{display:block;width:100%;max-width:360px;margin:6px 0 0;border:0;border-bottom:1px solid #ffffff26;border-radius:0;background:#1b1c1f;color:#dfe2e5;padding:9px 0;font-size:11px}
+    .cs-rating-spectrum-heading{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #ffffff17;padding-top:22px}
+    .cs-rating-spectrum-heading h3{margin:0;font-size:13px;font-weight:500}
+    .cs-rating-spectrum-heading>span{font-size:10px;color:#999da3}
+    .cs-rating-scatter{width:100%;max-height:260px;display:block;overflow:visible;margin:12px 0 0}
+    .cs-rating-stem{stroke:#00ffa3;stroke-width:1;opacity:.2}
+    .cs-rating-dot-core{fill:#a8b4b0}
+    .cs-rating-dot-label{font-family:Arial,sans-serif;font-size:15px;fill:#a3aaa7;font-weight:500}
+    .cs-rating-dot-ring{stroke:transparent;fill:transparent}
+    .cs-rating-selected .cs-rating-dot-core{fill:#00ffa3}
+    .cs-rating-selected .cs-rating-dot-label{fill:#00ffa3;font-size:23px;font-weight:700}
+    .cs-rating-selected .cs-rating-stem{opacity:.8;stroke-width:2}
+    .cs-rating-known .cs-rating-dot-core{fill:#e8c268}
+    .cs-rating-known .cs-rating-stem{stroke:#e8c268}
+    .cs-rating-known .cs-rating-dot-label{fill:#e8c268}
+    .cs-rating-dot:hover .cs-rating-dot-ring,.cs-rating-dot:focus .cs-rating-dot-ring{stroke:#00ffa3}
+    .cs-rating-selected .cs-rating-dot-ring{stroke:transparent}
+    .cs-rating-baseline{stroke:#ffffff1c;stroke-width:1}
+    .cs-rating-axis-label{fill:#8f959b;font-size:11px}
+    .cs-rating-plot-legend{display:flex;gap:18px;font-size:10px;margin:0 0 28px;color:#92989f}
+    .cs-rating-plot-legend>span:first-child{color:#e8c268}
+    .cs-rating-plot-legend>span:last-child{margin-left:auto}
+    .cs-rating-layout{display:block}
+    .cs-rating-library{border-top:1px solid #ffffff17;padding-top:24px}
+    .cs-rating-library>.cs-rating-heading h3{font-size:16px;font-weight:550;letter-spacing:-.5px}
+    .cs-rating-controls{gap:16px}
+    .cs-ratings .cs-rating-controls input,.cs-ratings .cs-rating-controls select{border:0;border-bottom:1px solid #ffffff25;border-radius:0;background:transparent;padding:10px 0;color:#dfe2e5}
+    .cs-ratings select option{background:#1b1c1f;color:#dfe2e5}
+    .cs-rating-genres{gap:18px;margin:16px 0 10px}
+    .cs-rating-genres button{border:0;border-radius:0;background:transparent;padding:8px 0;color:#999da3;font-size:11px}
+    .cs-rating-genres button[aria-pressed=true]{color:#00ffa3;border-bottom:1px solid #00ffa3;background:transparent}
+    .cs-rating-row{background:transparent;border:0;border-radius:0;border-bottom:1px solid #ffffff0b;margin:0}
+    .cs-rating-row summary{padding:18px 0;gap:18px}
+    .cs-rating-row summary strong{font-size:13px;font-weight:500}
+    .cs-rating-index{font-size:10px;color:#858c93}
+    .cs-rating-score{font-family:Arial,sans-serif;font-size:24px;font-weight:500;color:#dfe2e5}
+    .cs-rating-score small{font-family:inherit;font-size:9px;margin-top:4px;color:#92989f}
+    .cs-rating-more{border-radius:0;border:0;border-bottom:1px solid #ffffff25;background:transparent;font-size:11px;padding:15px;color:#a3aaa7}
+    .cs-ratings>.cs-rating-note:last-child{margin:20px 0 0}
+    @media(max-width:700px){
+      .cs-ratings{padding:22px 12px}
+      .cs-ratings>.cs-rating-heading h2{font-size:23px}
+      .cs-rating-stage{grid-template-columns:1fr;gap:28px;padding:12px 0 26px}
+      .cs-rating-monument>strong{font-size:132px}
+      .cs-rating-stage .cs-rating-selection h3{font-size:23px;margin:10px 0}
+      .cs-rating-stage .cs-rating-selection p{margin:0;max-width:none}
+      .cs-rating-stage .cs-rating-picker{margin-top:14px}
+      .cs-rating-stage .cs-rating-picker select{max-width:none}
+      .cs-rating-plot-legend{gap:10px;flex-wrap:wrap;font-size:9px}
+      .cs-rating-plot-legend>span:last-child{margin-left:0}
+      .cs-rating-spectrum-heading>span{font-size:9px}
+    }
+    @media(prefers-reduced-motion:no-preference){
+      .cs-rating-stage .cs-rating-selection{animation:cs-rating-reveal .25s ease-out}
+      @keyframes cs-rating-reveal{from{opacity:.4;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+    }
+
+    /* Ranked game shelf */
+    .cs-rating-shelf{padding:30px 22px}
+    .cs-rating-shelf-header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:20px}
+    .cs-rating-shelf-header h2{font-size:39px;line-height:1.12;letter-spacing:-1.8px;margin:0;font-weight:750}
+    .cs-rating-shelf-header h2 span{color:#00ffa3}
+    .cs-rating-shelf-header>p{font-size:12px;line-height:1.9;color:#a3a6ad;margin:0 0 4px;text-align:right}
+    .cs-rating-shelf>.cs-rating-note{margin:0 0 24px;font-size:10px;color:#969ba3}
+    .cs-rating-recent{padding:18px 0 20px;border-top:1px solid #ffffff17;border-bottom:1px solid #ffffff17;margin-bottom:30px}
+    .cs-rating-recent h3{font-size:11px;font-weight:500;color:#a7acb4;margin:0 0 14px}
+    .cs-rating-recent>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+    .cs-rating-recent-item{display:flex;align-items:center;gap:12px;padding:0;border:0;background:transparent;color:inherit;font-family:inherit;text-align:left;cursor:pointer;min-width:0}
+    .cs-rating-recent-item>img{width:43px;height:57px;object-fit:cover;flex-shrink:0;border-radius:3px;background:#111}
+    .cs-rating-recent-item>span{min-width:0;flex:1}
+    .cs-rating-recent-item strong{font-size:11px;font-weight:500;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .cs-rating-recent-item small{display:block;font-size:9px;color:#999da4;margin-top:5px;font-weight:400}
+    .cs-rating-recent-item>b{font-family:Arial,sans-serif;font-size:22px;font-weight:500;letter-spacing:-1px}
+    .cs-rating-recent-item>b small{display:none}
+    .cs-rating-recent-item:hover strong{color:#00ffa3}
+    .cs-rating-shelf-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:40px;align-items:start}
+    .cs-rating-shelf .cs-rating-library{border:0;padding:0;min-width:0}
+    .cs-rating-shelf .cs-rating-heading h3{font-size:14px;margin:0;font-weight:550}
+    .cs-rating-shelf .cs-rating-heading span{font-size:10px}
+    .cs-rating-shelf .cs-rating-controls{margin:14px 0 10px;display:block}
+    .cs-rating-shelf .cs-rating-controls input{box-sizing:border-box;width:100%;padding:9px 0;border:0;border-bottom:1px solid #ffffff17;color:#e5e7eb;background:transparent;font-family:inherit;font-size:11px}
+    .cs-rating-shelf .cs-rating-list{display:block}
+    .cs-rating-shelf .cs-rating-row{display:grid;grid-template-columns:44px minmax(0,1fr) max-content 16px;gap:14px;align-items:center;width:100%;padding:20px 10px 20px 0;margin:0;border:0;border-bottom:1px solid #ffffff0c;background:transparent;color:inherit;font-family:inherit;text-align:left;cursor:pointer;border-radius:0}
+    .cs-rating-shelf .cs-rating-index{font-family:Arial,sans-serif;font-size:30px;letter-spacing:-1.6px;color:#626972;font-weight:400}
+    .cs-rating-shelf .cs-rating-game strong{font-size:12px;line-height:1.5;font-weight:500;display:block}
+    .cs-rating-shelf .cs-rating-game small{font-size:9px;color:#9299a2;display:block;margin-top:6px}
+    .cs-rating-shelf .cs-rating-score{font-family:Arial,sans-serif;font-size:29px;letter-spacing:-1.2px;color:#e9edef;font-weight:500;white-space:nowrap}
+    .cs-rating-shelf .cs-rating-score small{display:none}
+    .cs-rating-arrow{font-size:17px;color:#747d85}
+    .cs-rating-shelf .cs-rating-row[aria-pressed=true]{background:#00ffa308;box-shadow:inset 2px 0 #00ffa3;padding-left:10px}
+    .cs-rating-shelf .cs-rating-row[aria-pressed=true] .cs-rating-index,.cs-rating-shelf .cs-rating-row[aria-pressed=true] .cs-rating-score,.cs-rating-shelf .cs-rating-row[aria-pressed=true] .cs-rating-arrow{color:#00ffa3}
+    .cs-rating-shelf .cs-rating-row:hover .cs-rating-game strong{color:#00ffa3}
+    .cs-rating-shelf .cs-rating-more{width:100%;margin:0;padding:16px 0;text-align:left;border:0;background:transparent;color:#b0b6be;font-size:10px}
+    .cs-rating-shelf .cs-rating-more span{float:right;font-size:15px}
+    .cs-rating-showcase{position:sticky;top:20px;min-width:0;padding:0}
+    .cs-rating-media{aspect-ratio:4/3;background:#111315;overflow:hidden;position:relative;border-radius:3px}
+    .cs-rating-media>img{width:100%;height:100%;display:block;object-fit:contain}
+    .cs-rating-media>iframe{border:0;width:100%;height:100%;display:block}
+    .cs-rating-showcase-caption{display:flex;justify-content:space-between;gap:10px;margin:12px 0 20px;color:#969ea6;font-size:9px}
+    .cs-rating-showcase-title{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+    .cs-rating-showcase-title h3{font-size:21px;line-height:1.35;letter-spacing:-.6px;margin:0;font-weight:600}
+    .cs-rating-showcase-title>strong{font-family:Arial,sans-serif;font-size:49px;line-height:1;letter-spacing:-2px;color:#00ffa3;font-weight:650;flex-shrink:0}
+    .cs-rating-showcase-title>strong small{font-size:10px;font-weight:400;letter-spacing:0;margin-left:4px}
+    .cs-rating-showcase>p{font-size:11px;line-height:1.9;color:#979fa8;margin:18px 0 0}
+    .cs-rating-shelf>.cs-rating-shelf-footer{margin:26px 0 0;padding-top:18px;border-top:1px solid #ffffff10;font-size:9px}
+    @media(max-width:700px){
+      .cs-rating-shelf{padding:24px 12px}
+      .cs-rating-shelf-header h2{font-size:32px}
+      .cs-rating-shelf-header>p{font-size:10px}
+      .cs-rating-recent>div{grid-template-columns:1fr;gap:14px}
+      .cs-rating-recent-item>img{width:35px;height:45px}
+      .cs-rating-recent-item strong{-webkit-line-clamp:1;font-size:11px}
+      .cs-rating-shelf-grid{grid-template-columns:1fr;gap:26px}
+      .cs-rating-showcase{position:static;grid-row:1}
+      .cs-rating-media{aspect-ratio:16/10;max-height:300px}
+      .cs-rating-showcase-title h3{font-size:20px}
+      .cs-rating-showcase-title>strong{font-size:40px}
+      .cs-rating-showcase-caption{margin-bottom:14px}
+      .cs-rating-showcase>p{margin-top:10px}
+      .cs-rating-shelf .cs-rating-row{grid-template-columns:34px minmax(0,1fr) max-content 16px;gap:10px}
+      .cs-rating-shelf .cs-rating-index{font-size:26px}
+      .cs-rating-shelf .cs-rating-score{font-size:27px}
+    }
+    @media(prefers-reduced-motion:no-preference){.cs-rating-showcase{animation:cs-rating-reveal .25s ease-out}}
+
+    .cs-rating-score-groups{margin:0 0 30px}
+    .cs-rating-score-groups-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:17px}
+    .cs-rating-score-groups-header h3{font-size:11px;font-weight:500;color:#a7acb4;margin:0}
+    .cs-rating-score-groups-header button{border:0;padding:2px 0;background:transparent;color:#929aa3;font-family:inherit;font-size:10px;cursor:pointer}
+    .cs-rating-score-groups-header button[aria-pressed=true]{color:#00ffa3}
+    .cs-rating-score-group-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:20px}
+    .cs-rating-score-group-list button{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;padding:0 0 12px;border:0;border-bottom:1px solid #ffffff1a;border-radius:0;background:transparent;color:#e3e6e9;font-family:inherit;text-align:left;cursor:pointer}
+    .cs-rating-score-group-list button>span{font-size:11px;line-height:1.5;color:#a2a9b1}
+    .cs-rating-score-group-list button>strong{font-family:Arial,sans-serif;font-size:29px;line-height:1;font-weight:500;letter-spacing:-1px}
+    .cs-rating-score-group-list button>strong small{font-size:9px;margin-left:3px;font-family:inherit;font-weight:400;color:#8e979f;letter-spacing:0}
+    .cs-rating-score-group-list button[aria-pressed=true]{border-bottom:2px solid #00ffa3}
+    .cs-rating-score-group-list button[aria-pressed=true]>span,.cs-rating-score-group-list button[aria-pressed=true]>strong{color:#00ffa3}
+    .cs-rating-score-group-list button:hover:not(:disabled)>span{color:#00ffa3}
+    .cs-rating-score-group-list button:disabled{opacity:.45;cursor:default}
+    @media(max-width:700px){
+      .cs-rating-score-group-list{gap:10px}
+      .cs-rating-score-group-list button{display:block;padding-bottom:10px}
+      .cs-rating-score-group-list button>span{font-size:9px;display:block;margin-bottom:9px}
+      .cs-rating-score-group-list button>strong{font-size:25px}
+      .cs-rating-score-group-list button>strong small{font-size:8px;margin-left:2px}
+    }
+
+    .cs-rating-shelf>.cs-rating-recent{margin:30px 0 0;padding:20px 0;border-bottom:0}
+
+    [data-game-poster-query]{opacity:.22;transition:opacity .2s ease}
+    [data-game-poster-query].cs-poster-ready{opacity:1}
+`;
 
   // ----------------------------------------------------------
   // 렌더링
@@ -2397,7 +2716,9 @@
     const pill = pillState();
     const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
     const lolLogMode = state.scheduleViewMode === "lolMatchLogs";
-    const gameSummary = !lolLogMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
+    const ratingMode = state.scheduleViewMode === "gameRatings";
+    const specialMode = lolLogMode || ratingMode;
+    const gameSummary = !specialMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
@@ -2408,14 +2729,14 @@
     const schedulePillHtml = '<span class="cs-pill ' + pill.cls + '">' + pill.html + '</span>';
     const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
     const settingsLabel = "알림 설정";
-    const showNotificationSettings = !lolLogMode && targetLiveNotificationSettingsVisible();
+    const showNotificationSettings = !specialMode && targetLiveNotificationSettingsVisible();
     if (!showNotificationSettings && state.settingsOpen) state.settingsOpen = false;
     const scheduleToolbarHtml =
       '<div class="cs-schedule-toolbar"><div class="cs-toolbar-layout">' +
       '<span class="cs-toolbar-balance" aria-hidden="true"></span><div class="cs-mode-switch-slot">' +
       (state.extensionCollapsed ? "" : lolLogToggleHtml(lolLogMode)) +
       '</div><div class="cs-schedule-tools">' +
-      (state.extensionCollapsed || lolLogMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
+      (state.extensionCollapsed || specialMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
       (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
       '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? "\u25BC" : "\u25B2") + '<span class="cs-extension-collapse-tip">' + collapseLabel + "</span></button>" +
       "</div></div></div>";
@@ -2438,17 +2759,17 @@
       (state.extensionCollapsed ? "" : updateNoticeHtml()) +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
-      (lolLogMode ? (state.extensionCollapsed ? lolCollapsedSummaryHtml() : "") : '<div class="cs-header">' +
+      (specialMode ? (state.extensionCollapsed ? (ratingMode ? '<div class="cs-header"><span class="cs-title">게임 평가 · 시안</span></div>' : lolCollapsedSummaryHtml()) : "") : '<div class="cs-header">' +
       '<span class="cs-title">방송 일정</span>' +
       schedulePillHtml +
       '<span class="cs-spacer"></span>' +
-      (state.extensionCollapsed || lolLogMode ? "" : monthLabel +
+      (state.extensionCollapsed || specialMode ? "" : monthLabel +
         (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
         '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
         '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>") +
       "</div>") +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
-      (lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
+      (ratingMode ? gameRatingsHtml() : lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       gameSummary +
       '<div class="cs-popover" id="cs-popover">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
@@ -2532,7 +2853,7 @@
     return '<li class="cs-info-group">' + groupTitle + details + '</li>';
   }
   function infoSectionHtml() {
-    if (state.scheduleViewMode === "lolMatchLogs") return "";
+    if (["lolMatchLogs", "gameRatings"].includes(state.scheduleViewMode)) return "";
     const items = (state.channel && state.channel.info) || [];
     if (!items.length) return "";
 
@@ -3130,7 +3451,6 @@
     const updateHistoryViewport = s.getElementById("cs-update-history-viewport");
     const updateHistoryToggle = s.getElementById("cs-update-history-toggle");
     const monthToggle = s.getElementById("cs-month-toggle");
-    const lolLogToggle = s.getElementById("cs-lol-log-toggle");
     const lolLoadMore = s.getElementById("cs-lol-load-more");
     const extensionCollapse = s.getElementById("cs-extension-collapse");
     const settingsToggle = s.getElementById("cs-settings-toggle");
@@ -3175,7 +3495,8 @@
       render();
     });
     if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; } render(); });
-    if (lolLogToggle) lolLogToggle.addEventListener("click", () => { void switchScheduleViewMode(lolLogToggle); });
+    s.querySelectorAll("[data-schedule-mode]").forEach(button => button.addEventListener("click", () => { void switchScheduleViewMode(button); }));
+    if (state.scheduleViewMode === "gameRatings") bindGameRatingControls(s);
     if (lolLoadMore) lolLoadMore.addEventListener("click", () => {
       state.lolVisibleMatchCount = Math.max(5, Number(state.lolVisibleMatchCount) || 5) + 5;
       render();
