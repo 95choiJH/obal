@@ -692,21 +692,59 @@
 
   function lolLogToggleHtml() {
     return '<div class="cs-mode-tabs" role="group" aria-label="오뱅알 모드 전환">' +
-      [["schedule","일정"],["lolMatchLogs","리그 오브 레전드"],["gameRatings","게임 평가"]].map(([mode,label]) =>
+      [["schedule","일정"],["lolMatchLogs","리그 오브 레전드"]].map(([mode,label]) =>
         '<button type="button" data-schedule-mode="'+mode+'" aria-pressed="'+String(state.scheduleViewMode===mode)+'">'+
-        (mode==="schedule"?'<img src="'+CALENDAR_ICON_URL+'" alt="">':mode==="gameRatings"?'<img src="'+GAMEPAD_ICON_URL+'" alt="">':"")+
+        (mode==="schedule"?'<img src="'+CALENDAR_ICON_URL+'" alt="">':"")+
         label+'</button>').join("")+'</div>';
   }
 
   async function switchScheduleViewMode(button) {
-    const mode=button.dataset.scheduleMode;
-    if (!["schedule","lolMatchLogs","gameRatings"].includes(mode) || mode===state.scheduleViewMode) return;
-    closePopover();
-    state.settingsOpen=false;
-    state.scheduleViewMode=mode;
-    render();
-    const next=state.shadow.querySelector('[data-schedule-mode="'+mode+'"]');
-    if(next)next.focus({preventScroll:true});
+    const mode = button && button.dataset ? button.dataset.scheduleMode : "";
+    const modes = ["schedule", "lolMatchLogs"];
+    if (state.scheduleModeTransitioning || !modes.includes(mode) || mode === state.scheduleViewMode) return;
+    state.scheduleModeTransitioning = true;
+    button.disabled = true;
+    const reduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const direction = modes.indexOf(mode) > modes.indexOf(state.scheduleViewMode) ? 1 : -1;
+    const animate = async (element, frames, duration) => {
+      if (reduced || !element || typeof element.animate !== "function") return;
+      await element.animate(frames, { duration, easing: "cubic-bezier(.2,.8,.2,1)" }).finished.catch(() => {});
+    };
+    try {
+      closePopover();
+      state.settingsOpen = false;
+      await Promise.all([
+        animate(state.shadow.querySelector(".cs-schedule-section"), [
+          { opacity: 1, transform: "translateX(0) scale(1)" },
+          { opacity: 0, transform: "translateX(" + (-direction * 18) + "px) scale(.97)" },
+        ], 140),
+        animate(button, [{ transform: "scale(1)" }, { transform: "scale(.96)" }], 140),
+      ]);
+      state.scheduleViewMode = mode;
+      render();
+      const next = state.shadow.querySelector('[data-schedule-mode="' + mode + '"]');
+      if (next) {
+        next.disabled = true;
+        next.focus({ preventScroll: true });
+      }
+      await Promise.all([
+        animate(state.shadow.querySelector(".cs-schedule-section"), [
+          { opacity: 0, transform: "translateX(" + (direction * 22) + "px) scale(.97)" },
+          { opacity: 1, transform: "translateX(" + (-direction * 4) + "px) scale(1.01)", offset: .65 },
+          { opacity: 1, transform: "translateX(0) scale(1)" },
+        ], 420),
+        animate(next, [
+          { transform: "scale(.96)" },
+          { transform: "scale(1.035)", offset: .65 },
+          { transform: "scale(1)" },
+        ], 420),
+      ]);
+    } finally {
+      state.scheduleModeTransitioning = false;
+      button.disabled = false;
+      const current = state.shadow && state.shadow.querySelector('[data-schedule-mode="' + state.scheduleViewMode + '"]');
+      if (current) current.disabled = false;
+    }
   }
 
   function lolTierEmblemHtml(rank, className = "cs-lol-summary-emblem-image") {
@@ -5264,6 +5302,11 @@
     return groups.length === 1 ? groups[0].items : [];
   }
 
+  function sessionKeyMsValue(value) {
+    const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+    return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6])) : 0;
+  }
+
   function vodCategoryGroup(vodMatch) {
     // Keep hidden-only sessions while matching; hide their chapters after scoping.
     const items = getCategoryHistoryItems(true);
@@ -5274,9 +5317,21 @@
     if (!items.length || (!liveKey && !vodStartedAt(vod) && !scheduleDate)) return [];
     // An explicit broadcast key is authoritative, even when it has no visible chapters.
     const startedAtGroup = liveKey ? [] : categoryItemsForVodStartedAt(items, vod);
-    const scopedGroup = liveKey
-      ? items.filter((item) => categoryHistoryLiveKey(item) === liveKey)
-      : (startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate));
+    let scopedGroup;
+    if (liveKey) {
+      const exactGroup = items.filter((item) => categoryHistoryLiveKey(item) === liveKey);
+      const replayStart = sessionKeyMsValue(liveKey);
+      const continuedEarlierItems = exactGroup.length && replayStart ? items.filter((item) => {
+        if (String(item.scheduleDate || item.schedule_date || "").trim() !== scheduleDate) return false;
+        const itemKey = categoryHistoryLiveKey(item);
+        if (!itemKey || itemKey === liveKey) return false;
+        const gap = replayStart - sessionKeyMsValue(itemKey);
+        return gap > 0 && gap <= 2 * 60 * 1000;
+      }) : [];
+      scopedGroup = continuedEarlierItems.concat(exactGroup);
+    } else {
+      scopedGroup = startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate);
+    }
     const seen = new Set();
     return scopedGroup.filter((item) => item.hidden !== true).sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
       const key = String(item.categoryType || "") + "|" + String(item.categoryId || "") + "|" + String(item.categoryLabel || "").trim().toLowerCase() + "|" + String(item.offsetSeconds ?? "");

@@ -59,6 +59,18 @@ test('visible chapters are scoped independently for both broadcasts', () => {
   assert.deepEqual(Array.from(h.vodCategoryGroup(second), item => item.id), [45]);
 });
 
+test('replay includes a chapter captured under an immediately preceding session key', () => {
+  const replayKey = '2026-09-21 20:33:42';
+  const earlierKey = '2026-09-21 20:31:42';
+  const h = harness([
+    { id: 56, liveKey: earlierKey, scheduleDate: date, categoryLabel: 'talk', hidden: true, offsetSeconds: 0 },
+    { id: 57, liveKey: earlierKey, scheduleDate: date, categoryLabel: 'Baseball', hidden: false, offsetSeconds: 0 },
+    { id: 58, liveKey: replayKey, scheduleDate: date, categoryLabel: 'Volleyball', hidden: false, offsetSeconds: 1795 },
+  ]);
+  const [match] = matches([{ liveKey: replayKey, startedAt: replayKey }]);
+  assert.deepEqual(Array.from(h.vodCategoryGroup(match), item => item.id), [57, 58]);
+});
+
 test('normal chapter queries still exclude hidden records', () => {
   const h = harness(items);
   assert.deepEqual(Array.from(h.getCategoryHistoryItems(), item => item.id), [45]);
