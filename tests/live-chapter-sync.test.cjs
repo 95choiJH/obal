@@ -27,6 +27,27 @@ function harness(overrides = {}, extra = {}) {
   })) };
 }
 
+test('broadcast date rolls over at 02:00 Korean time for live and replay starts', () => {
+  const h = harness();
+  for (const [startedAt, expected] of [
+    ['2026-09-20 23:59:59', '2026-09-20'],
+    ['2026-09-21 00:00:00', '2026-09-20'],
+    ['2026-09-21 01:59:59', '2026-09-20'],
+    ['2026-09-21 02:00:00', '2026-09-21'],
+    ['2026-09-20T16:59:59Z', '2026-09-20'],
+    ['2026-09-21T02:00:00+09:00', '2026-09-21'],
+    ['2026-10-01 00:30:00', '2026-09-30'],
+    ['2027-01-01 01:30:00', '2026-12-31'],
+  ]) {
+    assert.equal(h.context.liveScheduleDate({ openDate: startedAt }, 9), expected, startedAt);
+    assert.equal(h.context.recentReplayScheduleDate({}, { liveOpenDate: startedAt }, 9).date,
+      expected, startedAt);
+  }
+  assert.equal(h.context.scheduleDateFromLiveStart('invalid', 9), '');
+  assert.equal(h.context.recentReplayScheduleDate({ publishDateAt: '2026-09-21T00:30:00+09:00' },
+    null, 9).date, '2026-09-21');
+});
+
 test('chapters mode records the observation without replay or schedule work', async () => {
   const calls = [];
   const forbidden = async () => { throw new Error('Heavy work in chapter collector'); };
@@ -111,6 +132,36 @@ test('observation timestamp precedes a slow category metadata response', async (
   const result = await h.context.currentLiveCategory('channel', 9);
   assert.equal(result.observedAt, observedAt);
   assert.equal(result.category.posterImageUrl, 'https://image.test/game.png');
+});
+
+test('replay numbering preserves custom titles and explicitly manual default titles', () => {
+  const h = harness();
+  const vods = [
+    { url: 'https://example.test/1', label: '대회 결승 다시보기' },
+    { url: 'https://example.test/2', label: '방송 다시보기', manualLabel: true },
+    { url: 'https://example.test/3', label: '방송 다시보기' },
+  ].map(item => h.context.normalizeVodItem(item));
+  const numbered = h.context.numberVodLabels(vods);
+  assert.equal(numbered[0].label, '대회 결승 다시보기');
+  assert.equal(numbered[1].label, '방송 다시보기');
+  assert.equal(numbered[1].manualLabel, true);
+  assert.equal(numbered[2].label, '방송 다시보기3');
+  assert.equal(h.context.numberVodLabels([numbered[0]])[0].label, '대회 결승 다시보기');
+  assert.equal(h.context.numberVodLabels([numbered[2]])[0].label, '방송 다시보기');
+});
+
+test('category sync preserves manually entered play duration', () => {
+  const h = harness();
+  for (const duration of [0, 90, 90.5, null]) {
+    const result = h.context.mergeParts([{ content: 'Session', categoryLabel: 'Game',
+      categoryId: 'game', categoryType: 'GAME', categoryPlayMinutes: duration,
+      categoryStartTime: '23:30', categoryEndTime: '01:00' }], category);
+    assert.equal(result.list[0].categoryPlayMinutes, duration);
+    const again = h.context.mergeParts(result.list, category);
+    assert.equal(again.list[0].categoryPlayMinutes, duration);
+    assert.equal(again.list[0].categoryStartTime, '23:30');
+    assert.equal(again.list[0].categoryEndTime, '01:00');
+  }
 });
 
 test('invalid collection mode is rejected', async () => {

@@ -470,6 +470,9 @@ function normalizePart(p) {
       content: p.content || "",
       label: p.label || "",
       categoryLabel: String(p.categoryLabel || "").trim(),
+      categoryPlayMinutes: p.categoryPlayMinutes == null ? null : p.categoryPlayMinutes,
+      categoryStartTime: p.categoryStartTime || "",
+      categoryEndTime: p.categoryEndTime || "",
       categoryId: String(p.categoryId || "").trim(),
       categoryType: String(p.categoryType || "").trim(),
       categoryPosterImageUrl: String(p.categoryPosterImageUrl || p.posterImageUrl || "").trim(),
@@ -523,6 +526,24 @@ function normalizeGameImage(item) {
   const categoryType = String(item.categoryType || "").trim().toUpperCase();
   return (label || url) ? { url, label, categoryId, categoryType, posterImageUrl } : null;
 }
+// 2026년 10월부터 공개 컨텐츠 카테고리를 게임 목록으로 사용한다.
+function partGameImages(parts) {
+  const seen = new Set();
+  return parts.filter((part) => part && !part.hiddenFromFront && !part.speculative).map((part) => ({
+    label: String(part.categoryLabel || (part.autoCategory ? part.content : "") || "").trim(),
+    categoryId: String(part.categoryId || "").trim(),
+    categoryType: String(part.categoryType || "").trim().toUpperCase(),
+    url: part.categoryPosterImageUrl || part.posterImageUrl || "",
+    posterImageUrl: part.categoryPosterImageUrl || part.posterImageUrl || "",
+  })).filter((game) => {
+    if (!game.label) return false;
+    const key = game.categoryType + "|" + (game.categoryId || game.label.toLowerCase());
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // vods 항목을 정규화. 자동 저장된 다시보기는 liveKey 메타데이터를 보존한다.
 function normalizeVod(v) {
   if (!v || typeof v !== "object" || !v.url) return null;
@@ -570,15 +591,19 @@ function rowsToChannels(rows) {
     if (!channels[cid]) {
       channels[cid] = { name: r.channel_name || "", timezone: "Asia/Seoul", schedule: [], info: [] };
     }
-    const entry = { date: r.date };
+    const entry = { date: r.date, allCategories: [] };
     if (r.start_time) entry.start = r.start_time;
     if (r.end_time) entry.end = r.end_time;
     if (r.title) entry.title = r.title;
     if (r.title_short) entry.titleShort = r.title_short;
     if (Array.isArray(r.parts) && r.parts.length) entry.parts = visiblePartsForFront(r.parts);
     if (Array.isArray(r.vods) && r.vods.length) entry.vods = r.vods.map(normalizeVod).filter(Boolean);
-    if (Array.isArray(r.game_images) && r.game_images.length) {
-      const allGameImages = r.game_images.map(normalizeGameImage).filter(Boolean);
+    const scheduleGames = r.date >= "2026-10-01"
+      ? partGameImages(Array.isArray(r.parts) ? r.parts : [])
+      : r.game_images;
+    if (Array.isArray(scheduleGames) && scheduleGames.length) {
+      const allGameImages = scheduleGames.map(normalizeGameImage).filter(Boolean);
+      entry.allCategories = allGameImages;
       entry.gameImages = allGameImages.filter((game) => game && (!game.categoryType || game.categoryType === "GAME"));
     }
     if (r.status) entry.status = r.status;
@@ -1071,7 +1096,8 @@ async function fetchSchedule(force) {
   }
 
   // 캐시가 신선하면 그대로 반환
-  if (!force && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  const hasAllCategories = cached.scheduleData && Object.values(cached.scheduleData.channels || {}).every(channel => (channel.schedule || []).every(entry => Array.isArray(entry.allCategories)));
+  if (!force && hasAllCategories && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

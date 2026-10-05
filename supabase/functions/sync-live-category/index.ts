@@ -80,7 +80,14 @@ function liveStartTimestamp(live: Record<string, unknown>) {
 }
 
 function liveScheduleDate(live: Record<string, unknown>, offsetHours: number) {
-  return dateKeyFromTimestamp(liveStartTimestamp(live), offsetHours) || currentDateKey(offsetHours);
+  return scheduleDateFromLiveStart(liveStartTimestamp(live), offsetHours) || currentDateKey(offsetHours);
+}
+
+function scheduleDateFromLiveStart(value: unknown, offsetHours: number) {
+  const startedMs = chzzkTimestampMs(value, offsetHours);
+  if (!startedMs) return "";
+  // Broadcast days begin at 02:00 local time, including month/year boundaries.
+  return new Date(startedMs + (offsetHours - 2) * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function liveTitle(live: Record<string, unknown>) {
@@ -153,6 +160,9 @@ function normalizePart(item: unknown) {
     content,
     label: String(source.label || "").trim(),
     categoryLabel: String(source.categoryLabel || "").trim(),
+    categoryStartTime: String(source.categoryStartTime || "").trim(),
+    categoryEndTime: String(source.categoryEndTime || "").trim(),
+    categoryPlayMinutes: source.categoryPlayMinutes != null && String(source.categoryPlayMinutes).trim() !== "" && Number.isFinite(Number(source.categoryPlayMinutes)) && Number(source.categoryPlayMinutes) >= 0 ? Number(source.categoryPlayMinutes) : null,
     categoryPosterImageUrl: String(source.categoryPosterImageUrl || source.posterImageUrl || "").trim(),
     manualPartLabel: !!source.manualPartLabel,
     hidePartLabel: !!source.hidePartLabel,
@@ -652,7 +662,7 @@ async function safeRecordLiveCategoryChange(
   }
 }
 
-type VodItem = { url: string; label: string; liveKey?: string; startedAt?: string; endedAt?: string; videoNo?: string };
+type VodItem = { url: string; label: string; manualLabel?: boolean; liveKey?: string; startedAt?: string; endedAt?: string; videoNo?: string };
 
 function normalizeVodItem(item: unknown): VodItem | null {
   if (!item || typeof item !== "object") return null;
@@ -661,6 +671,7 @@ function normalizeVodItem(item: unknown): VodItem | null {
   const label = String(source.label || "").trim() || "방송 다시보기";
   if (!url) return null;
   const vod: VodItem = { url, label };
+  if (source.manualLabel === true) vod.manualLabel = true;
   const liveKey = String(source.liveKey || source.live_key || "").trim();
   const startedAt = String(source.startedAt || source.started_at || "").trim();
   const endedAt = String(source.endedAt || source.ended_at || "").trim();
@@ -683,7 +694,7 @@ function numberVodLabels(vods: VodItem[]): VodItem[] {
   return vods.map((vod, index) => ({
     ...vod,
     // Only renumber generated defaults; preserve administrator-edited titles.
-    label: /^방송 다시보기(?:\d+)?$/.test(vod.label.trim())
+    label: !vod.manualLabel && /^방송 다시보기(?:\d+)?$/.test(vod.label.trim())
       ? (multiple ? `방송 다시보기${index + 1}` : "방송 다시보기")
       : vod.label,
   }));
@@ -754,7 +765,7 @@ async function findReplayVodForSession(channelId: string, session: LiveSessionSt
 
 function recentReplayScheduleDate(video: Record<string, unknown>, detail: Record<string, unknown> | null, offsetHours: number) {
   const liveOpenDate = detail ? String(detail.liveOpenDate || "").trim() : "";
-  const date = dateKeyFromTimestamp(liveOpenDate, offsetHours);
+  const date = scheduleDateFromLiveStart(liveOpenDate, offsetHours);
   if (date) return { date, startedAt: liveOpenDate };
   const publishMs = videoPublishMs(video, offsetHours);
   if (!publishMs) return { date: "", startedAt: "" };
@@ -1005,7 +1016,7 @@ Deno.serve(async (req) => {
     const testCategories = testCategoriesFromBody(body);
     if (testCategories.length) {
       const startedAt = String(body.startedAt || "");
-      const rawDate = String(body.date || dateKeyFromTimestamp(startedAt, offsetHours) || currentDateKey(offsetHours));
+      const rawDate = String(body.date || scheduleDateFromLiveStart(startedAt, offsetHours) || currentDateKey(offsetHours));
       const testTitle = String(body.liveTitle || body.title || "").trim();
       const session = await resolveLiveSession(channelId, rawDate, String(body.liveKey || startedAt || rawDate), startedAt, testTitle, offsetHours, supabaseUrl, serviceRoleKey);
       const date = session.date;

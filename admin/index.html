@@ -131,6 +131,10 @@
   .part-tools-row { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
   .part-category-box { margin: 8px 0 9px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: rgba(127,127,127,0.035); }
   .part-category-search-wrap { margin-top: 7px; }
+  .part-category-duration { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; color: var(--text); font-size: 12px; }
+  .part-category-times { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  .part-category-time-selects { display: flex; align-items: center; gap: 4px; }
+  .part-category-time-selects select { width: 58px; height: 32px; padding: 0 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font: inherit; }
   .part-category-selected { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 30px; margin-top: 6px; padding: 3px 6px 3px 4px; border: 1px solid rgba(0,255,163,0.22); border-radius: 8px; background: rgba(0,255,163,0.06); }
   .part-category-selected-label { min-width: 0; color: var(--text); font-size: 12px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .part-tool-actions { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
@@ -575,16 +579,17 @@
   .chapter-preview-session-wrap + .chapter-preview-session-wrap { margin-top: 10px; }
   .chapter-preview-session { margin-bottom: 5px; color: var(--text-dim); font-size: 11px; font-weight: 900; }
   .chapter-preview-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
-  .chapter-preview-row { display: grid; grid-template-columns: 76px minmax(0,1fr) auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,0.025); }
+  .chapter-preview-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,0.025); }
   .chapter-preview-row.is-new { border-style: dashed; background: rgba(0,255,163,0.035); }
   .chapter-preview-row .game-autocomplete-wrap { min-width: 0; }
   .chapter-preview-row .game-autocomplete-wrap .chapter-preview-title { width: 100%; }
   .chapter-preview-row.is-hidden { opacity: 0.58; border-style: dashed; }
-  .chapter-preview-time { width: 76px; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--mint); font-size: 11px; font-weight: 900; font-variant-numeric: tabular-nums; text-align: center; }
+  .chapter-time-selects { display: flex; align-items: center; gap: 3px; color: var(--text-dim); font-size: 11px; }
+  .chapter-time-selects select { width: 52px; height: 30px; padding: 0 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text-dim); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .chapter-preview-title { min-width: 0; width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 800; }
   .chapter-preview-row b { color: var(--text-mute); font-size: 9px; }
   .chapter-hidden-toggle { min-width: 48px; }
-  @media (max-width: 680px) { .chapter-preview-row { grid-template-columns: 76px minmax(0,1fr) auto; } .chapter-preview-row .chapter-hidden-toggle { grid-column: 2; } }
+  @media (max-width: 680px) { .chapter-preview-row { grid-template-columns: minmax(0,1fr) auto auto; } .chapter-preview-row .chapter-time-selects, .chapter-preview-row .game-autocomplete-wrap { grid-column: 1 / -1; } .chapter-preview-row .chapter-hidden-toggle { grid-column: 2; } }
   @media (max-width: 560px) { .settings-row { align-items: flex-start; } .lol-account-grid { grid-template-columns: 1fr; } }
   .topbar { position: sticky; top: 0; }
   .editor-columns { min-width: 0; }

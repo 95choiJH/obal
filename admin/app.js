@@ -66,6 +66,9 @@
         content: p.content || "",
         label: p.label || "",
         categoryLabel: p.categoryLabel || "",
+        categoryStartTime: p.categoryStartTime || "",
+        categoryEndTime: p.categoryEndTime || "",
+        categoryPlayMinutes: categoryDurationMinutes(p.categoryStartTime, p.categoryEndTime),
         categoryId: p.categoryId || "",
         categoryType: p.categoryType || "",
         categoryPosterImageUrl: p.categoryPosterImageUrl || "",
@@ -85,7 +88,7 @@
         notes: normalizeNotes(p.notes),
       })),
       gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "", categoryId: g.categoryId || "", categoryType: g.categoryType || "", posterImageUrl: g.posterImageUrl || "" })),
-      vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "" })),
+      vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "", manualLabel: !!v.manualLabel })),
       status: r.status || "", cafe_time: !!r.cafe_time, video_time: !!r.video_time, notes: r.notes || normalizeNotes(r.note),
     })).sort(compareScheduleDate);
     // 순서 자체가 의미 있는 데이터라 정렬하지 않고 배열 순서 그대로 비교
@@ -1789,10 +1792,23 @@
     return Array.from(sessions.values());
   }
 
+  function chapterTimeSelectHtml(attribute, key, offset, label) {
+    const value = formatChapterOffset(offset);
+    const values = value.split(':').map(Number);
+    const selects = ['시', '분', '초'].map((unit, index) => {
+      const options = Array.from({ length: index === 0 ? 100 : 60 }, (_, number) => number);
+      if (!options.includes(values[index])) options.push(values[index]);
+      return '<select data-chapter-time-unit="' + index + '" aria-label="' + label + ' ' + unit + '">' +
+        options.map((number) => '<option value="' + number + '"' + (number === values[index] ? ' selected' : '') + '>' + String(number).padStart(2, '0') + '</option>').join('') +
+        '</select><span>' + unit + '</span>';
+    }).join('');
+    return '<div class="chapter-time-selects"><input type="hidden" ' + attribute + '="' + esc(key) + '" value="' + value + '" />' + selects + '</div>';
+  }
+
   function chapterRowHtml(item) {
     const type = String(item.category_type || "").trim().toUpperCase();
     return '<li class="chapter-preview-row' + (item.hidden ? ' is-hidden' : '') + '">' +
-      '<input class="chapter-preview-time" type="text" inputmode="numeric" data-chapter-time="' + esc(item.id) + '" value="' + esc(formatChapterOffset(item.offset_seconds)) + '" aria-label="챕터 시작 시간" />' +
+      chapterTimeSelectHtml('data-chapter-time', item.id, item.offset_seconds, '챕터 시작 방송 경과') +
       '<div class="game-autocomplete-wrap">' +
         '<input class="chapter-preview-title" type="text" data-chapter-title="' + esc(item.id) + '" value="' + esc(item.category_label || "") + '" placeholder="챕터 제목" aria-label="챕터 제목" autocomplete="off" />' +
         '<div class="member-results game-results" data-chapter-title-results="' + esc(item.id) + '"></div>' +
@@ -1806,7 +1822,7 @@
   function chapterAddRowHtml(date, session) {
     const key = String(session && session.liveKey || "").trim() || (String(date || "").trim() + "-manual");
     return '<li class="chapter-preview-row is-new">' +
-      '<input class="chapter-preview-time" type="text" inputmode="numeric" data-chapter-new-time="' + esc(key) + '" value="00:00:00" aria-label="새 챕터 시작 시간" />' +
+      chapterTimeSelectHtml('data-chapter-new-time', key, 0, '새 챕터 시작 방송 경과') +
       '<div class="game-autocomplete-wrap">' +
         '<input class="chapter-preview-title" type="text" data-chapter-new-title="' + esc(key) + '" placeholder="새 챕터 제목" aria-label="새 챕터 제목" autocomplete="off" />' +
         '<div class="member-results game-results" data-chapter-new-results="' + esc(key) + '"></div>' +
@@ -1829,7 +1845,7 @@
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-      }).slice(0, 10);
+      });
       const heading = sessions.length > 1 ? '<div class="chapter-preview-session">다시보기 ' + (sessionIndex + 1) + '</div>' : '';
       const rowsHtml = chapters.map(chapterRowHtml).join("") + chapterAddRowHtml(date, session);
       return '<section class="chapter-preview-session-wrap">' + heading + '<ol class="chapter-preview-list">' + rowsHtml + '</ol></section>';
@@ -1919,6 +1935,7 @@
 
 
   function gameImagesListHtml(r, i) {
+    if (r.date >= "2026-10-01") return "";
     const images = r.gameImages || [];
     const itemsHtml = images.map((g, gi) => gameImageItemHtml(i, g, gi)).join("");
     return (
@@ -2120,6 +2137,23 @@
     return String(part && (part.categoryLabel || (part.autoCategory ? part.content : "")) || "").trim();
   }
 
+  function partGameImages(parts) {
+    const seen = new Set();
+    return parts.filter((part) => part && !part.hiddenFromFront && !part.speculative).map((part) => ({
+      label: partCategoryLabel(part),
+      categoryId: part.categoryId || "",
+      categoryType: String(part.categoryType || "").trim().toUpperCase(),
+      url: part.categoryPosterImageUrl || "",
+      posterImageUrl: part.categoryPosterImageUrl || "",
+    })).filter((game) => {
+      if (!game.label) return false;
+      const key = game.categoryType + "|" + (game.categoryId || game.label.toLowerCase());
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   function partCategorySelectorHtml(i, pi, part) {
     const label = partCategoryLabel(part);
     const poster = String(part && part.categoryPosterImageUrl || "").trim();
@@ -2137,7 +2171,8 @@
         '<input type="text" data-part-category="' + i + '-' + pi + '" value="' + esc(label) + '" placeholder="\uBD80 \uCE74\uD14C\uACE0\uB9AC \uAC80\uC0C9" autocomplete="off" />' +
         '<div class="member-results game-results" data-part-category-results="' + i + '-' + pi + '"></div>' +
       '</div>' +
-      '<div class="game-meta-hint">이 부에 연결할 치지직 카테고리를 선택합니다. 직접 입력도 가능합니다.</div>' +
+      '<div class="game-meta-hint">이 부에 연결할 치지직 카테고리를 선택합니다. 직접 입력도 가능합니다.' + (rows[i].date >= "2026-10-01" ? ' 이 카테고리가 게임 목록에 반영됩니다.' : '') + '</div>' +
+      (rows[i].date >= "2026-10-01" ? categoryTimeRangeHtml(i, pi, part) : '') +
     '</div>';
   }
 
@@ -2460,7 +2495,7 @@
     const inputValue = p.displayType === "profile" ? ":s " + p.content : p.displayType === "tag" ? ":t " + p.content : p.content;
     const manualPartLabelOn = !!p.manualPartLabel;
     const partLabelValue = manualPartLabelOn ? (p.label || autoPartLabelFor(rows[i], pi)) : autoPartLabelFor(rows[i], pi);
-    const partHeaderBadges = (speculativeOn ? '<span class="part-header-badge">예상</span>' : '') + (hiddenFromFrontOn ? '<span class="part-header-badge muted">숨김</span>' : '');
+    const partHeaderBadges = (speculativeOn ? '<span class="part-header-badge">언급</span>' : '') + (hiddenFromFrontOn ? '<span class="part-header-badge muted">숨김</span>' : '');
     let html =
       '<div class="part-item">' +
         '<div class="part-item-head"><div class="part-item-title"><span>' + esc(partLabelValue) + '</span>' + partHeaderBadges + '</div><div class="part-tools-row"><div class="part-tool-actions">' + partMoveButtons(i, pi, partCount) + deletePartBtn(i, pi) + '</div></div></div>' +
@@ -2478,7 +2513,7 @@
           '<button class="flag-toggle' + (otherOn ? " on" : "") + '" data-othertoggle="' + i + '-' + pi + '">타방송</button>' +
           '<button class="flag-toggle' + (adOn ? " on" : "") + '" data-adtoggle="' + i + '-' + pi + '">광고</button>' +
           '<button class="flag-toggle' + (outdoorOn ? " on" : "") + '" data-outdoortoggle="' + i + '-' + pi + '">야외</button>' +
-          '<button class="flag-toggle speculative' + (speculativeOn ? " on" : "") + '" data-speculativetoggle="' + i + '-' + pi + '">예상</button>' +
+          '<button class="flag-toggle speculative' + (speculativeOn ? " on" : "") + '" data-speculativetoggle="' + i + '-' + pi + '">언급</button>' +
           '<button class="flag-toggle' + (hidePartLabelOn ? " on" : "") + '" data-hidepartlabeltoggle="' + i + '-' + pi + '">부 숨김</button>' +
           '<button class="flag-toggle' + (hiddenFromFrontOn ? " on" : "") + '" data-hiddenfronttoggle="' + i + '-' + pi + '">프론트숨김</button>' +
         '</div>' +
@@ -4178,6 +4213,50 @@
     };
   }
 
+  function categoryTimeSeconds(value) {
+    const match = /^(\d{1,6}):([0-5]\d)(?::([0-5]\d))?$/.exec(String(value || "").trim());
+    return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] || 0) : null;
+  }
+
+  function categoryDurationMinutes(start, end) {
+    const from = categoryTimeSeconds(start);
+    const to = categoryTimeSeconds(end);
+    return from == null || to == null || to < from ? null : (to - from) / 60;
+  }
+
+  function categoryDurationText(part) {
+    const minutes = categoryDurationMinutes(part.categoryStartTime, part.categoryEndTime);
+    if (minutes == null) {
+      if (part.categoryStartTime && part.categoryEndTime) return "방송 경과 시간을 시:분:초로 입력하고, 종료는 시작 이후로 지정해 주세요.";
+      return "방송 시작을 00:00:00으로 입력하세요. 두 시간을 입력하면 자동 계산됩니다.";
+    }
+    const seconds = Math.round(minutes * 60);
+    return "플레이 시간: " + Math.floor(seconds / 3600) + "시간 " + Math.floor(seconds % 3600 / 60) + "분" + (seconds % 60 ? " " + seconds % 60 + "초" : "");
+  }
+
+  function categoryTimeRangeHtml(i, pi, part) {
+    return '<div class="part-category-times">' +
+      categoryTimeSelectHtml(i, pi, 'categoryStartTime', '시작', part.categoryStartTime) +
+      categoryTimeSelectHtml(i, pi, 'categoryEndTime', '종료', part.categoryEndTime) +
+      '</div><div class="game-meta-hint" data-category-duration="' + i + '-' + pi + '" aria-live="polite">' + categoryDurationText(part) + '</div>';
+  }
+
+  function categoryTimeSelectHtml(i, pi, field, label, value) {
+    const seconds = categoryTimeSeconds(value);
+    const values = seconds == null ? [null, null, null] : [Math.floor(seconds / 3600), Math.floor(seconds % 3600 / 60), seconds % 60];
+    const key = i + '-' + pi + '-' + field;
+    const selects = ['시', '분', '초'].map((unit, index) => {
+      const options = Array.from({ length: index === 0 ? 100 : 60 }, (_, number) => number);
+      if (values[index] != null && !options.includes(values[index])) options.push(values[index]);
+      return '<select data-category-time="' + key + '" data-unit="' + index + '" aria-label="' + label + ' 방송 경과 ' + unit + '">' +
+        '<option value=""' + (values[index] == null ? ' selected' : '') + '>--</option>' +
+        options.map((number) => '<option value="' + number + '"' + (values[index] === number ? ' selected' : '') + '>' + String(number).padStart(2, '0') + '</option>').join('') +
+        '</select><span>' + unit + '</span>';
+    }).join('');
+    return '<div class="part-category-duration"><span>' + label + ' (방송 경과)</span><div class="part-category-time-selects">' + selects +
+      '<button type="button" class="icon-btn" data-category-time-clear="' + key + '" aria-label="' + label + ' 시간 지우기">×</button></div></div>';
+  }
+
   function normalizePart(p) {
     if (typeof p === "string") {
       return { content: p, label: "", categoryLabel: "", categoryId: "", categoryType: "", categoryPosterImageUrl: "", manualPartLabel: false, hidePartLabel: false, hiddenFromFront: false, displayType: "text", profile: null, collab: false, official: false, otherChannel: false, ad: false, outdoor: false, speculative: false, members: [], hostChannel: null, notes: [] };
@@ -4187,6 +4266,9 @@
         content: p.content || "",
         label: p.label || "",
         categoryLabel: String(p.categoryLabel || "").trim(),
+        categoryStartTime: p.categoryStartTime || "",
+        categoryEndTime: p.categoryEndTime || "",
+        categoryPlayMinutes: categoryDurationMinutes(p.categoryStartTime, p.categoryEndTime),
         categoryId: String(p.categoryId || "").trim(),
         categoryType: String(p.categoryType || "").trim(),
         categoryPosterImageUrl: String(p.categoryPosterImageUrl || p.posterImageUrl || "").trim(),
@@ -4274,6 +4356,7 @@
   function normalizeVod(v) {
     if (!v || typeof v !== "object") return null;
     const item = { url: v.url || "", label: v.label || "방송 다시보기" };
+    if (v.manualLabel === true) item.manualLabel = true;
     const liveKey = String(v.liveKey || v.live_key || "").trim();
     const startedAt = String(v.startedAt || v.started_at || "").trim();
     const endedAt = String(v.endedAt || v.ended_at || "").trim();
@@ -4450,6 +4533,14 @@
         liveCategoryHistory.push(data || payload);
         toast("챕터를 추가했습니다.");
         render();
+      };
+    });
+    document.querySelectorAll('[data-chapter-time-unit]').forEach((el) => {
+      el.onchange = () => {
+        const group = el.closest('.chapter-time-selects');
+        const input = group.querySelector('input[type="hidden"]');
+        input.value = Array.from(group.querySelectorAll('select')).map((select) => select.value.padStart(2, '0')).join(':');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
       };
     });
     document.querySelectorAll("[data-chapter-time]").forEach((el) => {
@@ -4639,12 +4730,35 @@
         markDirty();
       };
     });
+    const updateCategoryTime = (key, clear) => {
+      const [i, pi, field] = key.split('-');
+      const selects = Array.from(document.querySelectorAll('[data-category-time="' + key + '"]'));
+      selects.forEach((select) => { select.value = clear ? '' : (select.value || '0'); });
+      const part = rows[+i].parts[+pi];
+      part[field] = clear ? '' : selects.map((select) => select.value.padStart(2, '0')).join(':');
+      part.categoryPlayMinutes = categoryDurationMinutes(part.categoryStartTime, part.categoryEndTime);
+      const duration = document.querySelector('[data-category-duration="' + i + '-' + pi + '"]');
+      if (duration) duration.textContent = categoryDurationText(part);
+      markDirty();
+    };
+    document.querySelectorAll('[data-category-time]').forEach((el) => {
+      el.onchange = () => updateCategoryTime(el.getAttribute('data-category-time'), el.value === '');
+    });
+    document.querySelectorAll('[data-category-time-clear]').forEach((el) => {
+      el.onclick = () => updateCategoryTime(el.getAttribute('data-category-time-clear'), true);
+    });
     document.querySelectorAll("[data-pf]").forEach((el) => {
       const i = +el.getAttribute("data-i");
       const pi = +el.getAttribute("data-pi");
       const f = el.getAttribute("data-pf");
       el.oninput = () => {
         rows[i].parts[pi][f] = el.value;
+        if (f === "categoryStartTime" || f === "categoryEndTime") {
+          const part = rows[i].parts[pi];
+          part.categoryPlayMinutes = categoryDurationMinutes(part.categoryStartTime, part.categoryEndTime);
+          const duration = document.querySelector('[data-category-duration="' + i + '-' + pi + '"]');
+          if (duration) duration.textContent = categoryDurationText(part);
+        }
         if (f === "label") {
           rows[i].parts[pi].manualPartLabel = true;
         }
@@ -4753,6 +4867,7 @@
       el.oninput = () => {
         rows[i].vods[vi][f] = el.value;
         if (f === "label") {
+          rows[i].vods[vi].manualLabel = !!el.value.trim();
           const preview = document.querySelector('[data-vod-preview="' + i + "-" + vi + '"]');
           if (preview) preview.innerHTML = directivePreviewHtml(el.value, null);
         }
@@ -4916,6 +5031,16 @@
 
   // ---- 저장 ----
   async function doSave() {
+    const invalidRange = rows.some((row) => (row.parts || []).some((part) => {
+      const start = String(part.categoryStartTime || "").trim();
+      const end = String(part.categoryEndTime || "").trim();
+      return (start && categoryTimeSeconds(start) == null) || (end && categoryTimeSeconds(end) == null) ||
+        (start && end && categoryDurationMinutes(start, end) == null);
+    }));
+    if (invalidRange) {
+      toast("방송 경과 시간을 시:분:초로 입력하고, 종료 시간을 시작 이후로 지정해 주세요.");
+      return;
+    }
     if (!canManage) {
       toast("저장 권한이 없습니다. admin_users에 로그인 계정 UID를 추가하세요.");
       return;
@@ -4950,6 +5075,9 @@
             content: (p.content || "").trim(),
             label: (p.label || "").trim(),
             categoryLabel: (p.categoryLabel || "").trim(),
+            categoryStartTime: p.categoryStartTime || "",
+            categoryEndTime: p.categoryEndTime || "",
+            categoryPlayMinutes: categoryDurationMinutes(p.categoryStartTime, p.categoryEndTime),
             categoryId: (p.categoryId || "").trim(),
             categoryType: (p.categoryType || "").trim(),
             categoryPosterImageUrl: (p.categoryPosterImageUrl || "").trim(),
@@ -4969,8 +5097,8 @@
             notes: serializeNotes(p.notes),
             autoCategory: !!p.autoCategory,
           }))
-          .filter((p) => p.content);
-        const cleanGameImages = (r.gameImages || [])
+          .filter((p) => p.content || (r.date >= "2026-10-01" && p.categoryLabel));
+        const cleanGameImages = (r.date >= "2026-10-01" ? partGameImages(cleanParts) : (r.gameImages || []))
           .map((g) => ({
             url: (g.url || g.posterImageUrl || "").trim(),
             label: (g.label || "").trim(),
@@ -4985,6 +5113,7 @@
               url: (v.url || "").trim(),
               label: (v.label || "").trim() || "방송 다시보기",
             };
+            if (v.manualLabel === true && (v.label || "").trim()) item.manualLabel = true;
             const liveKey = String(v.liveKey || v.live_key || "").trim();
             const startedAt = String(v.startedAt || v.started_at || "").trim();
             const endedAt = String(v.endedAt || v.ended_at || "").trim();

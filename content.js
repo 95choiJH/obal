@@ -26,6 +26,22 @@
   const OBAL_IOS_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal_ios.png");
   const OBAL_ANDROID_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal-android.png");
   const NOTIFICATION_GUIDE_IMAGE_URL = api.runtime.getURL("images/notification-guide.png");
+  const PLAY_REPORT_PROFILE_URL = api.runtime.getURL("images/ddahyoni-profile.png");
+  let playReportAvatarPromise;
+
+  function loadPlayReportAvatar() {
+    if (!playReportAvatarPromise) {
+      playReportAvatarPromise = new Promise((resolve) => {
+        const avatar = new Image();
+        avatar.crossOrigin = 'anonymous';
+        const timeout = setTimeout(() => resolve(null), 5000);
+        avatar.onload = () => { clearTimeout(timeout); resolve(avatar); };
+        avatar.onerror = () => { clearTimeout(timeout); resolve(null); };
+        avatar.src = PLAY_REPORT_PROFILE_URL;
+      });
+    }
+    return playReportAvatarPromise;
+  }
   const OBAL_MOBILE_LINK_URL = "https://obaengal.netlify.app/";
   const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
   const GNIMTI_TIER_BACK_IMAGE_URLS = {
@@ -1656,6 +1672,15 @@
     .cs-month-cell .cs-part-tag { font-size: 12px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
     .cs-game-summary { margin: 10px 0 0; }
+    .cs-ranking-export { margin-top: 14px; padding: 14px 16px; border: 1px solid #383e50; border-radius: 16px; background: linear-gradient(135deg,#202535,#181e2a); }
+    .cs-ranking-export summary { cursor: pointer; font-size: 14px; font-weight: 700; color: #dad6eb; padding: 4px 0; }
+    .cs-ranking-export canvas { display: block; width: 100%; max-width: 540px; height: auto; border-radius: 16px; margin: 10px auto; }
+    .cs-ranking-export-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .cs-ranking-export button { border: 1px solid #53516c; border-radius: 10px; background: #343348; color: #e1dcf1; padding: 10px 14px; cursor: pointer; font: inherit; font-size: 12px; transition: background .15s; }
+    .cs-ranking-export button:hover { background: #45415b; }
+    .cs-ranking-export button:focus-visible, .cs-ranking-export summary:focus-visible { outline: 2px solid #b3a6d1; outline-offset: 4px; }
+    .cs-ranking-export button:disabled { opacity: .5; cursor: wait; }
+    .cs-ranking-export-status { font-size: 12px; color: #92969d; }
     .cs-game-stats { position: relative; z-index: 1; min-width: 0; overflow: hidden; cursor: grab; user-select: none; touch-action: pan-y; }
     .cs-game-stats:not(.swiper-initialized) { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.42) rgba(9,10,12,0.62); }
     .cs-game-stats .swiper-wrapper { position: relative; z-index: 1; display: flex; align-items: stretch; width: 100%; height: 100%; box-sizing: content-box; transform: translate3d(0,0,0); transition-property: transform; transition-timing-function: var(--swiper-wrapper-transition-timing-function, initial); }
@@ -2582,8 +2607,31 @@
     return String((game && game.label) || (entry && (entry.titleShort || entry.title)) || "게임").trim();
   }
 
+  function scheduleCategoryItems(entry, includeAllCategories = false) {
+    if (!entry) return [];
+    if (entry.date < "2026-10-01" || !entry.date) {
+      return (includeAllCategories ? (entry.allCategories || entry.gameImages) : entry.gameImages) || [];
+    }
+    const seen = new Set();
+    return (entry.parts || [])
+      .filter((part) => part && !part.hiddenFromFront && !part.speculative)
+      .map((part) => ({
+        label: String(part.categoryLabel || (part.autoCategory ? part.content : "") || "").trim(),
+        categoryId: String(part.categoryId || "").trim(),
+        categoryType: String(part.categoryType || "").trim().toUpperCase(),
+        url: part.categoryPosterImageUrl || "",
+      }))
+      .filter((item) => {
+        if (!item.label) return false;
+        const key = item.categoryType + "|" + (item.categoryId || item.label.toLowerCase());
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
   function gameItems(entry) {
-    return ((entry && entry.gameImages) || [])
+    return scheduleCategoryItems(entry)
       .map((item) => ({ label: gameLabel(entry, item), url: item && item.url ? item.url : "" }))
       .filter((item) => item.label);
   }
@@ -2599,19 +2647,23 @@
     }).join("") + "</div>";
   }
 
-  function monthGameStats(monthBase) {
+  function monthGameStats(monthBase, includeAllCategories = false) {
     const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
     const map = new Map();
     for (let day = 1; day <= days; day++) {
       const entry = entryFor(dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day)));
-      const games = gameItems(entry);
+      const games = scheduleCategoryItems(entry, includeAllCategories)
+        .filter(game => game && (includeAllCategories || String(game.categoryType || "").trim().toUpperCase() === "GAME"))
+        .map(game => ({ label: gameLabel(entry, game) }))
+        .filter(game => game.label);
       if (!games.length) continue;
       const seen = new Set();
       for (const game of games) {
         if (seen.has(game.label)) continue;
         seen.add(game.label);
-        const stat = map.get(game.label) || { label: game.label, count: 0 };
+        const stat = map.get(game.label) || { label: game.label, count: 0, days: [] };
         stat.count += 1;
+        stat.days.push(day);
         map.set(game.label, stat);
       }
     }
@@ -2620,9 +2672,54 @@
     };
   }
 
+  function playReportAvailable(monthBase) {
+    return monthBase.getFullYear() * 100 + monthBase.getMonth() + 1 >= 202610;
+  }
+
+  function playTimeText(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    return '약 ' + Math.floor(total / 3600) + '시간 ' + Math.floor(total % 3600 / 60) + '분';
+  }
+
+  function monthPlayStats(monthBase, includeAllCategories = false) {
+    if (!playReportAvailable(monthBase)) return { stats: [], throughDate: null };
+    const map = new Map();
+    const offset = (value) => {
+      const match = /^(\d+):([0-5]\d)(?::([0-5]\d))?$/.exec(String(value || '').trim());
+      return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] || 0) : null;
+    };
+    const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
+    const today = state.todayKey;
+    let throughDate = null;
+    let incompleteDate = null;
+    for (let day = 1; day <= days; day++) {
+      const key = dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day));
+      if (key > today) break;
+      const entry = entryFor(key);
+      const parts = ((entry && entry.parts) || []).filter(part => part && !part.hiddenFromFront && !part.speculative)
+        .map(part => ({ part, label: String(part.categoryLabel || (part.autoCategory ? part.content : '') || '').trim(), start: offset(part.categoryStartTime), end: offset(part.categoryEndTime) }))
+        .filter(item => item.label);
+      // Validate every category before counting any part of this broadcast day.
+      if (parts.some(item => item.start == null || item.end == null || item.end <= item.start)) {
+        incompleteDate = key;
+        throughDate = dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day - 1));
+        break;
+      }
+      throughDate = key;
+      for (const { part, label, start, end } of parts) {
+        if (!includeAllCategories && String(part.categoryType || '').toUpperCase() !== 'GAME') continue;
+        const stat = map.get(label) || { label, seconds: 0, days: [] };
+        stat.seconds += end - start;
+        if (!stat.days.includes(day)) stat.days.push(day);
+        map.set(label, stat);
+      }
+    }
+    return { stats: Array.from(map.values()).sort((a, b) => b.seconds - a.seconds || a.label.localeCompare(b.label, 'ko')), throughDate, incompleteDate };
+  }
+
   function gameSummaryHtml(monthBase) {
     const summary = monthGameStats(monthBase);
-    if (!summary.stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">이번 달 게임 없음</div></div>';
+    if (!playReportAvailable(monthBase) && !summary.stats.length && !monthGameStats(monthBase, true).stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">이번 달 게임 없음</div></div>';
     let previousCount = null;
     let previousRank = 0;
     const statsHtml = summary.stats.map((item, idx) => {
@@ -2635,8 +2732,121 @@
         '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + rank + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
         '<span class="cs-game-stat-count">' + item.count + '일 방송</span></button></div>';
     }).join("");
-    return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div></div>';
+    return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div>' +
+      (playReportAvailable(monthBase) ? '<details class="cs-ranking-export" id="cs-ranking-export"><summary>' + (monthBase.getMonth() + 1) + '월 플레이 현황</summary><div class="cs-ranking-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite">게임 카테고리 · 기록된 플레이 시간순 · 5위 이내 공동 순위 포함</span></div></details>' : '') + '</div>';
   }
+
+  function rankingImageCanvas(monthBase, avatar = null) {
+    if (!playReportAvailable(monthBase)) throw new Error("2026년 10월부터 이용할 수 있습니다.");
+    const report = monthPlayStats(monthBase);
+    const all = monthPlayStats(monthBase, true).stats;
+    const cutoff = report.stats.length >= 5 ? report.stats[4].seconds : 0;
+    const top = report.stats.filter(item => item.seconds >= cutoff);
+    const topLabels = new Set(top.map(item => item.label));
+    const others = all.filter(item => !topLabels.has(item.label));
+    const basis = report.throughDate ? report.throughDate.replace(/-/g, '.') + '까지 집계' : '집계 가능한 기록 없음';
+    const totalSeconds = all.reduce((sum, item) => sum + item.seconds, 0);
+    const broadcastDays = new Set(all.flatMap(item => item.days)).size;
+    const topStart = 590;
+    const topEnd = topStart + (top.length ? top.length * 160 : 144);
+    const othersStart = topEnd + 80;
+    const footerY = others.length ? othersStart + others.length * 104 + 32 : topEnd + 32;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = footerY + 112;
+    canvas.setAttribute('role', 'img');
+    const describe = item => `${item.label} ${playTimeText(item.seconds)} · ${item.days.length}일 방송`;
+    canvas.setAttribute('aria-label', `따효니 ${monthBase.getMonth() + 1}월 플레이 현황 · ${basis}: ${top.map(describe).join(', ')}. 그 외 방송 카테고리: ${others.map(describe).join(', ')}`);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('이미지 생성 불가');
+    const box = (x, y, w, h, r, fill, stroke) => {
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+      ctx.fillStyle = fill; ctx.fill();
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+    };
+    const text = (value, x, y, size, color, weight = 500, maxWidth) => {
+      ctx.font = `${weight} ${size}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+      ctx.fillStyle = color;
+      if (maxWidth && ctx.measureText(value).width > maxWidth) {
+        const chars = Array.from(value);
+        while (chars.length && ctx.measureText(chars.join('') + '…').width > maxWidth) chars.pop();
+        value = chars.join('') + '…';
+      }
+      ctx.fillText(value, x, y);
+    };
+    const bg = ctx.createLinearGradient(0, 0, 1080, canvas.height);
+    bg.addColorStop(0, '#1b2032'); bg.addColorStop(.5, '#121723'); bg.addColorStop(1, '#10141e');
+    box(0, 0, 1080, canvas.height, 0, bg);
+    box(48, 48, 984, 440, 32, '#1e2434', '#343b50');
+    box(80, 80, 100, 100, 28, '#393e54');
+    if (avatar) {
+      ctx.save(); ctx.beginPath(); ctx.roundRect(80, 80, 100, 100, 28); ctx.clip();
+      const side = Math.min(avatar.naturalWidth, avatar.naturalHeight);
+      ctx.drawImage(avatar, (avatar.naturalWidth - side) / 2, (avatar.naturalHeight - side) / 2, side, side, 80, 80, 100, 100);
+      ctx.restore();
+    } else { text('따', 111, 147, 42, '#d8d4f0', 800); }
+    text('따효니', 204, 120, 30, '#f3f1f8', 800);
+    text('DDAHYONI  /  MONTHLY RECAP', 206, 153, 15, '#a2a8bd', 600);
+    ctx.textAlign = 'right';
+    text(String(monthBase.getFullYear()), 992, 113, 23, '#b9b2d5', 700);
+    text('PLAY REPORT', 992, 143, 14, '#949bb0', 600);
+    ctx.textAlign = 'left';
+    text(`${monthBase.getMonth() + 1}월 플레이 현황`, 80, 262, 56, '#f3f1f8', 800);
+    box(80, 285, 314, 38, 19, '#30364b');
+    text(basis, 98, 311, 18, '#c1c5d6', 600);
+    const metrics = [
+      ['총 플레이 시간', playTimeText(totalSeconds)],
+      ['방송한 날', broadcastDays + '일 방송'],
+      ['플레이 카테고리', all.length + '개'],
+    ];
+    metrics.forEach(([label, value], index) => {
+      const x = 80 + index * 310;
+      text(label, x, 383, 18, '#989fb6');
+      text(value, x, 429, index === 0 ? 29 : 34, '#e5e1f5', 800);
+    });
+    text('가장 오래 플레이한 게임', 56, 548, 27, '#eeedf4', 800);
+    ctx.textAlign = 'right'; text('TOP 5  ·  플레이 시간순', 1024, 548, 17, '#a4aabe'); ctx.textAlign = 'left';
+    let previous = null;
+    let rank = 0;
+    top.forEach((item, index) => {
+      if (item.seconds !== previous) rank = index + 1;
+      previous = item.seconds;
+      const y = topStart + index * 160;
+      const leading = rank === 1;
+      box(48, y, 984, 144, 24, leading ? '#2b2c43' : '#1b2130', leading ? '#55516d' : '#2e3546');
+      box(72, y + 26, 66, 66, 20, leading ? '#c4b9e6' : '#2d3448');
+      text(String(rank).padStart(2, '0'), 85, y + 71, 29, leading ? '#292439' : '#b4bbd0', 800);
+      text(item.label, 162, y + 49, 29, '#f1eff7', 700, 470);
+      text(item.days.length + '일 방송', 164, y + 82, 18, '#a2aabd');
+      ctx.textAlign = 'right';
+      text(playTimeText(item.seconds), 998, y + 61, 28, leading ? '#ded4f6' : '#d6daea', 800);
+      ctx.textAlign = 'left';
+      box(164, y + 108, 834, 5, 3, '#343a4c');
+      box(164, y + 108, 834 * item.seconds / top[0].seconds, 5, 3, leading ? '#b7a6d8' : '#7889aa');
+    });
+    if (!top.length) {
+      box(48, topStart, 984, 128, 24, '#1b2130', '#2e3546');
+      text('기록된 플레이 시간 없음', 80, topStart + 57, 27, '#c1c6d6', 700);
+      text('카테고리 시간을 모두 기록한 날짜까지 현황에 반영됩니다.', 80, topStart + 94, 18, '#949db3');
+    }
+    if (others.length) {
+      text('그 외 방송 카테고리', 56, othersStart - 24, 25, '#dce0ed', 700);
+      others.forEach((item, index) => {
+        const y = othersStart + index * 104;
+        box(48, y, 984, 88, 20, '#191f2c');
+        text(item.label, 80, y + 39, 24, '#e0e3ef', 600, 550);
+        text(item.days.length + '일 방송', 80, y + 67, 16, '#98a2b8');
+        ctx.textAlign = 'right';
+        text(playTimeText(item.seconds), 998, y + 52, 24, '#bfc8de', 700);
+        ctx.textAlign = 'left';
+      });
+    }
+    text('OBAENGAL', 56, footerY + 30, 17, '#b6aecb', 800);
+    text('기록된 시간 기준의 근사치 · 공동 순위 포함', 56, footerY + 62, 16, '#8791a8');
+    ctx.textAlign = 'right'; text(basis, 1024, footerY + 30, 17, '#8791a8'); ctx.textAlign = 'left';
+    return canvas;
+  }
+
 
   function compactCellContentHtml(entry) {
     if (entry.parts && entry.parts.length) {
@@ -3496,6 +3706,55 @@
     const liveStartNoticeToggle = s.getElementById("cs-live-start-notice-toggle");
     const categoryChangeNoticeToggle = s.getElementById("cs-category-change-notice-toggle");
     const gameToggle = s.getElementById("cs-game-toggle");
+    const rankingExport = s.getElementById("cs-ranking-export");
+    if (rankingExport) {
+      const today = parseKey(state.todayKey);
+      const exportMonth = new Date(today.getFullYear(), today.getMonth() + state.monthOffset, 1);
+      let canvasPromise;
+      const preview = () => {
+        if (!canvasPromise) {
+          canvasPromise = loadPlayReportAvatar().then((avatar) => {
+            const canvas = rankingImageCanvas(exportMonth, avatar);
+            rankingExport.querySelector(".cs-ranking-preview").appendChild(canvas);
+            return canvas;
+          }).catch((error) => { canvasPromise = null; throw error; });
+        }
+        return canvasPromise;
+      };
+      const status = rankingExport.querySelector(".cs-ranking-export-status");
+      rankingExport.addEventListener("toggle", () => {
+        if (rankingExport.open) {
+          preview().catch(() => { status.textContent = "이미지를 만들지 못했습니다. 다시 열어 주세요."; });
+        }
+      });
+      rankingExport.querySelectorAll("[data-ranking-action]").forEach(button => {
+        button.addEventListener("click", async () => {
+          const copy = button.dataset.rankingAction === "copy";
+          button.disabled = true;
+          try {
+            if (copy && (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === "undefined")) {
+              status.textContent = "이 브라우저에서는 PNG 저장 후 카페에 첨부해 주세요.";
+              return;
+            }
+            const blobPromise = preview().then(image => new Promise((resolve, reject) => image.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNG 생성 실패")), "image/png")));
+            if (copy) {
+              await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+              status.textContent = "이미지 복사 완료! 카페 글쓰기에서 붙여넣어 주세요.";
+            } else {
+              const url = URL.createObjectURL(await blobPromise);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `오뱅알-${exportMonth.getFullYear()}-${exportMonth.getMonth() + 1}월-플레이-현황.png`;
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
+              status.textContent = "PNG 저장을 요청했습니다. 저장한 이미지를 카페에 첨부해 주세요.";
+            }
+          } catch (_) {
+            status.textContent = copy ? "복사하지 못했습니다. PNG 저장 후 카페에 첨부해 주세요." : "이미지를 저장하지 못했습니다. 다시 시도해 주세요.";
+          } finally { button.disabled = false; }
+        });
+      });
+    }
     const grid = s.getElementById("cs-grid");
     const popover = s.getElementById("cs-popover");
     const feedbackOpen = s.getElementById("cs-feedback-open");
