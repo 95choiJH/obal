@@ -75,6 +75,7 @@
         manualPartLabel: Object.prototype.hasOwnProperty.call(p, "manualPartLabel") ? !!p.manualPartLabel : null,
         hidePartLabel: !!p.hidePartLabel,
         hiddenFromFront: !!p.hiddenFromFront,
+        excludeFromPlayReport: !!p.excludeFromPlayReport,
         displayType: p.displayType || "text",
         profile: (p.profile && p.profile.channelId) || (p.profile && p.profile.channelName) || "",
         collab: !!p.collab,
@@ -2492,10 +2493,11 @@
     const speculativeOn = !!p.speculative;
     const hidePartLabelOn = !!p.hidePartLabel;
     const hiddenFromFrontOn = !!p.hiddenFromFront;
+    const excludeFromPlayReportOn = !!p.excludeFromPlayReport;
     const inputValue = p.displayType === "profile" ? ":s " + p.content : p.displayType === "tag" ? ":t " + p.content : p.content;
     const manualPartLabelOn = !!p.manualPartLabel;
     const partLabelValue = manualPartLabelOn ? (p.label || autoPartLabelFor(rows[i], pi)) : autoPartLabelFor(rows[i], pi);
-    const partHeaderBadges = (speculativeOn ? '<span class="part-header-badge">언급</span>' : '') + (hiddenFromFrontOn ? '<span class="part-header-badge muted">숨김</span>' : '');
+    const partHeaderBadges = (speculativeOn ? '<span class="part-header-badge">언급</span>' : '') + (hiddenFromFrontOn ? '<span class="part-header-badge muted">숨김</span>' : '') + (excludeFromPlayReportOn ? '<span class="part-header-badge muted">집계 제외</span>' : '');
     let html =
       '<div class="part-item">' +
         '<div class="part-item-head"><div class="part-item-title"><span>' + esc(partLabelValue) + '</span>' + partHeaderBadges + '</div><div class="part-tools-row"><div class="part-tool-actions">' + partMoveButtons(i, pi, partCount) + deletePartBtn(i, pi) + '</div></div></div>' +
@@ -2516,6 +2518,7 @@
           '<button class="flag-toggle speculative' + (speculativeOn ? " on" : "") + '" data-speculativetoggle="' + i + '-' + pi + '">언급</button>' +
           '<button class="flag-toggle' + (hidePartLabelOn ? " on" : "") + '" data-hidepartlabeltoggle="' + i + '-' + pi + '">부 숨김</button>' +
           '<button class="flag-toggle' + (hiddenFromFrontOn ? " on" : "") + '" data-hiddenfronttoggle="' + i + '-' + pi + '">프론트숨김</button>' +
+          '<button class="flag-toggle' + (excludeFromPlayReportOn ? " on" : "") + '" data-playreportexcludetoggle="' + i + '-' + pi + '" title="일정에는 표시하고 Top5 플레이 시간 집계에서만 제외합니다">시간집계 제외</button>' +
         '</div>' +
         partCategorySelectorHtml(i, pi, p);
     if (collabOn) {
@@ -4275,6 +4278,7 @@
         manualPartLabel: Object.prototype.hasOwnProperty.call(p, "manualPartLabel") ? !!p.manualPartLabel : null,
         hidePartLabel: !!p.hidePartLabel,
         hiddenFromFront: !!p.hiddenFromFront,
+        excludeFromPlayReport: !!p.excludeFromPlayReport,
         displayType: p.displayType || "text",
         profile: normalizeChannelRef(p.profile),
         collab: !!p.collab,
@@ -4957,6 +4961,14 @@
         markDirty();
       };
     });
+    document.querySelectorAll("[data-playreportexcludetoggle]").forEach((el) => {
+      el.onclick = () => {
+        const [i, pi] = el.getAttribute("data-playreportexcludetoggle").split("-").map(Number);
+        rows[i].parts[pi].excludeFromPlayReport = !rows[i].parts[pi].excludeFromPlayReport;
+        render();
+        markDirty();
+      };
+    });
     document.querySelectorAll("[data-manualpartlabeltoggle]").forEach((el) => {
       el.onclick = () => {
         const [i, pi] = el.getAttribute("data-manualpartlabeltoggle").split("-").map(Number);
@@ -5084,6 +5096,7 @@
             manualPartLabel: !!p.manualPartLabel,
             hidePartLabel: !!p.hidePartLabel,
             hiddenFromFront: !!p.hiddenFromFront,
+            excludeFromPlayReport: !!p.excludeFromPlayReport,
             displayType: p.displayType || "text",
             profile: p.profile || null,
             collab: !!p.collab,

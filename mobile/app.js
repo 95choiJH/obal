@@ -74,6 +74,7 @@
       manualPartLabel: !!part.manualPartLabel,
       hidePartLabel: !!part.hidePartLabel,
       hiddenFromFront: !!part.hiddenFromFront,
+      excludeFromPlayReport: !!part.excludeFromPlayReport,
       displayType: part.displayType || "text",
       profile: normalizeChannelRef(part.profile),
       collab: !!part.collab,

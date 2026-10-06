@@ -1684,18 +1684,18 @@
     .cs-game-stats { position: relative; z-index: 1; min-width: 0; overflow: hidden; cursor: grab; user-select: none; touch-action: pan-y; }
     .cs-game-stats:not(.swiper-initialized) { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.42) rgba(9,10,12,0.62); }
     .cs-game-stats .swiper-wrapper { position: relative; z-index: 1; display: flex; align-items: stretch; width: 100%; height: 100%; box-sizing: content-box; transform: translate3d(0,0,0); transition-property: transform; transition-timing-function: var(--swiper-wrapper-transition-timing-function, initial); }
-    .cs-game-stats .swiper-slide { position: relative; display: block; flex-shrink: 0; width: min(210px, calc(42% - 4px)); min-width: 150px; height: auto; transition-property: transform; }
+    .cs-game-stats .swiper-slide { position: relative; display: block; flex-shrink: 0; width: auto; min-width: 0; max-width: 100%; height: auto; transition-property: transform; }
     .cs-game-stats.swiper-grabbing { cursor: grabbing; }
     .cs-game-stats:not(.swiper-initialized)::-webkit-scrollbar { height: 8px; }
     .cs-game-stats:not(.swiper-initialized)::-webkit-scrollbar-track { border-radius: 999px; background: rgba(255,255,255,0.05); }
     .cs-game-stats:not(.swiper-initialized)::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(0,255,163,0.34); }
-    .cs-game-stat { width: 100%; height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #222327; color: #c9cacd; padding: 7px 8px; cursor: pointer; text-align: left; touch-action: manipulation; }
+    .cs-game-stat { width: auto; max-width: 100%; height: 100%; display: grid; grid-template-columns: minmax(0, max-content) auto; align-items: center; gap: 8px; min-width: 0; border: 1px solid #34363a; border-radius: 8px; background: #222327; color: #c9cacd; padding: 7px 8px; cursor: pointer; text-align: left; touch-action: manipulation; }
     .cs-game-stat:hover, .cs-game-stat.cs-selected { border-color: #00c878; background: rgba(0,200,120,0.14); color: #efeff1; }
     .cs-game-stat.cs-muted { opacity: 0.48; }
     .cs-game-stat.cs-muted:hover { opacity: 0.78; }
     .cs-game-stat-main { min-width: 0; display: flex; align-items: center; gap: 7px; }
     .cs-game-rank { flex: 0 0 auto; color: #00FFA3; font-size: 12px; font-weight: 800; }
-    .cs-game-stat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
+    .cs-game-stat-name { min-width: 0; overflow-wrap: anywhere; white-space: nowrap; font-size: 12px; font-weight: 800; line-height: 1.35; }
     .cs-game-stat-count { color: #9d9ea3; font-size: 12px; font-weight: 800; white-space: nowrap; }
     .cs-game-chip-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; min-width: 0; }
     .cs-game-chip { min-width: 0; max-width: 100%; display: block; border: 1px solid rgba(0,255,163,0.28); border-radius: 7px; background: rgba(0,255,163,0.11); color: #c9cacd; padding: 4px 6px; font-size: 12px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
@@ -2367,7 +2367,8 @@
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 35px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 12px; }
-      .cs-game-stats .swiper-slide { width: min(190px, calc(78vw - 24px)); }
+      .cs-game-stats .swiper-slide { width: auto; min-width: 0; max-width: 100%; }
+      .cs-game-stat-name { white-space: normal; }
       .cs-gnimti-popup { padding: 14px; }
       .cs-gnimti-dialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
       .cs-gnimti-tabs { left: 10px; right: 42px; bottom: 8px; max-width: none; gap: 4px; }
@@ -2688,15 +2689,16 @@
       const match = /^(\d+):([0-5]\d)(?::([0-5]\d))?$/.exec(String(value || '').trim());
       return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] || 0) : null;
     };
-    const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
     const today = state.todayKey;
     let throughDate = null;
     let incompleteDate = null;
+    const days = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 0).getDate();
     for (let day = 1; day <= days; day++) {
       const key = dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day));
       if (key > today) break;
       const entry = entryFor(key);
-      const parts = ((entry && entry.parts) || []).filter(part => part && !part.hiddenFromFront && !part.speculative)
+      const entries = entry ? [entry] : [];
+      const parts = entries.flatMap(entry => (entry && entry.parts) || []).filter(part => part && !part.hiddenFromFront && !part.speculative && !part.excludeFromPlayReport)
         .map(part => ({ part, label: String(part.categoryLabel || (part.autoCategory ? part.content : '') || '').trim(), start: offset(part.categoryStartTime), end: offset(part.categoryEndTime) }))
         .filter(item => item.label);
       // Validate every category before counting any part of this broadcast day.
@@ -2705,7 +2707,7 @@
         throughDate = dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day - 1));
         break;
       }
-      throughDate = key;
+      if (entries.length) throughDate = key;
       for (const { part, label, start, end } of parts) {
         if (!includeAllCategories && String(part.categoryType || '').toUpperCase() !== 'GAME') continue;
         const stat = map.get(label) || { label, seconds: 0, days: [] };
@@ -2718,22 +2720,23 @@
   }
 
   function gameSummaryHtml(monthBase) {
-    const summary = monthGameStats(monthBase);
+    const usesPlayTime = playReportAvailable(monthBase);
+    const summary = usesPlayTime ? monthPlayStats(monthBase) : monthGameStats(monthBase);
     if (!playReportAvailable(monthBase) && !summary.stats.length && !monthGameStats(monthBase, true).stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">이번 달 게임 없음</div></div>';
-    let previousCount = null;
+    let previousRankValue = null;
     let previousRank = 0;
     const statsHtml = summary.stats.map((item, idx) => {
-      const count = Number(item.count || 0);
-      const rank = previousCount === count ? previousRank : idx + 1;
-      previousCount = count;
+      const rankValue = usesPlayTime ? Number(item.seconds || 0) : Number(item.count || 0);
+      const rank = previousRankValue === rankValue ? previousRank : idx + 1;
+      previousRankValue = rankValue;
       previousRank = rank;
       const statClass = item.label === state.selectedGame ? " cs-selected" : (state.selectedGame ? " cs-muted" : "");
       return '<div class="swiper-slide"><button type="button" class="cs-game-stat' + statClass + '" data-game-filter="' + escapeHtml(item.label) + '">' +
         '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + rank + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
-        '<span class="cs-game-stat-count">' + item.count + '일 방송</span></button></div>';
+        '<span class="cs-game-stat-count">' + (usesPlayTime ? playTimeText(item.seconds) : item.count + '일 방송') + '</span></button></div>';
     }).join("");
     return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div>' +
-      (playReportAvailable(monthBase) ? '<details class="cs-ranking-export" id="cs-ranking-export"><summary>' + (monthBase.getMonth() + 1) + '월 플레이 현황</summary><div class="cs-ranking-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite">게임 카테고리 · 기록된 플레이 시간순 · 5위 이내 공동 순위 포함</span></div></details>' : '') + '</div>';
+      (playReportAvailable(monthBase) ? '<details class="cs-ranking-export" id="cs-ranking-export"><summary>' + (monthBase.getMonth() + 1) + '월 플레이 현황</summary><div class="cs-ranking-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite"></span></div></details>' : '') + '</div>';
   }
 
   function rankingImageCanvas(monthBase, avatar = null) {
@@ -2745,7 +2748,6 @@
     const topLabels = new Set(top.map(item => item.label));
     const others = all.filter(item => !topLabels.has(item.label));
     const basis = report.throughDate ? report.throughDate.replace(/-/g, '.') + '까지 집계' : '집계 가능한 기록 없음';
-    const totalSeconds = all.reduce((sum, item) => sum + item.seconds, 0);
     const broadcastDays = new Set(all.flatMap(item => item.days)).size;
     const topStart = 590;
     const topEnd = topStart + (top.length ? top.length * 160 : 144);
@@ -2755,7 +2757,7 @@
     canvas.width = 1080;
     canvas.height = footerY + 112;
     canvas.setAttribute('role', 'img');
-    const describe = item => `${item.label} ${playTimeText(item.seconds)} · ${item.days.length}일 방송`;
+    const describe = item => `${item.label} ${playTimeText(item.seconds)}`;
     canvas.setAttribute('aria-label', `따효니 ${monthBase.getMonth() + 1}월 플레이 현황 · ${basis}: ${top.map(describe).join(', ')}. 그 외 방송 카테고리: ${others.map(describe).join(', ')}`);
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('이미지 생성 불가');
@@ -2765,7 +2767,8 @@
       if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
     };
     const text = (value, x, y, size, color, weight = 500, maxWidth) => {
-      ctx.font = `${weight} ${size}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+      const reportFontSize = Math.max(24, Number(size) || 0);
+      ctx.font = `${weight} ${reportFontSize}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
       ctx.fillStyle = color;
       if (maxWidth && ctx.measureText(value).width > maxWidth) {
         const chars = Array.from(value);
@@ -2795,14 +2798,13 @@
     box(80, 285, 314, 38, 19, '#30364b');
     text(basis, 98, 311, 18, '#c1c5d6', 600);
     const metrics = [
-      ['총 플레이 시간', playTimeText(totalSeconds)],
       ['방송한 날', broadcastDays + '일 방송'],
       ['플레이 카테고리', all.length + '개'],
     ];
     metrics.forEach(([label, value], index) => {
-      const x = 80 + index * 310;
+      const x = 80 + index * 460;
       text(label, x, 383, 18, '#989fb6');
-      text(value, x, 429, index === 0 ? 29 : 34, '#e5e1f5', 800);
+      text(value, x, 429, 34, '#e5e1f5', 800);
     });
     text('가장 오래 플레이한 게임', 56, 548, 27, '#eeedf4', 800);
     ctx.textAlign = 'right'; text('TOP 5  ·  플레이 시간순', 1024, 548, 17, '#a4aabe'); ctx.textAlign = 'left';
@@ -2841,9 +2843,7 @@
         ctx.textAlign = 'left';
       });
     }
-    text('OBAENGAL', 56, footerY + 30, 17, '#b6aecb', 800);
-    text('기록된 시간 기준의 근사치 · 공동 순위 포함', 56, footerY + 62, 16, '#8791a8');
-    ctx.textAlign = 'right'; text(basis, 1024, footerY + 30, 17, '#8791a8'); ctx.textAlign = 'left';
+    text('오뱅알', 56, footerY + 30, 17, '#b6aecb', 800);
     return canvas;
   }
 
@@ -2966,7 +2966,7 @@
     const lolLogMode = state.scheduleViewMode === "lolMatchLogs";
     const ratingMode = state.scheduleViewMode === "gameRatings";
     const specialMode = lolLogMode || ratingMode;
-    const gameSummary = !specialMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
+    const gameSummary = !specialMode && state.monthExpanded ? gameSummaryHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"

@@ -479,6 +479,7 @@ function normalizePart(p) {
       manualPartLabel: !!p.manualPartLabel,
       hidePartLabel: !!p.hidePartLabel,
       hiddenFromFront: !!p.hiddenFromFront,
+      excludeFromPlayReport: !!p.excludeFromPlayReport,
       displayType: p.displayType || "text",
       profile: normalizeChannelRef(p.profile),
       collab: !!p.collab,

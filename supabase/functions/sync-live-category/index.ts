@@ -167,6 +167,7 @@ function normalizePart(item: unknown) {
     manualPartLabel: !!source.manualPartLabel,
     hidePartLabel: !!source.hidePartLabel,
     hiddenFromFront: !!source.hiddenFromFront,
+    excludeFromPlayReport: !!source.excludeFromPlayReport,
     displayType: String(source.displayType || "text"),
     profile: source.profile || null,
     collab: !!source.collab,
