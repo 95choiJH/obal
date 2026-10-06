@@ -162,10 +162,12 @@ test('live transition passes through page request, background handler and toast 
   const h = harness(old);
   const shown = [];
   const messages = [];
+  class ContentClock extends Date { static now() { return now; } }
   const ctx = vm.createContext({
-    location: { pathname: '/video/12345' }, Date, document: { visibilityState: 'visible' },
+    location: { pathname: '/video/12345' }, Date: ContentClock, document: { visibilityState: 'visible' },
     console: { info() {}, warn() {} },
     targetChannelId: () => 'target',
+    LIVE_START_HIDDEN_TOAST_MAX_AGE: 3 * 60 * 1000,
     state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: true },
     sendRuntimeMessage: msg => { messages.push(msg); return h.dispatch(msg); },
     showLiveStartToast: (...args) => shown.push(args),
@@ -309,4 +311,24 @@ test('stale category changes only refresh the baseline without notifying', async
   const result = await h.check(live, { isWatchingVod: true }, null);
   assert.equal(result.notify, false);
   assert.equal(h.state().categoryKey, 'new game');
+});
+
+test('a category notification delayed in a frozen hidden tab is discarded on resume', () => {
+  const content = fs.readFileSync(path.join(__dirname, '../content.js'), 'utf8');
+  const shown = [];
+  const ctx = vm.createContext({
+    Date,
+    location: { pathname: '/video/12345' },
+    document: { visibilityState: 'visible' },
+    targetChannelId: () => 'target',
+    getChannelIdFromUrl: () => null,
+    state: { liveStartNoticeEnabled: true, categoryChangeNoticeEnabled: true, targetLiveNotificationsEnabled: true, targetLiveNotificationsPublicEnabled: true },
+    showLiveStartToast: (...args) => shown.push(args),
+    LIVE_START_HIDDEN_TOAST_MAX_AGE: 3 * 60 * 1000,
+  });
+  vm.runInContext(content.slice(content.indexOf('  function targetLiveNotificationsAvailable('), content.indexOf('  async function checkTargetLiveStartToast(')), ctx);
+  ctx.displayTargetLiveNotification({ notify: true, notificationType: 'categoryChange', categoryName: 'Old game', detectedAt: Date.now() - 4 * 60 * 1000 });
+  assert.equal(shown.length, 0);
+  ctx.displayTargetLiveNotification({ notify: true, notificationType: 'categoryChange', categoryName: 'New game', detectedAt: Date.now() - 30 * 1000 });
+  assert.equal(shown.length, 1);
 });

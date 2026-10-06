@@ -449,6 +449,8 @@
 
   function displayTargetLiveNotification(result) {
     if (!getLiveNotificationContext().eligible) return;
+    const detectedAt = Number(result && result.detectedAt);
+    if (Number.isFinite(detectedAt) && Date.now() - detectedAt > LIVE_START_HIDDEN_TOAST_MAX_AGE) return;
     if (result && result.notify && (result.notificationType === "categoryChange" ? effectiveCategoryChangeNoticeEnabled() : effectiveLiveStartNoticeEnabled())) {
       const suffix = result.notificationType === "categoryChange" && result.categoryName
         ? "님이 카테고리를 변경하였습니다. " + result.categoryName

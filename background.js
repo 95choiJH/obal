@@ -243,6 +243,7 @@ async function checkTargetLiveStart(currentChannelId, options, dependencies = {
   return {
     ok: true,
     notify,
+    detectedAt: now,
     notificationType,
     liveKey,
     live: true,
