@@ -953,7 +953,27 @@ async function resolveDirectiveProfiles(channels) {
     }
     const overrideId = String(GNIMTI_PROFILE_OVERRIDES[key] || "").trim();
     if (/^[0-9a-f]{32}$/i.test(overrideId)) {
-      const overridden = { ...(cached || {}), channelId: overrideId, channelName: (cached && cached.channelName) || key, channelImageUrl: (cached && cached.channelImageUrl) || "" };
+      let overridden = { ...(cached || {}), channelId: overrideId, channelName: (cached && cached.channelName) || key, channelImageUrl: (cached && cached.channelImageUrl) || "" };
+      if (!overridden.channelImageUrl) {
+        try {
+          const profileRes = await fetch("https://api.chzzk.naver.com/service/v1/channels/" + encodeURIComponent(overrideId), {
+            headers: { Accept: "application/json" },
+          });
+          if (profileRes.ok) {
+            const profileJson = await profileRes.json();
+            const resolved = normalizeChannelRef(profileJson && profileJson.content);
+            if (resolved) {
+              overridden = {
+                ...overridden,
+                ...resolved,
+                channelId: overrideId,
+                channelName: resolved.channelName || overridden.channelName || key,
+              };
+            }
+          }
+        } catch (e) {
+        }
+      }
       profiles[key] = overridden;
       profileCache[key] = overridden;
       cacheChanged = true;

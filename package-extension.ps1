@@ -22,23 +22,20 @@ $allowedIconFiles = @(
   "icons\icon48.png",
   "icons\icon128.png",
   "icons\on_break.png",
-  "icons\on_break-white.png",
   "icons\undetermined.png",
   "icons\naver_cafe.png",
   "icons\video_donation.png",
   "icons\gamepad-icon.svg",
   "icons\calendar-icon.svg",
-  "images\gnimti-logo.png",
-  "images\gnimti-logo2.png",
-  "images\obal_ios.png",
-  "images\obal-android.png",
   "images\notification-guide.png",
-  "images\ddahyoni-profile.png",
-  "images\gnimti-back.png"
+  "images\ddahyoni-profile.png"
 )
-$allowedGnimtiFiles = Get-ChildItem -LiteralPath (Join-Path $root "images\gnimti") -Recurse -File -Filter "*.png" | ForEach-Object {
-  $_.FullName.Substring($root.Length + 1)
-}
+$gnimtiPath = Join-Path $root "images\gnimti"
+$allowedGnimtiFiles = if (Test-Path -LiteralPath $gnimtiPath) {
+  Get-ChildItem -LiteralPath $gnimtiPath -Recurse -File -Filter "*.png" | ForEach-Object {
+    $_.FullName.Substring($root.Length + 1)
+  }
+} else { @() }
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage | Out-Null

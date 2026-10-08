@@ -1,4 +1,4 @@
-// content.js — 치지직 페이지에 일정 그리드를 주입
+﻿// content.js — 치지직 페이지에 일정 그리드를 주입
 // 확정 스펙:
 //  - 인라인 5일 그리드 (오늘이 첫 칸, D+4까지) / 앵커 실패 시 플로팅 폴백
 //  - 화살표 5일 페이지 이동 (데이터 유무로 활성/비활성)
@@ -13,13 +13,14 @@
   const api = typeof browser !== "undefined" ? browser : chrome;
   const EXTENSION_VERSION = (api.runtime.getManifest && api.runtime.getManifest().version) || "0";
   const BREAK_ICON_URL = api.runtime.getURL("icons/on_break.png");
-  const BREAK_LIGHT_ICON_URL = api.runtime.getURL("icons/on_break-white.png");
+  const BREAK_LIGHT_ICON_URL = BREAK_ICON_URL;
   const UNDETERMINED_ICON_URL = api.runtime.getURL("icons/undetermined.png");
   const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined.png");
   const NAVER_CAFE_ICON_URL = api.runtime.getURL("icons/naver_cafe.png");
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
   const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
   const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
+  const LOL_MODE_TABS_ENABLED = false;
   const GNIMTI_POPUP_IMAGE_URL = api.runtime.getURL("images/gnimti-back.png");
   const GNIMTI_LOGO_IMAGE_URL = api.runtime.getURL("images/gnimti-logo.png");
   const GNIMTI_ICON_IMAGE_URL = api.runtime.getURL("images/gnimti-logo2.png");
@@ -27,7 +28,9 @@
   const OBAL_ANDROID_GUIDE_IMAGE_URL = api.runtime.getURL("images/obal-android.png");
   const NOTIFICATION_GUIDE_IMAGE_URL = api.runtime.getURL("images/notification-guide.png");
   const PLAY_REPORT_PROFILE_URL = api.runtime.getURL("images/ddahyoni-profile.png");
+  const OBAENGAL_ICON_URL = api.runtime.getURL("icons/icon128.png");
   let playReportAvatarPromise;
+  let playReportBrandIconPromise;
 
   function loadPlayReportAvatar() {
     if (!playReportAvatarPromise) {
@@ -41,6 +44,17 @@
       });
     }
     return playReportAvatarPromise;
+  }
+  function loadPlayReportBrandIcon() {
+    if (!playReportBrandIconPromise) {
+      playReportBrandIconPromise = new Promise((resolve) => {
+        const icon = new Image();
+        icon.onload = () => resolve(icon);
+        icon.onerror = () => resolve(null);
+        icon.src = OBAENGAL_ICON_URL;
+      });
+    }
+    return playReportBrandIconPromise;
   }
   const OBAL_MOBILE_LINK_URL = "https://obaengal.netlify.app/";
   const GNIMTI_TIERLIST_IMAGE_URL = api.runtime.getURL("images/gnimti/tierlist.png");
@@ -1492,11 +1506,11 @@
     .cs-break-icon-pill { width: 16px; height: 16px; }
     .cs-cell-time .cs-break-icon { width: max(46px, 60%); height: 100%; margin: 0 auto; }
     .cs-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
-    .cs-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
+    .cs-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 4; text-align: center; }
     .cs-cell.cs-cell-off .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-cell.cs-cell-off .cs-cell-time { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; }
     .cs-cell.cs-cell-off .cs-cell-time .cs-break-icon { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
-    .cs-cell.cs-cell-off .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+    .cs-cell.cs-cell-off .cs-cell-title { position: absolute; left: 0; right: 0; top: 62px; z-index: 4; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
     .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time { position: absolute; inset: 0; overflow: hidden; }
     .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.1); transform-origin: bottom center; }
     .cs-undetermined-icon { display: block; object-fit: contain; }
@@ -1507,7 +1521,7 @@
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; right: 22%; bottom: 7%; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-position: center bottom; transform: scale(0.95); transform-origin: bottom right; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; right: 17%; bottom: -3%; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-position: center bottom; transform: scale(0.70); transform-origin: bottom right; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
 
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
@@ -1659,7 +1673,7 @@
     .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
     .cs-month-weekday { color: #6b6d73; font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0 4px; }
     .cs-month-blank { min-height: 88px; border-radius: 8px; background: rgba(255,255,255,0.02); }
-    .cs-month-grid .cs-month-cell { min-height: 130px; padding: 9px 8px 35px; text-align: left; }
+    .cs-month-grid .cs-month-cell { --cs-cell-height: 130px; padding: 9px 8px 35px; text-align: left; }
     .cs-month-grid .cs-month-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
     .cs-month-cell .cs-cell-date { font-size: 12px; font-weight: 700; }
     .cs-month-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 7px; z-index: 2; text-align: center; }
@@ -1669,7 +1683,7 @@
     .cs-month-cell.cs-cell-off .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-month-cell.cs-cell-off .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
     .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.3); transform-origin: bottom center; }
-    .cs-month-cell.cs-cell-off .cs-cell-title { top: 24px; }
+    .cs-month-cell.cs-cell-off .cs-cell-title { top: 62px; }
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 12px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
@@ -1706,8 +1720,8 @@
     .cs-month-cell .cs-game-chip-list { gap: 3px; margin-top: 5px; flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
     .cs-month-cell .cs-game-chip { flex: 0 0 auto; width: 100%; max-width: 100%; padding: 3px 4px; font-size: 12px; border-radius: 6px; }
     .cs-game-empty { color: #6b6d73; font-size: 13px; font-weight: 700; margin-top: 10px; text-align: center; }
-    .cs-cell { position: relative; background: #232427; border: 1px solid transparent;
-      border-radius: 8px; padding: 16px; padding-bottom: 35px; text-align: center; min-height: 183px; }
+    .cs-cell { --cs-cell-height: 183px; position: relative; background: #232427; border: 1px solid transparent;
+      border-radius: 8px; padding: 16px; padding-bottom: 35px; text-align: center; min-height: var(--cs-cell-height); }
     .cs-cell-center { display: flex; flex-direction: column; gap: 16px; }
     .cs-cell-center .cs-cell-date,
     .cs-cell-center .cs-cell-date-row { flex: 0 0 auto; }
@@ -2700,16 +2714,24 @@
       if (key > today) break;
       const entry = entryFor(key);
       const entries = entry ? [entry] : [];
-      const parts = entries.flatMap(entry => (entry && entry.parts) || []).filter(part => part && !part.hiddenFromFront && !part.speculative && !part.excludeFromPlayReport)
+      const reportParts = entries.flatMap(entry => (entry && entry.parts) || []).filter(part => part && !part.hiddenFromFront && !part.speculative);
+      const completedWithoutPlay = key < today && !!entry && (
+        entry.status === 'off' ||
+        (reportParts.length > 0 && reportParts.every(part => part.excludeFromPlayReport))
+      );
+      if (completedWithoutPlay) {
+        throughDate = key;
+        continue;
+      }
+      const parts = reportParts.filter(part => !part.excludeFromPlayReport)
         .map(part => ({ part, label: String(part.categoryLabel || (part.autoCategory ? part.content : '') || '').trim(), start: offset(part.categoryStartTime), end: offset(part.categoryEndTime) }))
         .filter(item => item.label);
       // Validate every category before counting any part of this broadcast day.
       if (parts.some(item => item.start == null || item.end == null || item.end <= item.start)) {
         incompleteDate = key;
-        throughDate = dateKey(new Date(monthBase.getFullYear(), monthBase.getMonth(), day - 1));
         break;
       }
-      if (entries.length) throughDate = key;
+      if (parts.length) throughDate = key;
       for (const { part, label, start, end } of parts) {
         if (!includeAllCategories && String(part.categoryType || '').toUpperCase() !== 'GAME') continue;
         const stat = map.get(label) || { label, seconds: 0, days: [] };
@@ -2737,11 +2759,15 @@
         '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + rank + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
         '<span class="cs-game-stat-count">' + (usesPlayTime ? playTimeText(item.seconds) : item.count + '일 방송') + '</span></button></div>';
     }).join("");
-    return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div>' +
-      (playReportAvailable(monthBase) ? '<details class="cs-ranking-export" id="cs-ranking-export"><summary>' + (monthBase.getMonth() + 1) + '월 플레이 현황</summary><div class="cs-ranking-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite"></span></div></details>' : '') + '</div>';
+    return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div></div>';
   }
 
-  function rankingImageCanvas(monthBase, avatar = null) {
+  function playReportHtml(monthBase) {
+    if (!playReportAvailable(monthBase)) return '';
+    return '<details class="cs-ranking-export" id="cs-ranking-export"><summary>' + (monthBase.getMonth() + 1) + '월 플레이 현황</summary><div class="cs-ranking-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite"></span></div></details>';
+  }
+
+  function rankingImageCanvas(monthBase, avatar = null, brandIcon = null) {
     if (!playReportAvailable(monthBase)) throw new Error("2026년 10월부터 이용할 수 있습니다.");
     const report = monthPlayStats(monthBase);
     const all = monthPlayStats(monthBase, true).stats;
@@ -2749,15 +2775,19 @@
     const top = report.stats.filter(item => item.seconds >= cutoff);
     const topLabels = new Set(top.map(item => item.label));
     const others = all.filter(item => !topLabels.has(item.label));
-    const basis = report.throughDate ? report.throughDate.replace(/-/g, '.') + '까지 집계' : '집계 가능한 기록 없음';
+    const basis = report.throughDate
+      ? `${String(monthBase.getMonth() + 1).padStart(2, '0')}.01 ~ ${report.throughDate.slice(5).replace('-', '.')}`
+      : '집계 가능한 기록 없음';
     const broadcastDays = new Set(all.flatMap(item => item.days)).size;
     const topStart = 590;
     const topEnd = topStart + (top.length ? top.length * 160 : 144);
     const othersStart = topEnd + 80;
-    const footerY = others.length ? othersStart + others.length * 104 + 32 : topEnd + 32;
+    const othersRowStep = 120;
+    const footerY = others.length ? othersStart + others.length * othersRowStep + 32 : topEnd + 32;
+    const brandHeaderHeight = 72;
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
-    canvas.height = footerY + 112;
+    canvas.height = footerY + 16 + brandHeaderHeight;
     canvas.setAttribute('role', 'img');
     const describe = item => `${item.label} ${playTimeText(item.seconds)}`;
     canvas.setAttribute('aria-label', `따효니 ${monthBase.getMonth() + 1}월 플레이 현황 · ${basis}: ${top.map(describe).join(', ')}. 그 외 방송 카테고리: ${others.map(describe).join(', ')}`);
@@ -2782,6 +2812,14 @@
     const bg = ctx.createLinearGradient(0, 0, 1080, canvas.height);
     bg.addColorStop(0, '#1b2032'); bg.addColorStop(.5, '#121723'); bg.addColorStop(1, '#10141e');
     box(0, 0, 1080, canvas.height, 0, bg);
+    if (brandIcon) ctx.drawImage(brandIcon, 56, 32, 56, 56);
+    text('오뱅알', 128, 77, 32, '#d7d1e7', 800);
+    ctx.textAlign = 'right';
+    text(String(monthBase.getFullYear()), 1024, 57, 23, '#b9b2d5', 700);
+    text('PLAY REPORT', 1024, 87, 14, '#949bb0', 600);
+    ctx.textAlign = 'left';
+    ctx.save();
+    ctx.translate(0, brandHeaderHeight);
     box(48, 48, 984, 440, 32, '#1e2434', '#343b50');
     box(80, 80, 100, 100, 28, '#393e54');
     if (avatar) {
@@ -2792,13 +2830,14 @@
     } else { text('따', 111, 147, 42, '#d8d4f0', 800); }
     text('따효니', 204, 120, 30, '#f3f1f8', 800);
     text('DDAHYONI  /  MONTHLY RECAP', 206, 153, 15, '#a2a8bd', 600);
-    ctx.textAlign = 'right';
-    text(String(monthBase.getFullYear()), 992, 113, 23, '#b9b2d5', 700);
-    text('PLAY REPORT', 992, 143, 14, '#949bb0', 600);
+    ctx.font = '600 24px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    const basisBadgeWidth = Math.ceil(ctx.measureText(basis).width) + 48;
+    const basisBadgeX = 992 - basisBadgeWidth;
+    box(basisBadgeX, 80, basisBadgeWidth, 52, 26, '#30364b');
+    ctx.textAlign = 'center';
+    text(basis, basisBadgeX + basisBadgeWidth / 2, 115, 18, '#c1c5d6', 600);
     ctx.textAlign = 'left';
     text(`${monthBase.getMonth() + 1}월 플레이 현황`, 80, 262, 56, '#f3f1f8', 800);
-    box(80, 285, 314, 38, 19, '#30364b');
-    text(basis, 98, 311, 18, '#c1c5d6', 600);
     const metrics = [
       ['방송한 날', broadcastDays + '일 방송'],
       ['플레이 카테고리', all.length + '개'],
@@ -2808,8 +2847,7 @@
       text(label, x, 383, 18, '#989fb6');
       text(value, x, 429, 34, '#e5e1f5', 800);
     });
-    text('가장 오래 플레이한 게임', 56, 548, 27, '#eeedf4', 800);
-    ctx.textAlign = 'right'; text('TOP 5  ·  플레이 시간순', 1024, 548, 17, '#a4aabe'); ctx.textAlign = 'left';
+    ctx.textAlign = 'right'; text('플레이 시간순', 1024, 548, 17, '#a4aabe'); ctx.textAlign = 'left';
     let previous = null;
     let rank = 0;
     top.forEach((item, index) => {
@@ -2821,12 +2859,12 @@
       box(72, y + 26, 66, 66, 20, leading ? '#c4b9e6' : '#2d3448');
       text(String(rank).padStart(2, '0'), 85, y + 71, 29, leading ? '#292439' : '#b4bbd0', 800);
       text(item.label, 162, y + 49, 29, '#f1eff7', 700, 470);
-      text(item.days.length + '일 방송', 164, y + 82, 18, '#a2aabd');
+      text(item.days.length + '일 방송', 164, y + 90, 18, '#a2aabd');
       ctx.textAlign = 'right';
       text(playTimeText(item.seconds), 998, y + 61, 28, leading ? '#ded4f6' : '#d6daea', 800);
       ctx.textAlign = 'left';
-      box(164, y + 108, 834, 5, 3, '#343a4c');
-      box(164, y + 108, 834 * item.seconds / top[0].seconds, 5, 3, leading ? '#b7a6d8' : '#7889aa');
+      box(164, y + 116, 834, 5, 3, '#343a4c');
+      box(164, y + 116, 834 * item.seconds / top[0].seconds, 5, 3, leading ? '#b7a6d8' : '#7889aa');
     });
     if (!top.length) {
       box(48, topStart, 984, 128, 24, '#1b2130', '#2e3546');
@@ -2834,18 +2872,18 @@
       text('카테고리 시간을 모두 기록한 날짜까지 현황에 반영됩니다.', 80, topStart + 94, 18, '#949db3');
     }
     if (others.length) {
-      text('그 외 방송 카테고리', 56, othersStart - 24, 25, '#dce0ed', 700);
+      text('그 외 방송', 56, othersStart - 24, 25, '#dce0ed', 700);
       others.forEach((item, index) => {
-        const y = othersStart + index * 104;
-        box(48, y, 984, 88, 20, '#191f2c');
-        text(item.label, 80, y + 39, 24, '#e0e3ef', 600, 550);
-        text(item.days.length + '일 방송', 80, y + 67, 16, '#98a2b8');
+        const y = othersStart + index * othersRowStep;
+        box(48, y, 984, 104, 20, '#191f2c');
+        text(item.label, 80, y + 42, 24, '#e0e3ef', 600, 550);
+        text(item.days.length + '일 방송', 80, y + 80, 16, '#98a2b8');
         ctx.textAlign = 'right';
-        text(playTimeText(item.seconds), 998, y + 52, 24, '#bfc8de', 700);
+        text(playTimeText(item.seconds), 998, y + 60, 24, '#bfc8de', 700);
         ctx.textAlign = 'left';
       });
     }
-    text('오뱅알', 56, footerY + 30, 17, '#b6aecb', 800);
+    ctx.restore();
     return canvas;
   }
 
@@ -2897,8 +2935,7 @@
       body = gameChipsHtml(entry, compact);
     } else if (!entry) {
       body = compact ? "" : '<div class="cs-cell-center-body">' +
-        '<div class="cs-cell-time"><img class="cs-undetermined-icon cs-undetermined-icon-dark" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /><img class="cs-undetermined-icon cs-undetermined-icon-light" src="' + UNDETERMINED_LIGHT_ICON_URL + '" alt="\uBBF8\uC815" /></div>' +
-        '<div class="cs-cell-title">\uBBF8\uC815</div></div>';
+        '<div class="cs-cell-time"><img class="cs-undetermined-icon cs-undetermined-icon-dark" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /><img class="cs-undetermined-icon cs-undetermined-icon-light" src="' + UNDETERMINED_LIGHT_ICON_URL + '" alt="\uBBF8\uC815" /></div></div>';
     } else if (isOff) {
       const dot = (notes.length || hasPartNotes) ? '<span class="cs-memo-dot"></span>' : "";
       body = dot + '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon cs-break-icon-dark" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /><img class="cs-break-icon cs-break-icon-light" src="' + BREAK_LIGHT_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>';
@@ -2968,7 +3005,8 @@
     const lolLogMode = state.scheduleViewMode === "lolMatchLogs";
     const ratingMode = state.scheduleViewMode === "gameRatings";
     const specialMode = lolLogMode || ratingMode;
-    const gameSummary = !specialMode && state.monthExpanded ? gameSummaryHtml(monthBase) : "";
+    const gameRanking = !specialMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
+    const playReport = !specialMode && state.monthExpanded ? playReportHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
@@ -2984,7 +3022,7 @@
     const scheduleToolbarHtml =
       '<div class="cs-schedule-toolbar"><div class="cs-toolbar-layout">' +
       '<span class="cs-toolbar-balance" aria-hidden="true"></span><div class="cs-mode-switch-slot">' +
-      (state.extensionCollapsed ? "" : lolLogToggleHtml(lolLogMode)) +
+      (state.extensionCollapsed || !LOL_MODE_TABS_ENABLED ? "" : lolLogToggleHtml(lolLogMode)) +
       '</div><div class="cs-schedule-tools">' +
       (state.extensionCollapsed || specialMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
       (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
@@ -3020,7 +3058,7 @@
       "</div>") +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
       (ratingMode ? gameRatingsHtml() : lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
-      gameSummary +
+      gameRanking + playReport +
       '<div class="cs-popover" id="cs-popover">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
       '<div id="cs-pop-body"></div>' +
@@ -3715,8 +3753,8 @@
       let canvasPromise;
       const preview = () => {
         if (!canvasPromise) {
-          canvasPromise = loadPlayReportAvatar().then((avatar) => {
-            const canvas = rankingImageCanvas(exportMonth, avatar);
+          canvasPromise = Promise.all([loadPlayReportAvatar(), loadPlayReportBrandIcon()]).then(([avatar, brandIcon]) => {
+            const canvas = rankingImageCanvas(exportMonth, avatar, brandIcon);
             rankingExport.querySelector(".cs-ranking-preview").appendChild(canvas);
             return canvas;
           }).catch((error) => { canvasPromise = null; throw error; });

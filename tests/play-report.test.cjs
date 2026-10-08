@@ -11,9 +11,9 @@ test('ranking buttons fit their content without ellipsizing game names', () => {
   assert.doesNotMatch(source, /\.cs-game-stat-name \{[^}]*text-overflow: ellipsis/);
 });
 
-test('monthly view always renders play status in both full and compact modes', () => {
-  assert.match(source, /const gameSummary = !specialMode && state\.monthExpanded \? gameSummaryHtml\(monthBase\) : "";/);
-  assert.doesNotMatch(source, /state\.monthExpanded && state\.gameOnly \? gameSummaryHtml/);
+test('monthly ranking is compact-only while play report is always available', () => {
+  assert.match(source, /const gameRanking = !specialMode && state\.monthExpanded && state\.gameOnly \? gameSummaryHtml\(monthBase\) : "";/);
+  assert.match(source, /const playReport = !specialMode && state\.monthExpanded \? playReportHtml\(monthBase\) : "";/);
 });
 
 test('play status image uses at least 24 canvas pixels for a 12px scaled preview', () => {
@@ -57,8 +57,8 @@ test('play report totals all intervals and ranks by time instead of broadcast da
   assert.ok(text.includes('약 0시간 20분'));
   assert.ok(text.includes('2일 방송'));
   assert.ok(!text.includes('플레이 시간'));
-  assert.ok(text.includes('2026.10.02까지 집계'));
-  assert.equal(text.filter(value => value === '2026.10.02까지 집계').length, 1);
+  assert.ok(text.includes('10.01 ~ 10.02'));
+  assert.equal(text.filter(value => value === '10.01 ~ 10.02').length, 1);
   assert.ok(!text.includes('총 플레이 시간'));
   assert.ok(text.includes('오뱅알'));
   assert.ok(!text.includes('OBAENGAL'));
@@ -81,20 +81,20 @@ test('one incomplete category excludes that entire day and every later day for a
   entries['2026-10-04'] = { parts: [part('B', '00:00:00', '10:00:00')] };
   for (const all of [false, true]) {
     const report = context.monthPlayStats(new Date(2026, 9, 1), all);
-    assert.equal(report.throughDate, '2026-10-02');
+    assert.equal(report.throughDate, '2026-10-01');
     assert.equal(report.stats.length, 1);
     assert.equal(report.stats[0].seconds, 3600);
     assert.equal(report.stats[0].days.length, 1);
   }
   context.rankingImageCanvas(new Date(2026, 9, 1));
-  assert.ok(text.includes('2026.10.02까지 집계'));
+  assert.ok(text.includes('10.01 ~ 10.01'));
 });
 
 test('first-day missing times produce no totals and future entries are excluded', () => {
   const { context, entries } = harness();
   entries['2026-10-01'] = { parts: [part('A', '02:00:00', '01:00:00')] };
   const report = context.monthPlayStats(new Date(2026, 9, 1));
-  assert.equal(report.throughDate, '2026-09-30');
+  assert.equal(report.throughDate, null);
   assert.equal(report.stats.length, 0);
   delete entries['2026-10-01'];
   entries['2026-10-06'] = { parts: [part('Future', '00:00:00', '01:00:00')] };
@@ -150,7 +150,25 @@ test('report basis is the latest admin schedule date with recorded play time', (
   const report = context.monthPlayStats(new Date(2026, 9, 1));
   assert.equal(report.throughDate, '2026-10-05');
   context.rankingImageCanvas(new Date(2026, 9, 1));
-  assert.ok(text.includes('2026.10.05까지 집계'));
+  assert.ok(text.includes('10.01 ~ 10.05'));
+});
+
+test('empty current-day schedules do not advance the report basis', () => {
+  const { context, entries } = harness();
+  entries['2026-10-03'] = { parts: [part('Played', '00:00:00', '01:00:00')] };
+  entries['2026-10-05'] = { parts: [] };
+  assert.equal(context.monthPlayStats(new Date(2026, 9, 1)).throughDate, '2026-10-03');
+});
+
+test('past off days and excluded-only days count as completed report dates', () => {
+  const { context, entries } = harness();
+  entries['2026-10-01'] = { parts: [part('Played', '00:00:00', '01:00:00')] };
+  entries['2026-10-03'] = { status: 'off', parts: [] };
+  entries['2026-10-04'] = { parts: [part('Excluded', '', '', { excludeFromPlayReport: true })] };
+  const report = context.monthPlayStats(new Date(2026, 9, 1));
+  assert.equal(report.throughDate, '2026-10-04');
+  assert.equal(report.incompleteDate, null);
+  assert.equal(report.stats[0].seconds, 3600);
 });
 
 test('categories excluded from the play report remain visible but do not affect totals or completeness', () => {
