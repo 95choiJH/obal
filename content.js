@@ -1671,10 +1671,11 @@
 
     .cs-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
     .cs-month-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-    .cs-month-weekday { color: #6b6d73; font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0 4px; }
+    .cs-month-weekday { color: #6b6d73; font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0 4px; }''
     .cs-month-blank { min-height: 88px; border-radius: 8px; background: rgba(255,255,255,0.02); }
     .cs-month-grid .cs-month-cell { --cs-cell-height: 130px; padding: 9px 8px 35px; text-align: left; }
     .cs-month-grid .cs-month-cell.cs-cell-off { position: relative; gap: 0; padding: 0; overflow: hidden; }
+    .cs-month-grid .cs-month-cell.cs-cell-off::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(to top, #77621ceb 0%, #4f452878 20%, #2c292000 46%); }
     .cs-month-cell .cs-cell-date { font-size: 12px; font-weight: 700; }
     .cs-month-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 7px; z-index: 2; text-align: center; }
     .cs-month-cell .cs-cell-time { margin-top: 7px; font-size: 12px; }
@@ -1682,8 +1683,8 @@
     .cs-month-cell .cs-cell-center-body { text-align: center; }
     .cs-month-cell.cs-cell-off .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-month-cell.cs-cell-off .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.3); transform-origin: bottom center; }
-    .cs-month-cell.cs-cell-off .cs-cell-title { top: 62px; }
+    .cs-month-cell.cs-cell-off .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: contain; object-position: center bottom; transform: translateX(-50%) scale(1.3); transform-origin: bottom center; }
+    .cs-month-cell.cs-cell-off .cs-cell-title { top: auto; bottom: 10px; color: #fff7e6; font-weight: 700; letter-spacing: 0.01em; text-shadow: 0 2px 4px rgba(24, 20, 12, 0.86); }
     .cs-month-cell .cs-cell-part { gap: 4px; margin-top: 4px; }
     .cs-month-cell .cs-part-tag { font-size: 12px; padding: 2px 4px; border-radius: 6px; }
     .cs-month-cell .cs-part-text { font-size: 12px; line-height: 1.35; }
@@ -2285,6 +2286,7 @@
     :host(.cs-light-theme) .cs-cell-unknown .cs-cell-title { color: #a3a7ad; }
     :host(.cs-light-theme) .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { color: #506070; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.72); }
     :host(.cs-light-theme) .cs-cell.cs-cell-off .cs-cell-title { color: #506070; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.72); }
+    :host(.cs-light-theme) .cs-month-cell.cs-cell-off .cs-cell-title { color: #fff7e6; text-shadow: 0 2px 4px rgba(24, 20, 12, 0.86); }
     :host(.cs-light-theme) .cs-part-tag { color: #008f43; background: rgba(0,199,90,0.1); }
     :host(.cs-light-theme) .cs-part-tag-collab { color: #7557c9; background: rgba(117,87,201,0.12); }
     :host(.cs-light-theme) .cs-part-tag-official { color: #2563eb; background: rgba(37,99,235,0.09); border-color: rgba(37,99,235,0.2); }
