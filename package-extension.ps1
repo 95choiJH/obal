@@ -21,6 +21,8 @@ $allowedIconFiles = @(
   "icons\icon32.png",
   "icons\icon48.png",
   "icons\icon128.png",
+  "icons\image-copy.png",
+  "icons\png-download.png",
   "icons\on_break.png",
   "icons\undetermined.png",
   "icons\naver_cafe.png",

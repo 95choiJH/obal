@@ -550,6 +550,7 @@ function partGameImages(parts) {
 function normalizeVod(v) {
   if (!v || typeof v !== "object" || !v.url) return null;
   const item = { url: v.url, label: v.label || "방송 다시보기" };
+  if (v.chaptersReady === true || v.chapters_ready === true) item.chaptersReady = true;
   const liveKey = String(v.liveKey || v.live_key || "").trim();
   const startedAt = String(v.startedAt || v.started_at || "").trim();
   const endedAt = String(v.endedAt || v.ended_at || "").trim();
@@ -872,6 +873,24 @@ async function fetchAdminSettingsByKey(key) {
   return res.json();
 }
 
+function normalizeGameRatings(value) {
+  return (Array.isArray(value) ? value : []).map((item, index) => ({
+    id: String((item && item.id) || index + 1),
+    name: String((item && item.name) || "").trim(),
+    genre: String((item && item.genre) || "").trim(),
+    score: Number(item && item.score),
+    note: String((item && item.note) || "").trim(),
+    steamAppId: Number(item && item.steamAppId) || 0,
+    youtubeId: String((item && item.youtubeId) || "").trim(),
+    imageUrl: String((item && item.imageUrl) || "").trim(),
+  })).filter((item) => item.name && Number.isFinite(item.score));
+}
+
+async function fetchGameRatingsByChannel() {
+  const rows = await fetchAdminSettingsByKey("game_ratings");
+  return Object.fromEntries((rows || []).map((row) => [String(row.channel_id || ""), normalizeGameRatings(row.value)]).filter(([channelId]) => channelId));
+}
+
 function normalizeGnimtiContent(value) {
   const source = value && typeof value === "object" ? value : {};
   const september = source.september && typeof source.september === "object" ? source.september : {};
@@ -1096,7 +1115,9 @@ async function fetchFromSupabase() {
   } catch (e) {
   }
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 2, lolMatchLogVersion: 1, lolStreamerRankVersion: 1, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, lolMatchLogs, lolStreamerRanks, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  let gameRatingsByChannel = {};
+  try { gameRatingsByChannel = await fetchGameRatingsByChannel(); } catch (e) {}
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 3, lolMatchLogVersion: 1, lolStreamerRankVersion: 1, gameRatingsVersion: 2, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, lolMatchLogs, lolStreamerRanks, gameRatingsByChannel, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -1119,7 +1140,7 @@ async function fetchSchedule(force) {
 
   // 캐시가 신선하면 그대로 반환
   const hasAllCategories = cached.scheduleData && Object.values(cached.scheduleData.channels || {}).every(channel => (channel.schedule || []).every(entry => Array.isArray(entry.allCategories)));
-  if (!force && hasAllCategories && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 2 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && hasAllCategories && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 3 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.gameRatingsVersion === 2 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 
@@ -1232,6 +1253,25 @@ async function downloadSteamPoster(posterUrl) {
   let binary = ""; for (let offset=0;offset<bytes.length;offset+=0x8000) binary += String.fromCharCode(...bytes.subarray(offset,offset+0x8000));
   return "data:" + type + ";base64," + btoa(binary);
 }
+
+function allowedProfileImageUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && /(^|\.)pstatic\.net$/i.test(url.hostname);
+  } catch (_error) { return false; }
+}
+async function fetchExportProfileImage(imageUrl) {
+  if (!allowedProfileImageUrl(imageUrl)) return { ok: false, error: "invalid profile image host" };
+  const response = await fetch(imageUrl, { credentials: "omit" });
+  if (!response.ok) throw new Error("profile image HTTP " + response.status);
+  const type = String(response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(type)) throw new Error("invalid profile image type");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error("invalid profile image size");
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return { ok: true, dataUrl: "data:" + type + ";base64," + btoa(binary) };
+}
 async function fetchSteamGamePoster(input, preferredAppId) {
   const query=normalizeGamePosterQuery(input);
   if(!query)return {ok:false,error:"게임 이름이 없습니다."};
@@ -1283,6 +1323,10 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg && msg.type === "getSteamGamePoster") {
     fetchSteamGamePoster(msg.query, msg.steamAppId).then(sendResponse).catch(error => sendResponse({ok:false,error:String(error && error.message || error)}));
+    return true;
+  }
+  if (msg && msg.type === "getExportProfileImage") {
+    fetchExportProfileImage(msg.url).then(sendResponse).catch(error => sendResponse({ok:false,error:String(error && error.message || error)}));
     return true;
   }
   if (msg && msg.type === "getSchedule") {

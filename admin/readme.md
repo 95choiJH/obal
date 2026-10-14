@@ -40,11 +40,11 @@ npx supabase functions deploy submit-feedback
 
 `chzzk-category-search`는 치지직 Open API Client 인증을 사용하므로 Edge Function secrets에 `CHZZK_CLIENT_ID`, `CHZZK_CLIENT_SECRET`을 설정해야 합니다.
 
-`sync-live-category`는 `LIVE_CATEGORY_SYNC_SECRET`으로 인증합니다. 챕터와 방제 기록은 `?mode=chapters`를 **5초마다** 호출합니다. 일정 자동 생성과 다시보기 탐색은 `?mode=maintenance`로 분리하며 기존 실행 주기를 유지합니다(2026-09-14 운영 확인: 10초). 챕터 시각은 치지직 상태 응답을 받은 시점으로 계산하며, 중복되거나 늦게 도착한 과거 관측은 DB에서 걸러냅니다. 치지직 API 반영 지연과 네트워크 지연은 별도로 발생할 수 있습니다.
+`sync-live-category`는 `LIVE_CATEGORY_SYNC_SECRET`으로 인증합니다. 방송 중 카테고리 챕터는 자동 기록하지 않으며, 어드민의 다시보기 챕터 미리보기에서 수동으로 추가·편집합니다. 일정 자동 생성과 다시보기 탐색은 `?mode=maintenance`로 실행합니다(2026-09-14 운영 확인: 10초).
 
-배포 순서: `supabase db push --linked`로 마이그레이션을 적용하고, `sync-live-category`를 배포한 뒤 `supabase/configure-fast-live-chapters.sql`을 실행하세요. 이 SQL은 기존 Cron의 인증 정보와 실행 주기를 재사용하고, 기존 작업을 유지 관리 작업으로 바꾸면서 5초 수집 작업을 추가합니다. 기존 작업이 하나가 아니거나 URL 형식이 다르면 변경하지 않고 오류로 중단합니다. 모드 없는 호출은 기존 전체 동기화를 수행하므로, 별도의 전체 동기화 Cron을 중복 등록하지 마세요.
+배포 순서: `supabase db push --linked`로 마이그레이션을 적용하고, `sync-live-category`를 배포하세요. 마이그레이션은 `sync-live-chapters-5s` Cron을 제거합니다. 기존 maintenance Cron은 일정 자동 생성과 다시보기 탐색을 계속 실행합니다. 챕터 기록은 어드민에서 수동 관리합니다.
 
-일정에 추가할 카테고리는 `LIVE_CATEGORY_SYNC_TYPES`로 제한할 수 있습니다. 기본값 `*`는 전체 카테고리이며, `GAME`을 설정하면 게임만 일정에 추가합니다. 이 설정과 일정 자동 생성 토글은 챕터 수집을 막지 않습니다.
+일정에 추가할 카테고리는 `LIVE_CATEGORY_SYNC_TYPES`로 제한할 수 있습니다. 기본값 `*`는 전체 카테고리이며, `GAME`을 설정하면 게임만 일정에 추가합니다.
 
 테스트로 실제 저장 경로를 검증할 때는 `POST` body에 `startedAt`과 `testCategories`를 보낼 수 있습니다. Cron의 빈 body `{}`는 기존처럼 현재 라이브 상태를 조회합니다.
 

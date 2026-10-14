@@ -20,7 +20,7 @@
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
   const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
   const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
-  const LOL_MODE_TABS_ENABLED = false;
+  const CONTENT_MODE_TABS_ENABLED = true;
   const GNIMTI_POPUP_IMAGE_URL = api.runtime.getURL("images/gnimti-back.png");
   const GNIMTI_LOGO_IMAGE_URL = api.runtime.getURL("images/gnimti-logo.png");
   const GNIMTI_ICON_IMAGE_URL = api.runtime.getURL("images/gnimti-logo2.png");
@@ -29,6 +29,8 @@
   const NOTIFICATION_GUIDE_IMAGE_URL = api.runtime.getURL("images/notification-guide.png");
   const PLAY_REPORT_PROFILE_URL = api.runtime.getURL("images/ddahyoni-profile.png");
   const OBAENGAL_ICON_URL = api.runtime.getURL("icons/icon128.png");
+  const IMAGE_COPY_ICON_URL = api.runtime.getURL("icons/image-copy.png");
+  const PNG_DOWNLOAD_ICON_URL = api.runtime.getURL("icons/png-download.png");
   let playReportAvatarPromise;
   let playReportBrandIconPromise;
 
@@ -133,6 +135,7 @@
     todayKey: null,
     popoverTimer: null,
     popoverCloseTimer: null,
+    popoverExporting: false,
     activePopoverDate: "",
     pageTheme: null,
     feedbackOpen: false,
@@ -636,20 +639,17 @@
     return /^(I|II|III|IV)$/.test(division) ? division : "";
   }
 
-  const GAME_RATING_PREVIEW =[
-{id:1,steamAppId:3837350,posterQuery:"Staffer Retro",name:"스테퍼 레트로: 초능력 추리 퀘스트",genre:"추리",score:89,sample:false,note:"알려주신 89점 평가를 반영했습니다. 평가일과 세부 코멘트는 아직 입력하지 않았습니다."},
-{id:2,steamAppId:1903340,posterQuery:"Clair Obscur Expedition 33",name:"클레르 옵스퀴르: 33 원정대",genre:"RPG",score:145,sample:true,note:"스토리와 전투에 관한 평가 코멘트를 이 영역에 남길 수 있습니다."},
-{id:3,steamAppId:1145360,posterQuery:"Hades",name:"Hades",genre:"액션",score:128,sample:true,note:"전투의 재미, 반복 플레이와 난이도 등 평가의 이유를 기록하는 예시입니다."},
-{id:4,steamAppId:787480,posterQuery:"Phoenix Wright Ace Attorney Trilogy",name:"역전재판 123 나루호도 셀렉션",genre:"추리",score:86,sample:true,note:"사건별 인상이나 엔딩 소감을 짧게 정리하는 공간입니다."},
-{id:5,steamAppId:1244090,posterQuery:"Sea of Stars",name:"Sea of Stars",genre:"RPG",score:81,sample:true,note:"플레이를 마친 뒤 남긴 점수와 평가 근거를 함께 보여주는 예시입니다."},
-{id:6,steamAppId:1868140,posterQuery:"Dave the Diver",name:"Dave the Diver",genre:"어드벤처",score:77,sample:true,note:"콘텐츠 구성과 플레이 경험에 대한 코멘트를 표시할 수 있습니다."},
-{id:7,steamAppId:1627720,posterQuery:"Lies of P",name:"Lies of P",genre:"액션",score:72,sample:true,note:"재미와 난이도, 인상적인 구간을 기록할 수 있습니다."},
-{id:8,steamAppId:2653790,posterQuery:"The Exit 8",name:"The Exit 8",genre:"어드벤처",score:64,sample:true,note:"짧은 플레이 경험도 다른 게임과 같은 기준으로 모아볼 수 있습니다."}
-];
+  function currentGameRatings() {
+    const channelId = getCurrentDataChannelId();
+    const ratings = state.data && state.data.gameRatingsByChannel && channelId ? state.data.gameRatingsByChannel[channelId] : [];
+    return Array.isArray(ratings) ? ratings.map((item, index) => ({ ...item, id: item.id || String(index + 1), posterQuery: item.name })) : [];
+  }
 
   const GAME_POSTER_PLACEHOLDER_URL = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
   const gamePosterSessionCache = new Map();
   function gameRatingPosterHtml(game, alt, className) {
+    const customUrl=String(game.imageUrl || "").trim();
+    if(customUrl)return '<img'+(className?' class="'+escapeHtml(className)+'"':'')+' src="'+escapeHtml(customUrl)+'" alt="'+escapeHtml(alt || "")+'" loading="lazy">';
     const query=String(game.posterQuery || game.name || "");
     const cached=gamePosterSessionCache.get(query) || GAME_POSTER_PLACEHOLDER_URL;
     return '<img'+(className?' class="'+escapeHtml(className)+'"':'')+' src="'+escapeHtml(cached)+'" data-game-poster-query="'+escapeHtml(query)+'" data-game-steam-id="'+Number(game.steamAppId || 0)+'" alt="'+escapeHtml(alt || "")+'" loading="lazy">';
@@ -676,20 +676,24 @@
 
   function gameRatingsHtml() {
     const filters=state.gameRatingFilters;
-    const ranked=[...GAME_RATING_PREVIEW].sort((a,b)=>b.score-a.score||a.id-b.id);
+    const ratings=currentGameRatings();
+    const ranked=[...ratings].sort((a,b)=>b.score-a.score||String(a.id).localeCompare(String(b.id)));
+    const rankByScore=new Map();
+    ranked.forEach((game,index)=>{if(!rankByScore.has(game.score))rankByScore.set(game.score,index+1)});
     const range=filters.range===""?null:GAME_RATING_RANGES[Number(filters.range)];
     const list=ranked.filter(g=>(filters.genre==="전체"||g.genre===filters.genre)&&g.name.toLowerCase().includes(filters.search.toLowerCase())&&(!range||(g.score>=range.min&&g.score<range.max)));
-    const selected=list.find(g=>g.id===filters.selectedId)||list.find(g=>!g.sample)||list[0];
-    const recent=GAME_RATING_PREVIEW.slice(0,3).map(g=>'<button type="button" class="cs-rating-recent-item" id="cs-rating-recent-'+g.id+'" data-rating-point="'+g.id+'">'+gameRatingPosterHtml(g,"")+'<span><strong>'+escapeHtml(g.name)+'</strong><small>'+(g.sample?'임의 등록 예시':'사용자 제공 평가')+'</small></span><b>'+g.score+'<small>점</small></b></button>').join("");
-    const rows=list.slice(0,filters.visible).map(g=>'<button type="button" class="cs-rating-row" id="cs-rating-dot-'+g.id+'" data-rating-point="'+g.id+'" aria-pressed="'+String(g.id===selected.id)+'" aria-controls="cs-rating-showcase"><span class="cs-rating-index">'+String(ranked.indexOf(g)+1).padStart(2,"0")+'</span><span class="cs-rating-game"><strong>'+escapeHtml(g.name)+'</strong><small>'+g.genre+' · '+(g.sample?'임의 평가':'사용자 제공 평가')+'</small></span><span class="cs-rating-score">'+g.score+'<small>점</small></span><span class="cs-rating-arrow" aria-hidden="true">↗</span></button>').join("");
-    const scoreGroups='<section class="cs-rating-score-groups"><div class="cs-rating-score-groups-header"><h3>점수로 모아보기</h3><button type="button" id="cs-rating-range-all" data-rating-range="" aria-pressed="'+String(filters.range==="")+'" aria-controls="cs-rating-ranked-list">전체 '+ranked.length+'개</button></div><div class="cs-rating-score-group-list" role="group" aria-label="점수 구간 선택">'+GAME_RATING_RANGES.map((r,i)=>{const count=ranked.filter(g=>g.score>=r.min&&g.score<r.max).length;return '<button type="button" id="cs-rating-range-'+i+'" data-rating-range="'+i+'" aria-pressed="'+String(filters.range===String(i))+'" aria-controls="cs-rating-ranked-list"'+(!count?' disabled':'')+'><span>'+r.label+'</span><strong>'+count+'<small>개</small></strong></button>';}).join("")+'</div></section>';
+    const selected=list.find(g=>String(g.id)===String(filters.selectedId))||list[0];
+    const recent=ratings.slice(0,3).map(g=>'<button type="button" class="cs-rating-recent-item" id="cs-rating-recent-'+g.id+'" data-rating-point="'+g.id+'">'+gameRatingPosterHtml(g,"")+'<span><strong>'+escapeHtml(g.name)+'</strong><small>'+escapeHtml(g.genre || '장르 미지정')+'</small></span><b>'+g.score+'<small>점</small></b></button>').join("");
+    const rows=list.slice(0,filters.visible).map(g=>'<button type="button" class="cs-rating-row" id="cs-rating-dot-'+g.id+'" data-rating-point="'+g.id+'" aria-pressed="'+String(String(g.id)===String(selected.id))+'" aria-controls="cs-rating-showcase"><span class="cs-rating-index">'+String(rankByScore.get(g.score)||1).padStart(2,"0")+'</span><span class="cs-rating-game"><strong>'+escapeHtml(g.name)+'</strong><small>'+escapeHtml(g.genre || '장르 미지정')+'</small></span><span class="cs-rating-score">'+g.score+'<small>점</small></span><span class="cs-rating-arrow" aria-hidden="true">↗</span></button>').join("");
+    const scoreGroups='<section class="cs-rating-score-groups"><div class="cs-rating-score-groups-header"><button type="button" id="cs-rating-range-all" data-rating-range="" aria-pressed="'+String(filters.range==="")+'" aria-controls="cs-rating-ranked-list">전체 '+ranked.length+'개</button></div><div class="cs-rating-score-group-list" role="group" aria-label="점수 구간 선택">'+GAME_RATING_RANGES.map((r,i)=>{const count=ranked.filter(g=>g.score>=r.min&&g.score<r.max).length;return '<button type="button" id="cs-rating-range-'+i+'" data-rating-range="'+i+'" aria-pressed="'+String(filters.range===String(i))+'" aria-controls="cs-rating-ranked-list"'+(!count?' disabled':'')+'><span>'+r.label+'</span><strong>'+count+'<small>개</small></strong></button>';}).join("")+'</div></section>';
     let showcase='';
     if(selected){
       const video=typeof selected.youtubeId==="string"&&/^[a-zA-Z0-9_-]{11}$/.test(selected.youtubeId);
       const media=video?'<iframe src="https://www.youtube-nocookie.com/embed/'+selected.youtubeId+'" title="'+escapeHtml(selected.name)+' 따효니 플레이 영상" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe>':gameRatingPosterHtml(selected,selected.name+' 게임 포스터');
-      showcase='<aside id="cs-rating-showcase" class="cs-rating-showcase"><div class="cs-rating-media">'+media+'</div><div class="cs-rating-showcase-caption"><span>선택한 게임 · '+(video?'따효니 플레이 영상':'게임 포스터')+'</span><span>'+(selected.sample?'임의 평가':'사용자 제공 평가')+'</span></div><div class="cs-rating-showcase-title"><h3>'+escapeHtml(selected.name)+'</h3><strong>'+selected.score+'<small>점</small></strong></div><p>'+escapeHtml(selected.note)+'</p></aside>';
+      showcase='<aside id="cs-rating-showcase" class="cs-rating-showcase"><div class="cs-rating-media">'+media+'</div><div class="cs-rating-showcase-caption"><span>선택한 게임 · '+(video?'따효니 플레이 영상':'게임 포스터')+'</span></div><div class="cs-rating-showcase-title"><h3>'+escapeHtml(selected.name)+'</h3><strong>'+selected.score+'<small>점</small></strong></div>'+(selected.note?'<p>'+escapeHtml(selected.note)+'</p>':'')+'</aside>';
     }
-    return '<div class="cs-ratings cs-rating-shelf"><header class="cs-rating-shelf-header"><h2>따효니의<br><span>게임 서가.</span></h2><p>엔딩을 본 게임들,<br>점수로 남긴 취향.</p></header><p class="cs-rating-note">스테퍼 레트로 89점 외 점수와 등록 순서는 시안용 임의 데이터입니다.</p>'+scoreGroups+'<div class="cs-rating-shelf-grid"><section class="cs-rating-library"><div class="cs-rating-heading"><h3>'+(range?range.label+' · ':'')+'스코어 순위</h3><span>'+list.length+'개 · 점수 상한 없음</span></div><div class="cs-rating-controls"><input id="cs-rating-search" type="search" aria-label="게임 이름 검색" placeholder="게임 찾기" value="'+escapeHtml(filters.search)+'"></div><div class="cs-rating-list" id="cs-rating-ranked-list">'+(rows||'<div class="cs-rating-empty">일치하는 게임이 없습니다.<button type="button" id="cs-rating-reset">전체 게임 보기</button></div>')+'</div>'+(filters.visible<list.length?'<button type="button" id="cs-rating-more" class="cs-rating-more">더보기 <span aria-hidden="true">＋</span></button>':'')+'</section>'+showcase+'</div><section class="cs-rating-recent"><h3>최근 등재</h3><div>'+recent+'</div></section><p class="cs-rating-note cs-rating-shelf-footer">점수는 스트리머 개인의 평가입니다. 현재는 서버 저장에 연결되지 않은 시안입니다.</p></div>';
+    if(!ratings.length)return '<div class="cs-ratings cs-rating-shelf"><header class="cs-rating-shelf-header"><h2><span>따타스코어</span></h2></header><div class="cs-rating-empty">등록된 게임 평가가 없습니다.</div></div>';
+    return '<div class="cs-ratings cs-rating-shelf"><header class="cs-rating-shelf-header"><h2><span>따타스코어</span></h2></header>'+scoreGroups+'<div class="cs-rating-shelf-grid"><section class="cs-rating-library"><div class="cs-rating-heading"><h3>'+(range?range.label+' · ':'')+'스코어 순위</h3><span>'+list.length+'개 · 점수 상한 없음</span></div><div class="cs-rating-controls"><input id="cs-rating-search" type="search" aria-label="게임 이름 검색" placeholder="게임 찾기" value="'+escapeHtml(filters.search)+'"></div><div class="cs-rating-list" id="cs-rating-ranked-list">'+(rows||'<div class="cs-rating-empty">일치하는 게임이 없습니다.<button type="button" id="cs-rating-reset">전체 게임 보기</button></div>')+'</div>'+(filters.visible<list.length?'<button type="button" id="cs-rating-more" class="cs-rating-more">더보기 <span aria-hidden="true">＋</span></button>':'')+'</section>'+showcase+'</div>'+(recent?'<section class="cs-rating-recent"><h3>최근 등재</h3><div>'+recent+'</div></section>':'')+'<p class="cs-rating-note cs-rating-shelf-footer">점수는 스트리머 개인의 평가입니다.</p></div>';
   }
 
   function bindGameRatingControls(shadow) {
@@ -708,7 +712,7 @@
     if(sort)sort.addEventListener("change",()=>{filters.sort=sort.value;filters.visible=5;update("cs-rating-sort")});
     shadow.querySelectorAll("[data-rating-genre]").forEach(button=>button.addEventListener("click",()=>{filters.genre=button.dataset.ratingGenre;filters.visible=5;update()}));
     shadow.querySelectorAll("[data-rating-range]").forEach(button=>button.addEventListener("click",()=>{filters.range=filters.range===button.dataset.ratingRange?"":button.dataset.ratingRange;filters.search="";filters.visible=5;update(button.id)}));
-    const selectPoint=(id,focusId)=>{filters.selectedId=Number(id);if(focusId&&focusId.startsWith("cs-rating-recent-")){filters.search="";filters.genre="전체";filters.range="";}update(focusId)};
+    const selectPoint=(id,focusId)=>{filters.selectedId=String(id);if(focusId&&focusId.startsWith("cs-rating-recent-")){filters.search="";filters.genre="전체";filters.range="";}update(focusId)};
     shadow.querySelectorAll("[data-rating-point]").forEach(point=>{
       point.addEventListener("click",()=>selectPoint(point.dataset.ratingPoint,point.id));
       point.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();selectPoint(point.dataset.ratingPoint,point.id)}});
@@ -724,7 +728,7 @@
 
   function lolLogToggleHtml() {
     return '<div class="cs-mode-tabs" role="group" aria-label="오뱅알 모드 전환">' +
-      [["schedule","일정"],["lolMatchLogs","리그 오브 레전드"]].map(([mode,label]) =>
+      [["schedule","일정"],["gameRatings","따타스코어"]].map(([mode,label]) =>
         '<button type="button" data-schedule-mode="'+mode+'" aria-pressed="'+String(state.scheduleViewMode===mode)+'">'+
         (mode==="schedule"?'<img src="'+CALENDAR_ICON_URL+'" alt="">':"")+
         label+'</button>').join("")+'</div>';
@@ -732,7 +736,7 @@
 
   async function switchScheduleViewMode(button) {
     const mode = button && button.dataset ? button.dataset.scheduleMode : "";
-    const modes = ["schedule", "lolMatchLogs"];
+    const modes = ["schedule", "gameRatings"];
     if (state.scheduleModeTransitioning || !modes.includes(mode) || mode === state.scheduleViewMode) return;
     state.scheduleModeTransitioning = true;
     button.disabled = true;
@@ -1509,20 +1513,20 @@
     .cs-cell.cs-cell-off .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 4; text-align: center; }
     .cs-cell.cs-cell-off .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-cell.cs-cell-off .cs-cell-time { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; }
-    .cs-cell.cs-cell-off .cs-cell-time .cs-break-icon { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
-    .cs-cell.cs-cell-off .cs-cell-title { position: absolute; left: 0; right: 0; top: 62px; z-index: 4; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+    .cs-cell.cs-cell-off .cs-cell-time .cs-break-icon { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .cs-cell.cs-cell-off .cs-cell-title { position: absolute; left: 0; right: 0; top: 40px; z-index: 4; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
     .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time { position: absolute; inset: 0; overflow: hidden; }
-    .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; object-position: center bottom; transform: translateX(-50%) scale(1.1); transform-origin: bottom center; }
+    .cs-cell.cs-cell-off:not(.cs-month-cell) .cs-cell-time .cs-break-icon { position: absolute; left: 50%; bottom: 0; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: contain; transform: translateX(-50%) scale(1.2); }
     .cs-undetermined-icon { display: block; object-fit: contain; }
     .cs-undetermined-icon-light { display: none !important; }
     .cs-undetermined-icon-pill { width: 16px; height: 16px; }
     .cs-cell-time .cs-undetermined-icon { width: max(46px, 56%); height: 100%; margin: 0 auto; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) { position: relative; gap: 0; padding: 0; overflow: hidden; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-date { position: absolute; left: 0; right: 0; top: 9px; z-index: 2; text-align: center; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) { position: relative; gap: 0; overflow: hidden; }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-date { position: relative; left: auto; right: auto; top: auto; z-index: 2; text-align: center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-center-body { position: absolute; inset: 0; display: grid; place-items: end center; }
     .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; right: 17%; bottom: -3%; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-position: center bottom; transform: scale(0.70); transform-origin: bottom right; }
-    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { position: absolute; left: 0; right: 0; top: 42px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-time .cs-undetermined-icon { position: absolute; top: 50%; display: block; width: 100%; height: auto; min-height: 100%; max-width: none; object-fit: cover; transform: translateY(-50%);}
+    .cs-cell.cs-cell-unknown:not(.cs-cell-off) .cs-cell-title { position: absolute; left: 0; right: 0; top: auto; bottom: 25px; z-index: 2; display: block; margin: 0; text-align: center; color: #c2cbdd; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
 
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
       font-size: 20px; line-height: 1; padding: 2px 4px; }
@@ -1967,8 +1971,8 @@
     .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     .cs-pop-note-box { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px;
       padding: 8px 10px; background: #1f2023; border: 1px solid #3a3c40; border-radius: 8px; }
-    .cs-pop-note-box.cs-pop-main-note { position: relative; display: block; margin-top: 12px; padding: 10px 12px 10px 14px; background: rgba(0,255,163,0.06); border-color: rgba(0,255,163,0.24); border-left: 3px solid #00FFA3; }
-    .cs-pop-note-head { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: #7dffcf; font-size: 11px; font-weight: 900; letter-spacing: 0; }
+    .cs-pop-note-box.cs-pop-main-note { position: relative; display: block; margin-top: 12px; padding: 13px 2px 0; background: transparent; border: 0; border-top: 1px solid rgba(0,255,163,0.24); border-radius: 0; }
+    .cs-pop-note-head { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; color: #7dffcf; font-size: 11px; font-weight: 900; letter-spacing: 0; }
     .cs-pop-note-list { min-width: max-content; display: flex; flex-direction: column; gap: 6px; }
     .cs-pop-note-text { color: #c9cacd; font-size: 14px; line-height: 1.65;
       white-space: pre; overflow-wrap: normal; word-break: normal; display: flex; align-items: center; }
@@ -2009,6 +2013,16 @@
     .cs-vod-btn:hover .cs-member-tip { opacity: 1; }
     .cs-vod-btn-disabled { background: rgba(157,158,163,0.12); color: #6b6d73; cursor: default; }
     .cs-vod-btn-disabled:hover { background: rgba(157,158,163,0.12); }
+    .cs-pop-export { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(157,158,163,0.18); }
+    .cs-pop-export button { position: relative; order: 2; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #8b8d92; cursor: pointer; }
+    .cs-pop-export button:hover { background: rgba(255,255,255,0.06); color: #c9cacd; }
+    .cs-pop-export button:focus-visible { outline: 2px solid #00c878; outline-offset: 2px; }
+    .cs-pop-export button:disabled { opacity: 0.5; cursor: wait; }
+    .cs-pop-export-icon { display: block; width: 18px; height: 18px; object-fit: contain; pointer-events: none; filter: grayscale(1) brightness(0) invert(61%); transition: filter 0.12s ease, transform 0.12s ease; }
+    .cs-pop-export button:hover .cs-pop-export-icon, .cs-pop-export button:focus-visible .cs-pop-export-icon { filter: grayscale(1) brightness(0) invert(82%); transform: scale(1.05); }
+    .cs-pop-export-tip { position: absolute; left: 50%; bottom: calc(100% + 7px); z-index: 3; width: max-content; padding: 5px 8px; border: 1px solid #3a3c40; border-radius: 6px; background: #1b1c1f; color: #efeff1; font-size: 11px; font-weight: 700; line-height: 1.2; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate(-50%, 3px); transition: opacity 0.12s ease, transform 0.12s ease; box-shadow: 0 5px 14px rgba(0,0,0,0.3); }
+    .cs-pop-export button:hover .cs-pop-export-tip, .cs-pop-export button:focus-visible .cs-pop-export-tip { opacity: 1; transform: translate(-50%, 0); }
+    .cs-pop-export-status { order: 1; flex: 1 1 auto; min-width: 0; margin-right: auto; color: #9d9ea3; font-size: 11px; line-height: 1.3; white-space: normal; }
 
     .cs-info-frame { min-width: 0; height: 100%; padding: 12px 13px; border: 1px solid rgba(157,158,163,0.18); border-radius: 8px; background: rgba(255,255,255,0.025); }
     .cs-info-title { color: #efeff1; font-size: 13px; line-height: 1.2; font-weight: 800; margin-bottom: 8px; }
@@ -2318,6 +2332,13 @@
     :host(.cs-light-theme) .cs-vod-btn:hover { background: rgba(3,169,80,0.17); }
     :host(.cs-light-theme) .cs-vod-btn-disabled,
     :host(.cs-light-theme) .cs-vod-btn-disabled:hover { color: #a3a7ad; background: #e9ebed; }
+    :host(.cs-light-theme) .cs-pop-export { border-top-color: #e1e3e6; }
+    :host(.cs-light-theme) .cs-pop-export button { background: transparent; color: #777c83; }
+    :host(.cs-light-theme) .cs-pop-export button:hover { background: rgba(31,35,40,0.06); color: #3f444a; }
+    :host(.cs-light-theme) .cs-pop-export-icon { filter: grayscale(1) brightness(0) invert(46%); }
+    :host(.cs-light-theme) .cs-pop-export button:hover .cs-pop-export-icon, :host(.cs-light-theme) .cs-pop-export button:focus-visible .cs-pop-export-icon { filter: grayscale(1) brightness(0) invert(25%); }
+    :host(.cs-light-theme) .cs-pop-export-tip { border-color: #d3d6da; background: #ffffff; color: #1e2024; box-shadow: 0 5px 14px rgba(0,0,0,0.14); }
+    :host(.cs-light-theme) .cs-pop-export-status { color: #6f747b; }
     :host(.cs-light-theme) .cs-update-history-section { background: #f8f9fa; border-color: #e1e3e6; }
     :host(.cs-light-theme) .cs-update-history-title { color: #1e2024; }
     :host(.cs-light-theme) .cs-update-history-toggle,
@@ -2367,6 +2388,7 @@
     :host(.cs-light-theme) .cs-cell-muted .cs-part-tag.cs-tag-tone { color: #969ba1; background: #e9ebed; border-color: transparent; }
     :host(.cs-light-theme) .cs-pop-text.cs-pop-part-text { color: #F2F3F5; }
     :host(.cs-light-theme) .cs-pop-note-box { background: #f5f6f7; border-color: #dfe1e4; }
+    :host(.cs-light-theme) .cs-pop-note-box.cs-pop-main-note { background: transparent; border-top-color: #dfe1e4; }
     :host(.cs-light-theme) .cs-pop-note-text { color: #4b4f55; }
     :host(.cs-light-theme) .cs-member-avatar-img { border-color: #d3d6da; }
     :host(.cs-light-theme) .cs-member-avatar-fallback { background: #dfe1e4; color: #33373c; }
@@ -2613,6 +2635,67 @@
     }
 
     .cs-rating-shelf>.cs-rating-recent{margin:30px 0 0;padding:20px 0;border-bottom:0}
+
+    /* Rating typography hierarchy */
+    .cs-rating-shelf-header{margin-bottom:26px}
+    .cs-rating-shelf-header h2{font-size:42px;line-height:1.08;font-weight:800;letter-spacing:-1.5px}
+    .cs-rating-score-groups{margin-bottom:36px}
+    .cs-rating-score-groups-header{margin-bottom:20px}
+    .cs-rating-score-groups-header h3{font-size:15px;font-weight:750;color:#dfe3e7}
+    .cs-rating-score-groups-header button{font-size:12px;font-weight:700}
+    .cs-rating-score-group-list button{min-height:58px;padding-bottom:14px;align-items:center}
+    .cs-rating-score-group-list button>span{font-size:13px;line-height:1.45;font-weight:650;color:#b2b8c0}
+    .cs-rating-score-group-list button>strong{font-size:32px;font-weight:650;letter-spacing:-1px}
+    .cs-rating-score-group-list button>strong small{font-size:11px;font-weight:600}
+    .cs-rating-shelf-grid{gap:44px}
+    .cs-rating-shelf .cs-rating-heading{margin-bottom:16px}
+    .cs-rating-shelf .cs-rating-heading h3{font-size:17px;font-weight:750;color:#eef0f2}
+    .cs-rating-shelf .cs-rating-heading span{font-size:12px;font-weight:600;color:#9fa5ad}
+    .cs-rating-shelf .cs-rating-controls{margin:16px 0 12px}
+    .cs-rating-shelf .cs-rating-controls input{height:42px;padding:10px 0;font-size:13px;font-weight:550}
+    .cs-rating-shelf .cs-rating-row{grid-template-columns:40px minmax(0,1fr) max-content 18px;gap:16px;padding:20px 12px 20px 4px}
+    .cs-rating-shelf .cs-rating-index{font-size:24px;font-weight:550;letter-spacing:-.8px;color:#737a83}
+    .cs-rating-shelf .cs-rating-game strong{font-size:15px;line-height:1.45;font-weight:700;letter-spacing:-.2px;color:#edf0f2}
+    .cs-rating-shelf .cs-rating-game small{font-size:11px;line-height:1.4;margin-top:6px;font-weight:550;color:#979ea7}
+    .cs-rating-shelf .cs-rating-score{font-size:34px;font-weight:700;letter-spacing:-1px}
+    .cs-rating-arrow{font-size:19px}
+    .cs-rating-shelf .cs-rating-more{font-size:12px;font-weight:700;padding:18px 0}
+    .cs-rating-showcase-caption{margin:14px 0 18px;font-size:11px;font-weight:600;color:#a0a7af}
+    .cs-rating-showcase-title h3{font-size:25px;line-height:1.35;font-weight:750;letter-spacing:-.7px}
+    .cs-rating-showcase-title>strong{font-size:52px;font-weight:700}
+    .cs-rating-showcase-title>strong small{font-size:12px;font-weight:600}
+    .cs-rating-showcase>p{font-size:13px;line-height:1.75;color:#aeb4bb;margin-top:20px}
+    .cs-rating-recent{padding-top:22px}
+    .cs-rating-recent h3{font-size:14px;font-weight:750;color:#d9dde1;margin-bottom:16px}
+    .cs-rating-recent-item strong{font-size:13px;line-height:1.45;font-weight:700}
+    .cs-rating-recent-item small{font-size:11px;line-height:1.35;margin-top:5px;font-weight:550}
+    .cs-rating-recent-item>b{font-size:25px;font-weight:650}
+    .cs-rating-shelf>.cs-rating-shelf-footer{font-size:11px;line-height:1.6;color:#989fa8}
+    :host(.cs-light-theme) .cs-rating-score-groups-header h3,:host(.cs-light-theme) .cs-rating-shelf .cs-rating-heading h3,:host(.cs-light-theme) .cs-rating-shelf .cs-rating-game strong,:host(.cs-light-theme) .cs-rating-recent h3{color:#25282d}
+    :host(.cs-light-theme) .cs-rating-score-group-list button>span,:host(.cs-light-theme) .cs-rating-shelf .cs-rating-heading span,:host(.cs-light-theme) .cs-rating-shelf .cs-rating-game small,:host(.cs-light-theme) .cs-rating-showcase-caption,:host(.cs-light-theme) .cs-rating-showcase>p,:host(.cs-light-theme) .cs-rating-shelf>.cs-rating-shelf-footer{color:#676d75}
+    .cs-rating-score-groups-header{justify-content:flex-end;margin-bottom:12px}
+    .cs-rating-score-group-list button{min-height:58px;padding:0 12px;border:1px solid #34383d;border-radius:8px;background:#202226;align-items:center;transition:border-color .15s ease,background .15s ease,color .15s ease}
+    .cs-rating-score-group-list button[aria-pressed=true]{border:1px solid #00c878;background:rgba(0,255,163,.08);box-shadow:inset 0 0 0 1px rgba(0,255,163,.08)}
+    .cs-rating-score-group-list button:hover:not(:disabled){border-color:rgba(0,255,163,.55);background:#252a2b}
+    .cs-rating-shelf .cs-rating-controls input{height:42px;padding:0 12px;border:1px solid #3a3e43;border-radius:8px;background:#202226}
+    .cs-rating-shelf .cs-rating-controls input:focus{border-color:#00c878;background:#24282a;outline:none;box-shadow:0 0 0 2px rgba(0,255,163,.1)}
+    :host(.cs-light-theme) .cs-rating-score-group-list button{border-color:#d8dce0;background:#fff}
+    :host(.cs-light-theme) .cs-rating-score-group-list button[aria-pressed=true]{border-color:#03a950;background:rgba(3,169,80,.08)}
+    :host(.cs-light-theme) .cs-rating-shelf .cs-rating-controls input{border-color:#d8dce0;background:#fff;color:#25282d}
+    @media(max-width:700px){
+      .cs-rating-shelf-header h2{font-size:34px}
+      .cs-rating-score-group-list button>span{font-size:11px}
+      .cs-rating-score-group-list button>strong{font-size:27px}
+      .cs-rating-score-group-list button{padding:10px}
+      .cs-rating-shelf .cs-rating-heading h3{font-size:16px}
+      .cs-rating-shelf .cs-rating-row{grid-template-columns:32px minmax(0,1fr) max-content 16px;gap:10px;padding:17px 6px 17px 2px}
+      .cs-rating-shelf .cs-rating-index{font-size:20px}
+      .cs-rating-shelf .cs-rating-game strong{font-size:14px}
+      .cs-rating-shelf .cs-rating-score{font-size:29px}
+      .cs-rating-showcase-title h3{font-size:22px}
+      .cs-rating-showcase-title>strong{font-size:44px}
+      .cs-rating-showcase>p{font-size:12px}
+    }
 
     [data-game-poster-query]{opacity:.22;transition:opacity .2s ease}
     [data-game-poster-query].cs-poster-ready{opacity:1}
@@ -2933,11 +3016,14 @@
     const dateLabel = compact ? String(d.getDate()) : ((isToday ? "\uC624\uB298 " : "") + cellDateLabel(d));
     let dateRow = '<div class="cs-cell-date">' + dateLabel + "</div>";
     let body = "";
-    if (state.gameOnly) {
+    if (state.gameOnly && isOff) {
+      body = '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon cs-break-icon-dark" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /><img class="cs-break-icon cs-break-icon-light" src="' + BREAK_LIGHT_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>';
+    } else if (state.gameOnly) {
       body = gameChipsHtml(entry, compact);
     } else if (!entry) {
       body = compact ? "" : '<div class="cs-cell-center-body">' +
-        '<div class="cs-cell-time"><img class="cs-undetermined-icon cs-undetermined-icon-dark" src="' + UNDETERMINED_ICON_URL + '" alt="\uBBF8\uC815" /><img class="cs-undetermined-icon cs-undetermined-icon-light" src="' + UNDETERMINED_LIGHT_ICON_URL + '" alt="\uBBF8\uC815" /></div></div>';
+        '<div class="cs-cell-time"><img class="cs-undetermined-icon cs-undetermined-icon-dark" src="' + UNDETERMINED_ICON_URL + '" alt="\uC77C\uC815 \uBBF8\uC815" /><img class="cs-undetermined-icon cs-undetermined-icon-light" src="' + UNDETERMINED_LIGHT_ICON_URL + '" alt="\uC77C\uC815 \uBBF8\uC815" /></div>' +
+        '<div class="cs-cell-title">\uC77C\uC815 \uBBF8\uC815</div></div>';
     } else if (isOff) {
       const dot = (notes.length || hasPartNotes) ? '<span class="cs-memo-dot"></span>' : "";
       body = dot + '<div class="cs-cell-center-body"><div class="cs-cell-time"><img class="cs-break-icon cs-break-icon-dark" src="' + BREAK_ICON_URL + '" alt="\uD734\uBC29" /><img class="cs-break-icon cs-break-icon-light" src="' + BREAK_LIGHT_ICON_URL + '" alt="\uD734\uBC29" /></div><div class="cs-cell-title">\uD734\uBC29</div></div>';
@@ -3024,7 +3110,7 @@
     const scheduleToolbarHtml =
       '<div class="cs-schedule-toolbar"><div class="cs-toolbar-layout">' +
       '<span class="cs-toolbar-balance" aria-hidden="true"></span><div class="cs-mode-switch-slot">' +
-      (state.extensionCollapsed || !LOL_MODE_TABS_ENABLED ? "" : lolLogToggleHtml(lolLogMode)) +
+      (state.extensionCollapsed || !CONTENT_MODE_TABS_ENABLED ? "" : lolLogToggleHtml()) +
       '</div><div class="cs-schedule-tools">' +
       (state.extensionCollapsed || specialMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
       (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
@@ -3049,7 +3135,7 @@
       (state.extensionCollapsed ? "" : updateNoticeHtml()) +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
-      (specialMode ? (state.extensionCollapsed ? (ratingMode ? '<div class="cs-header"><span class="cs-title">게임 평가 · 시안</span></div>' : lolCollapsedSummaryHtml()) : "") : '<div class="cs-header">' +
+      (specialMode ? (state.extensionCollapsed ? (ratingMode ? '<div class="cs-header"><span class="cs-title">따타스코어</span></div>' : lolCollapsedSummaryHtml()) : "") : '<div class="cs-header">' +
       '<span class="cs-title">방송 일정</span>' +
       schedulePillHtml +
       '<span class="cs-spacer"></span>' +
@@ -3781,7 +3867,7 @@
             const blobPromise = preview().then(image => new Promise((resolve, reject) => image.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNG 생성 실패")), "image/png")));
             if (copy) {
               await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
-              status.textContent = "이미지 복사 완료! 카페 글쓰기에서 붙여넣어 주세요.";
+              status.textContent = "이미지 복사 완료";
             } else {
               const url = URL.createObjectURL(await blobPromise);
               const link = document.createElement("a");
@@ -3789,7 +3875,7 @@
               link.download = `오뱅알-${exportMonth.getFullYear()}-${exportMonth.getMonth() + 1}월-플레이-현황.png`;
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 60000);
-              status.textContent = "PNG 저장을 요청했습니다. 저장한 이미지를 카페에 첨부해 주세요.";
+              status.textContent = "PNG 다운로드 완료";
             }
           } catch (_) {
             status.textContent = copy ? "복사하지 못했습니다. PNG 저장 후 카페에 첨부해 주세요." : "이미지를 저장하지 못했습니다. 다시 시도해 주세요.";
@@ -4229,8 +4315,284 @@
   function scheduleClosePopover() {
     if (state.popoverTimer) clearTimeout(state.popoverTimer);
     if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
-    if (state.schedulePopoverPinned) return;
+    if (state.schedulePopoverPinned || state.popoverExporting) return;
     state.popoverCloseTimer = setTimeout(closePopover, 180);
+  }
+
+  function blobAsDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("이미지 변환 실패"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function isVisibleExportNode(node) {
+    if (!node || !node.getBoundingClientRect) return false;
+    if (node.matches && node.matches("[data-pop-export-controls], [data-pop-export-controls] *, .cs-vod-buttons, .cs-vod-buttons *, .cs-inline-media-trigger, .cs-inline-media-trigger *")) return false;
+    const style = getComputedStyle(node);
+    return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) !== 0;
+  }
+
+  function paintExportBox(context, element, origin, scale) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const style = getComputedStyle(element);
+    const x = (rect.left - origin.left) * scale;
+    const y = (rect.top - origin.top) * scale;
+    const width = rect.width * scale;
+    const height = rect.height * scale;
+    const radius = Math.max(0, parseFloat(style.borderRadius) || 0) * scale;
+    const path = () => {
+      context.beginPath();
+      if (context.roundRect) context.roundRect(x, y, width, height, Math.min(radius, width / 2, height / 2));
+      else context.rect(x, y, width, height);
+    };
+    if (style.backgroundColor && style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent") {
+      path();
+      context.fillStyle = style.backgroundColor;
+      context.fill();
+    }
+    const borders = ["Top", "Right", "Bottom", "Left"].map((side) => ({
+      width: parseFloat(style["border" + side + "Width"]) || 0,
+      color: style["border" + side + "Color"],
+      style: style["border" + side + "Style"],
+    }));
+    const uniformBorder = borders.every((border) => border.width === borders[0].width && border.color === borders[0].color && border.style === borders[0].style);
+    if (uniformBorder && borders[0].width > 0 && borders[0].style !== "none" && borders[0].color !== "rgba(0, 0, 0, 0)") {
+      path();
+      context.strokeStyle = borders[0].color;
+      context.lineWidth = borders[0].width * scale;
+      context.stroke();
+    } else {
+      const lines = [
+        [x, y, x + width, y],
+        [x + width, y, x + width, y + height],
+        [x, y + height, x + width, y + height],
+        [x, y, x, y + height],
+      ];
+      borders.forEach((border, index) => {
+        if (border.width <= 0 || border.style === "none" || border.color === "rgba(0, 0, 0, 0)") return;
+        context.beginPath();
+        context.moveTo(lines[index][0], lines[index][1]);
+        context.lineTo(lines[index][2], lines[index][3]);
+        context.strokeStyle = border.color;
+        context.lineWidth = border.width * scale;
+        context.stroke();
+      });
+    }
+  }
+
+  function paintExportText(context, textNode, origin, scale) {
+    const parent = textNode.parentElement;
+    if (!parent || !isVisibleExportNode(parent)) return;
+    const text = textNode.nodeValue || "";
+    if (!text.trim()) return;
+    const style = getComputedStyle(parent);
+    const exportFontWeight = parent.closest(".cs-pop-part-text") ? "600" : style.fontWeight;
+    context.fillStyle = style.color;
+    context.font = [style.fontStyle, exportFontWeight, (parseFloat(style.fontSize) || 14) * scale + "px", style.fontFamily].filter(Boolean).join(" ");
+    context.textBaseline = "alphabetic";
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
+      if (/\s/.test(character)) continue;
+      const range = document.createRange();
+      range.setStart(textNode, index);
+      range.setEnd(textNode, index + 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      context.fillText(character, (rect.left - origin.left) * scale, (rect.bottom - origin.top - Math.max(1, rect.height * 0.18)) * scale);
+    }
+  }
+
+  async function loadExportImage(image) {
+    try {
+      const imageUrl = image.currentSrc || image.src;
+      const proxied = await sendRuntimeMessage({ type: "getExportProfileImage", url: imageUrl });
+      let dataUrl = proxied && proxied.ok ? proxied.dataUrl : "";
+      if (!dataUrl) {
+        const response = await fetch(imageUrl, { credentials: "omit" });
+        if (!response.ok) return null;
+        dataUrl = await blobAsDataUrl(await response.blob());
+      }
+      return await new Promise((resolve) => {
+        const loaded = new Image();
+        loaded.onload = () => resolve(loaded);
+        loaded.onerror = () => resolve(null);
+        loaded.src = dataUrl;
+      });
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  async function paintExportNode(context, node, origin, scale) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      paintExportText(context, node, origin, scale);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE || !isVisibleExportNode(node)) return;
+    paintExportBox(context, node, origin, scale);
+    if (node.tagName === "IMG") {
+      const rect = node.getBoundingClientRect();
+      const image = await loadExportImage(node);
+      if (image) {
+        const x = (rect.left - origin.left) * scale;
+        const y = (rect.top - origin.top) * scale;
+        const width = rect.width * scale;
+        const height = rect.height * scale;
+        const style = getComputedStyle(node);
+        const framedProfile = node.parentElement && node.parentElement.classList.contains("cs-member-avatar-img");
+        const radius = framedProfile
+          ? Math.min(width, height) / 2
+          : Math.max(0, parseFloat(style.borderRadius) || 0) * scale;
+        context.save();
+        context.beginPath();
+        if (context.roundRect) context.roundRect(x, y, width, height, Math.min(radius, width / 2, height / 2));
+        else context.rect(x, y, width, height);
+        context.clip();
+        if (style.objectFit === "cover" || framedProfile) {
+          const sourceRatio = image.naturalWidth / image.naturalHeight;
+          const targetRatio = rect.width / rect.height;
+          let sourceX = 0;
+          let sourceY = 0;
+          let sourceWidth = image.naturalWidth;
+          let sourceHeight = image.naturalHeight;
+          if (sourceRatio > targetRatio) {
+            sourceWidth = image.naturalHeight * targetRatio;
+            sourceX = (image.naturalWidth - sourceWidth) / 2;
+          } else if (sourceRatio < targetRatio) {
+            sourceHeight = image.naturalWidth / targetRatio;
+            sourceY = (image.naturalHeight - sourceHeight) / 2;
+          }
+          context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+        } else {
+          context.drawImage(image, x, y, width, height);
+        }
+        context.restore();
+      }
+      return;
+    }
+    for (const child of Array.from(node.childNodes)) await paintExportNode(context, child, origin, scale);
+  }
+
+  async function paintExportBrand(context, body, origin, width, scale) {
+    const iconSource = document.createElement("img");
+    iconSource.src = OBAENGAL_ICON_URL;
+    const icon = await loadExportImage(iconSource);
+    const iconSize = 18 * scale;
+    const gap = 6 * scale;
+    const right = 14 * scale;
+    const label = "오뱅알";
+    const dateElement = body.querySelector(".cs-pop-date");
+    const dateStyle = getComputedStyle(dateElement || body);
+    const dateRect = dateElement ? dateElement.getBoundingClientRect() : null;
+    const centerY = dateRect
+      ? (dateRect.top + dateRect.height / 2 - origin.top) * scale
+      : 20 * scale;
+    const top = centerY - iconSize / 2;
+    context.font = "700 " + (12 * scale) + "px " + dateStyle.fontFamily;
+    context.textBaseline = "alphabetic";
+    const textMetrics = context.measureText(label);
+    const textWidth = textMetrics.width;
+    const textBaseline = centerY + (textMetrics.actualBoundingBoxAscent - textMetrics.actualBoundingBoxDescent) / 2;
+    const startX = width * scale - right - textWidth - (icon ? iconSize + gap : 0);
+    if (icon) context.drawImage(icon, startX, top, iconSize, iconSize);
+    context.fillStyle = dateStyle.color;
+    context.fillText(label, startX + (icon ? iconSize + gap : 0), textBaseline);
+  }
+
+  async function schedulePopoverPngBlob(popover, body) {
+    state.popoverExporting = true;
+    if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
+    const controls = body.querySelector("[data-pop-export-controls]");
+    const previousDisplay = controls ? controls.style.display : "";
+    const vodButtons = body.querySelector(".cs-vod-buttons");
+    const previousVodDisplay = vodButtons ? vodButtons.style.display : "";
+    const subtitleImageReplacements = Array.from(body.querySelectorAll(".cs-pop-title .cs-inline-media-trigger, .cs-pop-part-text .cs-inline-media-trigger")).map((trigger) => {
+      const text = String((trigger.querySelector(".cs-inline-media-label") || trigger).textContent || "").trim();
+      const replacement = document.createElement("span");
+      replacement.className = "cs-export-plain-media-text";
+      replacement.textContent = text;
+      replacement.style.cssText = "display:inline;color:inherit;font:inherit;line-height:inherit;letter-spacing:inherit;";
+      trigger.replaceWith(replacement);
+      return { trigger, replacement };
+    });
+    const popupImageTriggers = Array.from(body.querySelectorAll(".cs-inline-media-trigger"));
+    const previousPopupImageDisplays = popupImageTriggers.map((element) => element.style.display);
+    if (controls) controls.style.display = "none";
+    if (vodButtons) vodButtons.style.display = "none";
+    popupImageTriggers.forEach((element) => { element.style.display = "none"; });
+    const emptyMemoAreas = Array.from(body.querySelectorAll(".cs-pop-main-note, .cs-pop-part-notes")).filter((area) => {
+      const noteList = area.querySelector(".cs-pop-note-list");
+      return !String((noteList && noteList.innerText) || "").trim();
+    });
+    const previousMemoDisplays = emptyMemoAreas.map((element) => element.style.display);
+    emptyMemoAreas.forEach((element) => { element.style.display = "none"; });
+    try {
+      const bounds = popover.getBoundingClientRect();
+      const width = Math.max(250, Math.ceil(bounds.width));
+      const height = Math.max(1, Math.ceil(bounds.height));
+      const scale = 1.75;
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas 생성 실패");
+      paintExportBox(context, popover, bounds, scale);
+      await paintExportNode(context, body, bounds, scale);
+      await paintExportBrand(context, body, bounds, width, scale);
+      return await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("PNG 생성 실패")), "image/png"));
+    } finally {
+      if (controls) controls.style.display = previousDisplay;
+      if (vodButtons) vodButtons.style.display = previousVodDisplay;
+      popupImageTriggers.forEach((element, index) => { element.style.display = previousPopupImageDisplays[index]; });
+      subtitleImageReplacements.forEach(({ trigger, replacement }) => replacement.replaceWith(trigger));
+      emptyMemoAreas.forEach((element, index) => { element.style.display = previousMemoDisplays[index]; });
+      state.popoverExporting = false;
+      if (!state.schedulePopoverPinned && !popover.matches(":hover")) scheduleClosePopover();
+    }
+  }
+
+  function bindSchedulePopoverExport(popover, body, key) {
+    const status = body.querySelector(".cs-pop-export-status");
+    body.querySelectorAll("[data-pop-export-action]").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const copy = button.getAttribute("data-pop-export-action") === "copy";
+        button.disabled = true;
+        if (status) status.textContent = "이미지 생성 중...";
+        try {
+          if (copy && (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === "undefined")) {
+            if (status) status.textContent = "이 브라우저에서는 PNG 다운로드를 이용해 주세요.";
+            return;
+          }
+          const blobPromise = schedulePopoverPngBlob(popover, body);
+          if (copy) {
+            await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+            if (status) status.textContent = "이미지를 복사했습니다.";
+          } else {
+            const url = URL.createObjectURL(await blobPromise);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "오뱅알-일정-" + key + ".png";
+            link.style.display = "none";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            if (status) status.textContent = "PNG 다운로드를 요청했습니다.";
+          }
+        } catch (error) {
+          console.error("[오뱅알] 일정 상세 이미지 내보내기 실패", error);
+          if (status) status.textContent = copy ? "이미지를 복사하지 못했습니다." : "PNG를 다운로드하지 못했습니다.";
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
   }
 
   function openPopover(cell) {
@@ -4343,8 +4705,14 @@
         ).join("") + "</div></section>"
       : "";
 
-    html += detailHtml + notesHtml;
+    html += detailHtml + notesHtml +
+      '<div class="cs-pop-export" data-pop-export-controls="1">' +
+        '<button type="button" data-pop-export-action="copy" aria-label="일정 복사하기"><img class="cs-pop-export-icon" src="' + IMAGE_COPY_ICON_URL + '" alt="" /><span class="cs-pop-export-tip" role="tooltip">일정 복사하기</span></button>' +
+        '<button type="button" data-pop-export-action="save" aria-label="일정 PNG 다운로드"><img class="cs-pop-export-icon" src="' + PNG_DOWNLOAD_ICON_URL + '" alt="" /><span class="cs-pop-export-tip" role="tooltip">일정 PNG 다운로드</span></button>' +
+        '<span class="cs-pop-export-status" role="status" aria-live="polite"></span>' +
+      "</div>";
     body.innerHTML = html;
+    bindSchedulePopoverExport(popover, body, key);
     popover.style.width = "max-content";
     state.activePopoverDate = key;
     popover.classList.add("cs-open");
@@ -5009,6 +5377,7 @@
     clampMediaPopoverPosition(pop, left, top);
   }
   function closePopover() {
+    if (state.popoverExporting) return;
     if (state.popoverTimer) clearTimeout(state.popoverTimer);
     if (state.popoverCloseTimer) clearTimeout(state.popoverCloseTimer);
     state.activePopoverDate = "";
@@ -5788,13 +6157,14 @@
       return;
     }
     const vodMatch = currentVodScheduleMatch();
-    const items = vodMatch ? vodCategoryGroup(vodMatch) : [];
-    const slot = items.length ? findLatestVodCardSlots() : null;
+    const chaptersReady = !!(vodMatch && vodMatch.vod && vodMatch.vod.chaptersReady === true);
+    const items = chaptersReady ? vodCategoryGroup(vodMatch) : [];
+    const slot = vodMatch && (!chaptersReady || items.length) ? findLatestVodCardSlots() : null;
     if (!slot) {
       removeVodCategoryHost();
       return;
     }
-    const fingerprint = JSON.stringify([location.href, items]);
+    const fingerprint = JSON.stringify([location.href, chaptersReady, items]);
     if (state.vodCategoryHost && state.vodCategoryHost.isConnected && state.vodCategoryHost.dataset.fingerprint === fingerprint && ((slot.insertBefore && state.vodCategoryHost.previousElementSibling === slot.details && state.vodCategoryHost.nextElementSibling === slot.insertBefore) || (slot.insertAfter && state.vodCategoryHost.previousElementSibling === slot.insertAfter) || (slot.appendTo && state.vodCategoryHost.parentElement === slot.appendTo))) return;
     removeVodCategoryHost();
     const host = document.createElement("div");
@@ -5807,24 +6177,17 @@
       const time = item.offsetSeconds === null || item.offsetSeconds === undefined ? "" : '<span class="ovc-time">' + escapeHtml(formatVodOffset(item.offsetSeconds)) + '</span>';
       return '<button type="button" class="ovc-button" data-index="' + index + '" aria-label="' + label + ' \uC2DC\uC810\uC73C\uB85C \uC774\uB3D9">' + time + '<span class="ovc-label">' + label + '</span><span class="ovc-tip" role="tooltip">\uC774 \uC2DC\uC810\uC73C\uB85C \uC774\uB3D9</span></button>';
     }).join("");
+    const content = chaptersReady
+      ? '<div class="ovc-wrap"><span class="ovc-heading-group"><span class="ovc-heading">챕터 이동</span></span>' + buttons + '</div>'
+      : '<div class="ovc-wrap ovc-pending" role="status"><span class="ovc-pending-mark" aria-hidden="true"></span><span><strong>챕터를 준비하고 있어요</strong><small>준비가 완료되면 원하는 구간으로 바로 이동할 수 있어요.</small></span></div>';
     shadow.innerHTML = '<style>' +
       ':host{display:block;margin:8px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}' +
-      '.ovc-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ovc-heading-group{position:relative;display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:0 7px 0 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#d9e8df;font-size:12px;font-weight:800;line-height:1;white-space:nowrap}.ovc-info{appearance:none;display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:1px solid rgba(217,232,223,.34);border-radius:50%;background:rgba(255,255,255,.06);color:#aee8ce;font-size:11px;font-weight:900;line-height:1;cursor:default}.ovc-info:hover,.ovc-info:focus-visible{border-color:rgba(134,244,187,.82);background:rgba(0,255,163,.14);color:#effff7;outline:none}' +
+      '.ovc-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ovc-heading-group{position:relative;display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#d9e8df;font-size:12px;font-weight:800;line-height:1;white-space:nowrap}' +
+      '.ovc-pending{flex-wrap:nowrap;gap:9px;min-height:38px;padding:8px 11px;border:1px solid rgba(157,158,163,.2);border-radius:8px;background:rgba(255,255,255,.045);color:#d9dcdf}.ovc-pending-mark{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#9d9ea3;box-shadow:0 0 0 4px rgba(157,158,163,.1)}.ovc-pending span:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}.ovc-pending strong{font-size:12px;font-weight:800;line-height:1.2}.ovc-pending small{color:#9d9ea3;font-size:11px;font-weight:600;line-height:1.3}' +
       '.ovc-button{appearance:none;position:relative;display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 10px;border:1px solid rgba(0,255,163,.45);border-radius:999px;background:rgba(9,14,18,.92);color:#f2fff8;font-size:12px;font-weight:750;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.18);transition:transform .14s ease,border-color .14s ease,background .14s ease}' +
       '.ovc-button:hover{transform:translateY(-1px);border-color:rgba(108,255,190,.92);background:rgba(16,31,29,.98)}' +
       '.ovc-time{color:#86f4bb;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}.ovc-label{display:inline-flex;min-width:0}.ovc-tip{position:absolute;left:50%;bottom:calc(100% + 8px);z-index:2;display:block;width:max-content;max-width:220px;padding:7px 9px;border:1px solid rgba(132,255,193,.38);border-radius:7px;background:rgba(8,12,16,.96);color:#effff7;font-size:11px;font-weight:700;line-height:1.35;box-shadow:0 10px 28px rgba(0,0,0,.34);opacity:0;visibility:hidden;transform:translate(-50%,4px);transition:opacity .14s ease,transform .14s ease,visibility .14s ease;pointer-events:none}.ovc-tip:after{content:"";position:absolute;left:50%;top:100%;width:8px;height:8px;background:rgba(8,12,16,.96);border-right:1px solid rgba(132,255,193,.38);border-bottom:1px solid rgba(132,255,193,.38);transform:translate(-50%,-4px) rotate(45deg)}.ovc-button:hover .ovc-tip,.ovc-button:focus-visible .ovc-tip{opacity:1;visibility:visible;transform:translate(-50%,0)}' +
-      '</style><div class="ovc-wrap"><span class="ovc-heading-group"><span class="ovc-heading">\uCC55\uD130 \uC774\uB3D9</span><button type="button" class="ovc-info" aria-label="\uCC55\uD130 \uC0DD\uC131 \uAE30\uC900" tabindex="0">i</button></span>' + buttons + '</div>';
-    const infoButton = shadow.querySelector(".ovc-info");
-    if (infoButton) {
-      infoButton.addEventListener("mouseenter", () => showVodCategoryInfoPopover(infoButton));
-      infoButton.addEventListener("mouseleave", hideVodCategoryInfoPopover);
-      infoButton.addEventListener("focus", () => showVodCategoryInfoPopover(infoButton));
-      infoButton.addEventListener("blur", hideVodCategoryInfoPopover);
-      infoButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-    }
+      '</style>' + content;
     shadow.querySelectorAll(".ovc-button").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();

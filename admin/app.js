@@ -13,6 +13,7 @@
   const TARGET_LIVE_NOTIFICATIONS_SETTING_KEY = "target_live_notifications";
   const TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY = "target_live_notifications_public";
   const GNIMTI_CONTENT_SETTING_KEY = "gnimti_content";
+  const GAME_RATINGS_SETTING_KEY = "game_ratings";
   const LIVE_TITLE_HISTORY_TABLE = cfg.liveTitleHistoryTableName || "live_title_history";
   const LIVE_CATEGORY_HISTORY_TABLE = cfg.liveCategoryHistoryTableName || "live_category_history";
   const LOL_STREAMER_ACCOUNTS_TABLE = cfg.lolStreamerAccountsTableName || "lol_streamer_accounts";
@@ -31,6 +32,7 @@
   let lolStreamerAccount = emptyLolStreamerAccount();
   let lolStreamerAccountLoadError = "";
   let activeAdminMenu = "schedule";
+  let activeGameRatingId = "";
   let selectedScheduleDate = "";
   let scheduleMonthOffset = 0;
   let openScheduleTitleHistoryDate = "";
@@ -38,7 +40,7 @@
   let deletedIds = [];    // 저장 시 삭제할 기존 일정 행 id
   let deletedInfoIds = []; // 저장 시 삭제할 기존 소식/예정 컨텐츠 행 id
   let canManage = false;
-  let adminSettings = { autoLiveCategorySync: false, targetLiveNotifications: true, targetLiveNotificationsPublic: false, gnimtiContent: emptyGnimtiContent() };
+  let adminSettings = { autoLiveCategorySync: false, targetLiveNotifications: true, targetLiveNotificationsPublic: false, gnimtiContent: emptyGnimtiContent(), gameRatings: [] };
   let adminSettingsLoadError = "";
   const gameCategoryCache = new Map();
 
@@ -89,7 +91,7 @@
         notes: normalizeNotes(p.notes),
       })),
       gameImages: (r.gameImages || r.game_images || []).map((g) => ({ url: g.url || "", label: g.label || "", categoryId: g.categoryId || "", categoryType: g.categoryType || "", posterImageUrl: g.posterImageUrl || "" })),
-      vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "", manualLabel: !!v.manualLabel })),
+      vods: (r.vods || []).map((v) => ({ url: v.url || "", label: v.label || "", manualLabel: !!v.manualLabel, chaptersReady: !!v.chaptersReady })),
       status: r.status || "", cafe_time: !!r.cafe_time, video_time: !!r.video_time, notes: r.notes || normalizeNotes(r.note),
     })).sort(compareScheduleDate);
     // 순서 자체가 의미 있는 데이터라 정렬하지 않고 배열 순서 그대로 비교
@@ -378,13 +380,13 @@
   }
 
   async function loadAdminSettings() {
-    adminSettings = { autoLiveCategorySync: false, targetLiveNotifications: true, targetLiveNotificationsPublic: false, gnimtiContent: emptyGnimtiContent() };
+    adminSettings = { autoLiveCategorySync: false, targetLiveNotifications: true, targetLiveNotificationsPublic: false, gnimtiContent: emptyGnimtiContent(), gameRatings: [] };
     adminSettingsLoadError = "";
     const { data, error } = await sb
       .from(adminSettingsTableName())
       .select("key,value")
       .eq("channel_id", cfg.channelId)
-      .in("key", [AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, TARGET_LIVE_NOTIFICATIONS_SETTING_KEY, TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY, GNIMTI_CONTENT_SETTING_KEY]);
+      .in("key", [AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, TARGET_LIVE_NOTIFICATIONS_SETTING_KEY, TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY, GNIMTI_CONTENT_SETTING_KEY, GAME_RATINGS_SETTING_KEY]);
     if (error) {
       adminSettingsLoadError = error.message || String(error);
       console.warn("[admin] 설정 로드 실패:", error);
@@ -395,6 +397,7 @@
       if (row.key === TARGET_LIVE_NOTIFICATIONS_SETTING_KEY) adminSettings.targetLiveNotifications = targetLiveNotificationsEnabledFromValue(row.value);
       if (row.key === TARGET_LIVE_NOTIFICATIONS_PUBLIC_SETTING_KEY) adminSettings.targetLiveNotificationsPublic = targetLiveNotificationsPublicEnabledFromValue(row.value);
       if (row.key === GNIMTI_CONTENT_SETTING_KEY) adminSettings.gnimtiContent = normalizeGnimtiContent(row.value);
+      if (row.key === GAME_RATINGS_SETTING_KEY) adminSettings.gameRatings = normalizeGameRatings(row.value);
     });
   }
 
@@ -424,6 +427,12 @@
         channel_id: cfg.channelId,
         key: GNIMTI_CONTENT_SETTING_KEY,
         value: normalizeGnimtiContent(adminSettings.gnimtiContent),
+        updated_at: now,
+      },
+      {
+        channel_id: cfg.channelId,
+        key: GAME_RATINGS_SETTING_KEY,
+        value: normalizeGameRatings(adminSettings.gameRatings),
         updated_at: now,
       },
     ];
@@ -659,8 +668,110 @@
     renderUpdates();
     renderSettings();
     renderGnimtiAdmin();
+    renderGameRatingsAdmin();
     setActiveAdminMenu(activeAdminMenu);
     bindDirectiveAutocompletes();
+  }
+
+  function normalizeGameRatings(value) {
+    return (Array.isArray(value) ? value : []).map((item, index) => ({
+      id: String((item && item.id) || (Date.now() + index)),
+      name: String((item && item.name) || ""),
+      genre: String((item && item.genre) || ""),
+      score: Number.isFinite(Number(item && item.score)) ? Number(item.score) : 0,
+      note: String((item && item.note) || ""),
+      steamAppId: String((item && item.steamAppId) || ""),
+      youtubeId: String((item && item.youtubeId) || ""),
+      imageUrl: String((item && item.imageUrl) || ""),
+    })).filter((item) => item.name.trim());
+  }
+
+  function renderGameRatingsAdmin() {
+    const list = $("gameRatingsList");
+    if (!list) return;
+    const ratings = Array.isArray(adminSettings.gameRatings) ? adminSettings.gameRatings : [];
+    if (activeGameRatingId && !ratings.some((item) => String(item.id) === activeGameRatingId)) activeGameRatingId = "";
+    const activeIndex = ratings.findIndex((item) => String(item.id) === activeGameRatingId);
+    const activeItem = activeIndex >= 0 ? ratings[activeIndex] : null;
+    const badges = ratings.map((item) => '<button type="button" class="rating-title-badge' + (String(item.id) === activeGameRatingId ? ' active' : '') + '" data-rating-select="' + esc(item.id) + '" aria-pressed="' + String(String(item.id) === activeGameRatingId) + '">' + esc(item.name || "새 게임") + '</button>').join('');
+    const form = activeItem ? '<div class="card rating-admin-card rating-admin-editor">' +
+      '<div class="rating-admin-head"><strong>' + esc(activeItem.name || "새 게임") + '</strong><button type="button" class="rating-delete-action" data-rating-delete="' + activeIndex + '" aria-label="' + esc((activeItem.name || "새 게임") + ' 삭제') + '">삭제</button></div>' +
+      '<div class="rating-admin-grid">' +
+        '<label>게임명<input type="text" data-rating-field="name" data-rating-index="' + activeIndex + '" value="' + esc(activeItem.name) + '" autofocus /></label>' +
+        '<label>장르<input type="text" data-rating-field="genre" data-rating-index="' + activeIndex + '" value="' + esc(activeItem.genre) + '" /></label>' +
+        '<label>점수<input type="number" step="0.1" data-rating-field="score" data-rating-index="' + activeIndex + '" value="' + esc(activeItem.score) + '" /></label>' +
+        '<label>Steam App ID<input type="text" inputmode="numeric" data-rating-field="steamAppId" data-rating-index="' + activeIndex + '" value="' + esc(activeItem.steamAppId) + '" /></label>' +
+        '<label class="rating-admin-wide">YouTube 영상 ID<input type="text" data-rating-field="youtubeId" data-rating-index="' + activeIndex + '" value="' + esc(activeItem.youtubeId) + '" placeholder="11자리 영상 ID" /></label>' +
+        '<label class="rating-admin-wide">게임 이미지<div class="rating-image-input"><input type="url" inputmode="url" data-rating-field="imageUrl" data-rating-index="' + activeIndex + '" value="' + esc(activeItem.imageUrl || "") + '" placeholder="이미지 URL 또는 직접 업로드" /><button type="button" class="rating-upload-action" data-rating-image-upload="' + activeIndex + '">업로드</button></div>' + (activeItem.imageUrl ? '<span class="rating-image-preview"><img src="' + esc(activeItem.imageUrl) + '" alt="' + esc(activeItem.name || "게임") + ' 이미지 미리보기" /></span>' : '') + '</label>' +
+        '<label class="rating-admin-wide">평가 메모<textarea data-rating-field="note" data-rating-index="' + activeIndex + '" rows="3">' + esc(activeItem.note) + '</textarea></label>' +
+      '</div></div>' : '';
+    list.innerHTML = '<div class="schedule-group-head rating-admin-toolbar"><p class="group-label">따타스코어</p><button type="button" class="rating-add-compact" data-rating-add="1" aria-label="게임 추가">+ 추가</button></div>' +
+      form +
+      (ratings.length ? '<div class="rating-badge-list" aria-label="저장된 게임">' + badges + '</div>' : '<div class="content-placeholder">등록된 게임이 없습니다. 게임을 추가하면 따타스코어에 노출됩니다.</div>');
+    list.querySelector('[data-rating-add]')?.addEventListener('click', () => {
+      const item = { id: String(Date.now()), name: "", genre: "", score: 0, note: "", steamAppId: "", youtubeId: "", imageUrl: "" };
+      adminSettings.gameRatings.unshift(item);
+      activeGameRatingId = item.id;
+      renderGameRatingsAdmin(); markDirty();
+    });
+    list.querySelectorAll('[data-rating-select]').forEach((button) => button.addEventListener('click', () => {
+      activeGameRatingId = String(button.dataset.ratingSelect || "");
+      renderGameRatingsAdmin();
+    }));
+    list.querySelectorAll('[data-rating-delete]').forEach((button) => button.addEventListener('click', () => {
+      adminSettings.gameRatings.splice(Number(button.dataset.ratingDelete), 1); activeGameRatingId = ""; renderGameRatingsAdmin(); markDirty();
+    }));
+    list.querySelectorAll('[data-rating-image-upload]').forEach((button) => button.addEventListener('click', () => chooseGameRatingImage(Number(button.dataset.ratingImageUpload), button)));
+    list.querySelectorAll('[data-rating-field]').forEach((input) => {
+      input.addEventListener('input', () => {
+        const item = adminSettings.gameRatings[Number(input.dataset.ratingIndex)];
+        if (!item) return;
+        item[input.dataset.ratingField] = input.dataset.ratingField === 'score' ? Number(input.value || 0) : input.value;
+        if (input.dataset.ratingField === 'name') {
+          const badge = list.querySelector('[data-rating-select="' + CSS.escape(String(item.id)) + '"]');
+          if (badge) badge.textContent = input.value.trim() || "새 게임";
+          const heading = list.querySelector('.rating-admin-head strong');
+          if (heading) heading.textContent = input.value.trim() || "새 게임";
+        }
+        markDirty();
+      });
+    });
+  }
+
+  async function uploadGameRatingImage(file) {
+    if (!file) return "";
+    if (!/^image\//i.test(file.type || "")) throw new Error("이미지 파일만 업로드할 수 있습니다.");
+    const ext = (file.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
+    const filePath = "game-ratings/" + cfg.channelId + "/poster-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8) + ext;
+    const { error } = await sb.storage.from(GNIMTI_IMAGE_BUCKET).upload(filePath, file, { contentType: file.type || "image/png", upsert: false });
+    if (error) throw error;
+    const { data } = sb.storage.from(GNIMTI_IMAGE_BUCKET).getPublicUrl(filePath);
+    return data && data.publicUrl ? data.publicUrl : "";
+  }
+
+  function chooseGameRatingImage(index, button) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      button.disabled = true;
+      button.textContent = "업로드 중";
+      try {
+        const url = await uploadGameRatingImage(file);
+        const item = adminSettings.gameRatings[index];
+        if (item) item.imageUrl = url;
+        renderGameRatingsAdmin();
+        markDirty();
+        toast("게임 이미지를 업로드했습니다.");
+      } catch (error) {
+        toast("이미지 업로드 실패: " + (error.message || error));
+        button.disabled = false;
+        button.textContent = "업로드";
+      }
+    };
+    input.click();
   }
 
 
@@ -1833,6 +1944,18 @@
     '</li>';
   }
 
+  function chapterSessionVodLocation(date, session, sessionIndex) {
+    const rowIndex = rows.findIndex((entry) => String((entry && entry.date) || "").trim() === String(date || "").trim());
+    const row = rowIndex >= 0 ? rows[rowIndex] : null;
+    const vods = row && Array.isArray(row.vods) ? row.vods : [];
+    const liveKey = String((session && session.liveKey) || "").trim();
+    const startedAt = String((session && session.startedAt) || "").trim();
+    let vodIndex = vods.findIndex((vod) => liveKey && String((vod && vod.liveKey) || "").trim() === liveKey);
+    if (vodIndex < 0) vodIndex = vods.findIndex((vod) => startedAt && sameChapterStartedAt(vod && vod.startedAt, startedAt));
+    if (vodIndex < 0 && vods[sessionIndex]) vodIndex = sessionIndex;
+    return { rowIndex, vodIndex, vod: vodIndex >= 0 ? vods[vodIndex] : null };
+  }
+
   function chapterPreviewHtml(date) {
     if (liveCategoryHistoryLoadError) {
       return '<div class="settings-warning live-title-history-inline-warning">다시보기 챕터 기록을 불러올 수 없습니다.</div>';
@@ -1847,7 +1970,13 @@
         seen.add(key);
         return true;
       });
-      const heading = sessions.length > 1 ? '<div class="chapter-preview-session">다시보기 ' + (sessionIndex + 1) + '</div>' : '';
+      const location = chapterSessionVodLocation(date, session, sessionIndex);
+      const ready = !!(location.vod && location.vod.chaptersReady);
+      const headingLabel = sessions.length > 1 ? '다시보기 ' + (sessionIndex + 1) : '다시보기';
+      const readyButton = location.vod
+        ? '<button type="button" class="flag-toggle chapter-ready-toggle' + (ready ? ' on' : '') + '" data-chapter-ready="' + location.rowIndex + '-' + location.vodIndex + '" aria-pressed="' + (ready ? 'true' : 'false') + '">챕터 생성 준비 완료</button>'
+        : '<button type="button" class="flag-toggle chapter-ready-toggle" disabled title="다시보기 링크가 등록되면 설정할 수 있습니다">챕터 생성 준비 완료</button>';
+      const heading = '<div class="chapter-preview-session-head"><div class="chapter-preview-session">' + headingLabel + '</div>' + readyButton + '</div>';
       const rowsHtml = chapters.map(chapterRowHtml).join("") + chapterAddRowHtml(date, session);
       return '<section class="chapter-preview-session-wrap">' + heading + '<ol class="chapter-preview-list">' + rowsHtml + '</ol></section>';
     }).join("");
@@ -4361,6 +4490,7 @@
     if (!v || typeof v !== "object") return null;
     const item = { url: v.url || "", label: v.label || "방송 다시보기" };
     if (v.manualLabel === true) item.manualLabel = true;
+    if (v.chaptersReady === true || v.chapters_ready === true) item.chaptersReady = true;
     const liveKey = String(v.liveKey || v.live_key || "").trim();
     const startedAt = String(v.startedAt || v.started_at || "").trim();
     const endedAt = String(v.endedAt || v.ended_at || "").trim();
@@ -4536,6 +4666,17 @@
         if (error) { toast("챕터 추가 실패: " + error.message); el.disabled = false; return; }
         liveCategoryHistory.push(data || payload);
         toast("챕터를 추가했습니다.");
+        render();
+      };
+    });
+    document.querySelectorAll("[data-chapter-ready]").forEach((el) => {
+      el.onclick = () => {
+        const indexes = String(el.getAttribute("data-chapter-ready") || "").split("-").map(Number);
+        const row = rows[indexes[0]];
+        const vod = row && row.vods && row.vods[indexes[1]];
+        if (!vod) return;
+        vod.chaptersReady = !vod.chaptersReady;
+        markDirty();
         render();
       };
     });
@@ -5127,6 +5268,7 @@
               label: (v.label || "").trim() || "방송 다시보기",
             };
             if (v.manualLabel === true && (v.label || "").trim()) item.manualLabel = true;
+            if (v.chaptersReady === true) item.chaptersReady = true;
             const liveKey = String(v.liveKey || v.live_key || "").trim();
             const startedAt = String(v.startedAt || v.started_at || "").trim();
             const endedAt = String(v.endedAt || v.ended_at || "").trim();

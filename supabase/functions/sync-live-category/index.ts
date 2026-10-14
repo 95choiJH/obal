@@ -663,7 +663,7 @@ async function safeRecordLiveCategoryChange(
   }
 }
 
-type VodItem = { url: string; label: string; manualLabel?: boolean; liveKey?: string; startedAt?: string; endedAt?: string; videoNo?: string };
+type VodItem = { url: string; label: string; manualLabel?: boolean; chaptersReady?: boolean; liveKey?: string; startedAt?: string; endedAt?: string; videoNo?: string };
 
 function normalizeVodItem(item: unknown): VodItem | null {
   if (!item || typeof item !== "object") return null;
@@ -673,6 +673,7 @@ function normalizeVodItem(item: unknown): VodItem | null {
   if (!url) return null;
   const vod: VodItem = { url, label };
   if (source.manualLabel === true) vod.manualLabel = true;
+  if (source.chaptersReady === true || source.chapters_ready === true) vod.chaptersReady = true;
   const liveKey = String(source.liveKey || source.live_key || "").trim();
   const startedAt = String(source.startedAt || source.started_at || "").trim();
   const endedAt = String(source.endedAt || source.ended_at || "").trim();
@@ -1003,7 +1004,7 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode") || "full";
-  if (!["full", "chapters", "maintenance"].includes(mode)) return jsonResponse({ error: "Invalid sync mode" }, 400);
+  if (!["full", "maintenance"].includes(mode)) return jsonResponse({ error: "Invalid sync mode" }, 400);
   const channelId = (url.searchParams.get("channelId") || Deno.env.get("LIVE_CATEGORY_CHANNEL_ID") || DEFAULT_CHANNEL_ID).trim();
   if (!/^[0-9a-f]{32}$/i.test(channelId)) return jsonResponse({ error: "Invalid channel ID" }, 400);
 
@@ -1013,7 +1014,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await requestBody(req);
-    const syncSetting = mode === "chapters" ? { enabled: false } : await loadAutoLiveCategorySyncEnabled(channelId, supabaseUrl, serviceRoleKey);
+    const syncSetting = await loadAutoLiveCategorySyncEnabled(channelId, supabaseUrl, serviceRoleKey);
     const testCategories = testCategoriesFromBody(body);
     if (testCategories.length) {
       const startedAt = String(body.startedAt || "");
@@ -1025,7 +1026,7 @@ Deno.serve(async (req) => {
       const titleHistory = testTitle
         ? await safeRecordLiveTitleChange(channelId, date, testTitle, session.liveKey, startedAt, testCategory, supabaseUrl, serviceRoleKey)
         : { recorded: false, reason: "empty-title" };
-      const categoryHistory = await safeRecordLiveCategoryChange(channelId, date, session.liveKey, startedAt, testCategory, offsetHours, supabaseUrl, serviceRoleKey);
+      const categoryHistory = { recorded: false, reason: "manual-chapters-only" };
       if (!syncSetting.enabled) {
         return jsonResponse({ synced: false, reason: "disabled", setting: AUTO_LIVE_CATEGORY_SYNC_SETTING_KEY, mode: "test", titleHistory, categoryHistory });
       }
@@ -1035,30 +1036,18 @@ Deno.serve(async (req) => {
 
     const current = await currentLiveCategory(channelId, offsetHours);
     const rawDate = current.date || currentDateKey(offsetHours);
-    // Maintenance only reads the session mapping. The fast collector owns
-    // live state and history so the minute job cannot add delayed chapters.
-    const savedSession = mode === "maintenance" && current.live
-      ? await loadLiveSessionStateByKey(channelId, current.liveKey || "", supabaseUrl, serviceRoleKey)
-      : null;
     const session = current.live
-      ? mode === "maintenance"
-        ? { date: savedSession?.schedule_date || rawDate, liveKey: savedSession?.live_key || current.liveKey || "" }
-        : await resolveLiveSession(channelId, rawDate, current.liveKey || "", current.startedAt || "", current.title || "", offsetHours, supabaseUrl, serviceRoleKey)
+      ? await resolveLiveSession(channelId, rawDate, current.liveKey || "", current.startedAt || "", current.title || "", offsetHours, supabaseUrl, serviceRoleKey)
       : null;
-    const endState = current.live || mode === "maintenance" ? null : await markLiveSessionEndedIfNeeded(channelId, supabaseUrl, serviceRoleKey);
+    const endState = current.live ? null : await markLiveSessionEndedIfNeeded(channelId, supabaseUrl, serviceRoleKey);
     const date = session ? session.date : rawDate;
     const liveKeyForHistory = session ? session.liveKey : (current.liveKey || "");
     // Persist the observation before any replay discovery. observedAt excludes
     // time spent resolving category metadata and writing the session.
-    const categoryHistory = current.live && mode !== "maintenance"
-      ? await safeRecordLiveCategoryChange(channelId, date, liveKeyForHistory, current.startedAt || "", current.category, offsetHours, supabaseUrl, serviceRoleKey, current.observedAt)
-      : { recorded: false, reason: mode === "maintenance" ? "maintenance" : "not-live" };
-    const titleHistory = current.live && mode !== "maintenance"
+    const categoryHistory = { recorded: false, reason: "manual-chapters-only" };
+    const titleHistory = current.live
       ? await safeRecordLiveTitleChange(channelId, date, current.title || "", liveKeyForHistory, current.startedAt || "", current.category, supabaseUrl, serviceRoleKey)
-      : { recorded: false, reason: mode === "maintenance" ? "maintenance" : "not-live" };
-    if (mode === "chapters") {
-      return jsonResponse({ mode, session, endState, categoryHistory, titleHistory });
-    }
+      : { recorded: false, reason: "not-live" };
     const endedSession = endState && "session" in endState ? (endState.session as LiveSessionState | null) : null;
     // A newly started live must not block replay discovery for an earlier,
     // already-ended session. Pending rows are explicitly filtered to

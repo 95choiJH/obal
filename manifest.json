@@ -7,11 +7,13 @@
   "permissions": [
     "storage",
     "alarms",
-    "notifications"
+    "notifications",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://ggebdrlvzrgoyumlrnxe.supabase.co/*",
     "https://api.chzzk.naver.com/*",
+    "https://*.pstatic.net/*",
     "https://store.steampowered.com/*",
     "https://*.steamstatic.com/*"
   ],
@@ -49,6 +51,8 @@
         "icons/gamepad-icon.svg",
         "icons/calendar-icon.svg",
         "icons/icon128.png",
+        "icons/image-copy.png",
+        "icons/png-download.png",
         "images/notification-guide.png",
         "images/ddahyoni-profile.png"
       ],
