@@ -18,7 +18,8 @@
   const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined.png");
   const NAVER_CAFE_ICON_URL = api.runtime.getURL("icons/naver_cafe.png");
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
-  const GAMEPAD_ICON_URL = api.runtime.getURL("icons/gamepad-icon.svg");
+  const GAMEPAD_ICON_URL = api.runtime.getURL("icons/tile-icon.png");
+  const STAR_ICON_URL = api.runtime.getURL("icons/star-icon.png");
   const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
   const CONTENT_MODE_TABS_ENABLED = true;
   const GNIMTI_POPUP_IMAGE_URL = api.runtime.getURL("images/gnimti-back.png");
@@ -672,6 +673,31 @@
   }
 
   const GAME_RATING_RANGES =[{label:"100점 이상",min:100,max:Infinity},{label:"90–99점",min:90,max:100},{label:"80–89점",min:80,max:90},{label:"70–79점",min:70,max:80},{label:"70점 미만",min:-Infinity,max:70}];
+  const KOREAN_INITIALS = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  const KOREAN_MEDIALS = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+  const KOREAN_FINALS = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  function decomposeKoreanHangul(value) {
+    return Array.from(String(value || ""), (char) => {
+      const code = char.charCodeAt(0) - 0xac00;
+      if (code < 0 || code > 11171) return char;
+      const initial = Math.floor(code / 588);
+      const medial = Math.floor((code % 588) / 28);
+      const final = code % 28;
+      return KOREAN_INITIALS[initial] + KOREAN_MEDIALS[medial] + KOREAN_FINALS[final];
+    }).join("");
+  }
+  function gameNameMatchesSearch(name, query) {
+    const normalizedName = String(name || "").toLocaleLowerCase().replace(/\s+/gu, "");
+    const normalizedQuery = String(query || "").toLocaleLowerCase().replace(/\s+/gu, "");
+    if (!normalizedQuery || normalizedName.includes(normalizedQuery)) return true;
+    if (decomposeKoreanHangul(normalizedName).includes(decomposeKoreanHangul(normalizedQuery))) return true;
+    if (!/^[ㄱ-ㅎ]+$/.test(normalizedQuery)) return false;
+    const initials = Array.from(normalizedName, (char) => {
+      const code = char.charCodeAt(0) - 0xac00;
+      return code >= 0 && code <= 11171 ? KOREAN_INITIALS[Math.floor(code / 588)] : char;
+    }).join("");
+    return initials.includes(normalizedQuery);
+  }
 
 
   function gameRatingsHtml() {
@@ -681,19 +707,20 @@
     const rankByScore=new Map();
     ranked.forEach((game,index)=>{if(!rankByScore.has(game.score))rankByScore.set(game.score,index+1)});
     const range=filters.range===""?null:GAME_RATING_RANGES[Number(filters.range)];
-    const list=ranked.filter(g=>(filters.genre==="전체"||g.genre===filters.genre)&&g.name.toLowerCase().includes(filters.search.toLowerCase())&&(!range||(g.score>=range.min&&g.score<range.max)));
+    const list=ranked.filter(g=>(filters.genre==="전체"||g.genre===filters.genre)&&gameNameMatchesSearch(g.name,filters.search)&&(!range||(g.score>=range.min&&g.score<range.max)));
     const selected=list.find(g=>String(g.id)===String(filters.selectedId))||list[0];
-    const recent=ratings.slice(0,3).map(g=>'<button type="button" class="cs-rating-recent-item" id="cs-rating-recent-'+g.id+'" data-rating-point="'+g.id+'">'+gameRatingPosterHtml(g,"")+'<span><strong>'+escapeHtml(g.name)+'</strong><small>'+escapeHtml(g.genre || '장르 미지정')+'</small></span><b>'+g.score+'<small>점</small></b></button>').join("");
+    const initialRecent=ratings.find(g=>g.name.toLowerCase().includes("way of the sword"))||ratings.find(g=>g.name.trim().toLowerCase()==="귀무자");
+    const recent=initialRecent?'<button type="button" class="cs-rating-recent-item" id="cs-rating-recent-'+initialRecent.id+'" data-rating-point="'+initialRecent.id+'">'+gameRatingPosterHtml(initialRecent,"")+'<span><strong>'+escapeHtml(initialRecent.name)+'</strong><small>'+escapeHtml(initialRecent.genre || '장르 미지정')+'</small></span><b>'+initialRecent.score+'<small>점</small></b></button>':'';
     const rows=list.slice(0,filters.visible).map(g=>'<button type="button" class="cs-rating-row" id="cs-rating-dot-'+g.id+'" data-rating-point="'+g.id+'" aria-pressed="'+String(String(g.id)===String(selected.id))+'" aria-controls="cs-rating-showcase"><span class="cs-rating-index">'+String(rankByScore.get(g.score)||1).padStart(2,"0")+'</span><span class="cs-rating-game"><strong>'+escapeHtml(g.name)+'</strong><small>'+escapeHtml(g.genre || '장르 미지정')+'</small></span><span class="cs-rating-score">'+g.score+'<small>점</small></span><span class="cs-rating-arrow" aria-hidden="true">↗</span></button>').join("");
     const scoreGroups='<section class="cs-rating-score-groups"><div class="cs-rating-score-groups-header"><button type="button" id="cs-rating-range-all" data-rating-range="" aria-pressed="'+String(filters.range==="")+'" aria-controls="cs-rating-ranked-list">전체 '+ranked.length+'개</button></div><div class="cs-rating-score-group-list" role="group" aria-label="점수 구간 선택">'+GAME_RATING_RANGES.map((r,i)=>{const count=ranked.filter(g=>g.score>=r.min&&g.score<r.max).length;return '<button type="button" id="cs-rating-range-'+i+'" data-rating-range="'+i+'" aria-pressed="'+String(filters.range===String(i))+'" aria-controls="cs-rating-ranked-list"'+(!count?' disabled':'')+'><span>'+r.label+'</span><strong>'+count+'<small>개</small></strong></button>';}).join("")+'</div></section>';
     let showcase='';
     if(selected){
       const video=typeof selected.youtubeId==="string"&&/^[a-zA-Z0-9_-]{11}$/.test(selected.youtubeId);
       const media=video?'<iframe src="https://www.youtube-nocookie.com/embed/'+selected.youtubeId+'" title="'+escapeHtml(selected.name)+' 따효니 플레이 영상" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe>':gameRatingPosterHtml(selected,selected.name+' 게임 포스터');
-      showcase='<aside id="cs-rating-showcase" class="cs-rating-showcase"><div class="cs-rating-media">'+media+'</div><div class="cs-rating-showcase-caption"><span>선택한 게임 · '+(video?'따효니 플레이 영상':'게임 포스터')+'</span></div><div class="cs-rating-showcase-title"><h3>'+escapeHtml(selected.name)+'</h3><strong>'+selected.score+'<small>점</small></strong></div>'+(selected.note?'<p>'+escapeHtml(selected.note)+'</p>':'')+'</aside>';
+      showcase='<aside id="cs-rating-showcase" class="cs-rating-showcase"><div class="cs-rating-media">'+media+'</div><div class="cs-rating-showcase-title"><h3>'+escapeHtml(selected.name)+'</h3><strong>'+selected.score+'<small>점</small></strong></div>'+(selected.note?'<p>'+escapeHtml(selected.note)+'</p>':'')+'</aside>';
     }
-    if(!ratings.length)return '<div class="cs-ratings cs-rating-shelf"><header class="cs-rating-shelf-header"><h2><span>따타스코어</span></h2></header><div class="cs-rating-empty">등록된 게임 평가가 없습니다.</div></div>';
-    return '<div class="cs-ratings cs-rating-shelf"><header class="cs-rating-shelf-header"><h2><span>따타스코어</span></h2></header>'+scoreGroups+'<div class="cs-rating-shelf-grid"><section class="cs-rating-library"><div class="cs-rating-heading"><h3>'+(range?range.label+' · ':'')+'스코어 순위</h3><span>'+list.length+'개 · 점수 상한 없음</span></div><div class="cs-rating-controls"><input id="cs-rating-search" type="search" aria-label="게임 이름 검색" placeholder="게임 찾기" value="'+escapeHtml(filters.search)+'"></div><div class="cs-rating-list" id="cs-rating-ranked-list">'+(rows||'<div class="cs-rating-empty">일치하는 게임이 없습니다.<button type="button" id="cs-rating-reset">전체 게임 보기</button></div>')+'</div>'+(filters.visible<list.length?'<button type="button" id="cs-rating-more" class="cs-rating-more">더보기 <span aria-hidden="true">＋</span></button>':'')+'</section>'+showcase+'</div>'+(recent?'<section class="cs-rating-recent"><h3>최근 등재</h3><div>'+recent+'</div></section>':'')+'<p class="cs-rating-note cs-rating-shelf-footer">점수는 스트리머 개인의 평가입니다.</p></div>';
+    if(!ratings.length)return '<div class="cs-ratings cs-rating-shelf"><div class="cs-rating-empty">등록된 게임 평가가 없습니다.</div></div>';
+    return '<div class="cs-ratings cs-rating-shelf">'+scoreGroups+'<div class="cs-rating-shelf-grid"><section class="cs-rating-library"><div class="cs-rating-heading"><h3>'+(range?range.label+' · ':'')+'스코어 순위</h3></div><div class="cs-rating-controls"><input id="cs-rating-search" type="search" aria-label="게임 이름 검색" placeholder="게임 찾기" value="'+escapeHtml(filters.search)+'"></div><div class="cs-rating-list" id="cs-rating-ranked-list">'+(rows||'<div class="cs-rating-empty">일치하는 게임이 없습니다.<button type="button" id="cs-rating-reset">전체 게임 보기</button></div>')+'</div>'+(filters.visible<list.length?'<button type="button" id="cs-rating-more" class="cs-rating-more">더보기 <span aria-hidden="true">＋</span></button>':'')+'</section>'+showcase+'</div><section class="cs-rating-recent"><h3>최근 등재</h3><div>'+recent+'</div></section></div>';
   }
 
   function bindGameRatingControls(shadow) {
@@ -704,19 +731,36 @@
       if (next) { next.focus({preventScroll:true}); if (id === "cs-rating-search") next.setSelectionRange(next.value.length,next.value.length); }
     };
     const search=shadow.getElementById("cs-rating-search"), sort=shadow.getElementById("cs-rating-sort");
-    if(search){
-      const applySearch=()=>{filters.search=search.value;filters.visible=5;update("cs-rating-search")};
-      search.addEventListener("input",event=>{if(!event.isComposing)applySearch()});
-      search.addEventListener("compositionend",applySearch);
-    }
     if(sort)sort.addEventListener("change",()=>{filters.sort=sort.value;filters.visible=5;update("cs-rating-sort")});
     shadow.querySelectorAll("[data-rating-genre]").forEach(button=>button.addEventListener("click",()=>{filters.genre=button.dataset.ratingGenre;filters.visible=5;update()}));
     shadow.querySelectorAll("[data-rating-range]").forEach(button=>button.addEventListener("click",()=>{filters.range=filters.range===button.dataset.ratingRange?"":button.dataset.ratingRange;filters.search="";filters.visible=5;update(button.id)}));
     const selectPoint=(id,focusId)=>{filters.selectedId=String(id);if(focusId&&focusId.startsWith("cs-rating-recent-")){filters.search="";filters.genre="전체";filters.range="";}update(focusId)};
-    shadow.querySelectorAll("[data-rating-point]").forEach(point=>{
+    const bindRatingPoint=point=>{
       point.addEventListener("click",()=>selectPoint(point.dataset.ratingPoint,point.id));
       point.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();selectPoint(point.dataset.ratingPoint,point.id)}});
-    });
+    };
+    shadow.querySelectorAll("[data-rating-point]").forEach(bindRatingPoint);
+    if(search){
+      const renderSearchResults=()=>{
+        filters.search=search.value;
+        filters.visible=5;
+        const ratings=currentGameRatings();
+        const ranked=[...ratings].sort((a,b)=>b.score-a.score||String(a.id).localeCompare(String(b.id)));
+        const range=filters.range===""?null:GAME_RATING_RANGES[Number(filters.range)];
+        const matches=ranked.filter(game=>(filters.genre==="전체"||game.genre===filters.genre)&&gameNameMatchesSearch(game.name,filters.search)&&(!range||(game.score>=range.min&&game.score<range.max)));
+        const selected=matches.find(game=>String(game.id)===String(filters.selectedId))||matches[0];
+        const rankByScore=new Map();
+        ranked.forEach((game,index)=>{if(!rankByScore.has(game.score))rankByScore.set(game.score,index+1)});
+        const list=shadow.getElementById("cs-rating-ranked-list");
+        if(!list)return;
+        list.innerHTML=matches.length?matches.slice(0,5).map(game=>'<button type="button" class="cs-rating-row" id="cs-rating-dot-'+game.id+'" data-rating-point="'+game.id+'" aria-pressed="'+String(!!selected&&String(game.id)===String(selected.id))+'" aria-controls="cs-rating-showcase"><span class="cs-rating-index">'+String(rankByScore.get(game.score)||1).padStart(2,"0")+'</span><span class="cs-rating-game"><strong>'+escapeHtml(game.name)+'</strong><small>'+escapeHtml(game.genre||"")+'</small></span><span class="cs-rating-score">'+game.score+'<small>점</small></span><span class="cs-rating-arrow" aria-hidden="true">↗</span></button>').join(""):'<div class="cs-rating-empty">일치하는 게임이 없습니다.<button type="button" id="cs-rating-reset">전체 게임 보기</button></div>';
+        list.querySelectorAll("[data-rating-point]").forEach(bindRatingPoint);
+        const reset=list.querySelector("#cs-rating-reset");
+        if(reset)reset.addEventListener("click",()=>{state.gameRatingFilters={genre:"전체",search:"",sort:"recent",range:"",visible:5};update()});
+      };
+      search.addEventListener("input",renderSearchResults);
+      search.addEventListener("compositionend",renderSearchResults);
+    }
     const picker=shadow.getElementById("cs-rating-picked");
     if(picker)picker.addEventListener("change",()=>selectPoint(picker.value,"cs-rating-picked"));
     const clear=shadow.getElementById("cs-rating-clear"), more=shadow.getElementById("cs-rating-more"), reset=shadow.getElementById("cs-rating-reset");
@@ -727,11 +771,11 @@
   }
 
   function lolLogToggleHtml() {
-    return '<div class="cs-mode-tabs" role="group" aria-label="오뱅알 모드 전환">' +
-      [["schedule","일정"],["gameRatings","따타스코어"]].map(([mode,label]) =>
-        '<button type="button" data-schedule-mode="'+mode+'" aria-pressed="'+String(state.scheduleViewMode===mode)+'">'+
-        (mode==="schedule"?'<img src="'+CALENDAR_ICON_URL+'" alt="">':"")+
-        label+'</button>').join("")+'</div>';
+    const mode = state.scheduleViewMode === "gameRatings" ? "schedule" : "gameRatings";
+    const label = mode === "gameRatings" ? "따타스코어" : "방송 일정";
+    const icon = mode === "gameRatings" ? STAR_ICON_URL : CALENDAR_ICON_URL;
+    return '<button type="button" class="cs-detail-nav" data-schedule-mode="'+mode+'" aria-label="'+label+'로 이동" title="'+label+'">'+
+      '<img src="'+icon+'" alt="" aria-hidden="true"><span class="cs-detail-nav-tip" aria-hidden="true">'+label+'</span></button>';
   }
 
   async function switchScheduleViewMode(button) {
@@ -1418,26 +1462,64 @@
     #cs-root { position: relative; }
 
     .cs-wrapper { position: relative; background: #1b1c1f; border: 1px solid #2e3033;
-      border-radius: 10px; margin: 0 30px 20px; }
-    .cs-schedule-toolbar { container-type: inline-size; margin: 0 30px 8px; }
-    .cs-toolbar-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
-    .cs-mode-switch-slot { justify-self: center; }
-    .cs-schedule-tools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; justify-self: end; }
-    @container (max-width: 480px) { .cs-toolbar-layout { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; } .cs-toolbar-balance { display: none; } .cs-mode-switch-slot { justify-self: start; } }
-    @container (max-width: 380px) { .cs-toolbar-layout { grid-template-columns: 1fr; } .cs-mode-switch-slot { justify-self: center; } .cs-schedule-tools { grid-row: 2; } }
-    .cs-schedule-toolbar .cs-view-tip,
-    .cs-schedule-toolbar .cs-extension-collapse-tip { top: calc(100% + 6px); bottom: auto; }
+      border-radius: 10px; margin: 0 0 20px; }
+    .cs-top-controls { position:relative; z-index:25; display:flex; align-items:center; justify-content:center; min-height:36px; margin:0 0 8px; }
+    .cs-top-controls .cs-view-switch { width:auto; gap:3px; padding:3px; border:1px solid #34373c; border-radius:9px; background:#202226; }
+    .cs-top-controls .cs-view-switch button { min-width:76px; height:28px; padding:0 13px; }
+    .cs-top-controls .cs-frame-controls { position:absolute; top:3px; right:8px; }
+    .cs-top-controls.cs-controls-only { justify-content:flex-end; }
+    .cs-header { position:relative; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:16px; margin-bottom:12px; padding:0; min-width:0; }
+    .cs-header-top-row { display:contents; }
+    .cs-header-bottom-row { display:contents; }
+    .cs-header-primary { grid-column:1; display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:9px; min-width:0; max-width:100%; white-space:nowrap; }
+    .cs-header-primary .cs-title { white-space:nowrap; font-size:18px; font-weight:750; letter-spacing:-.35px; }
+    .cs-header-bottom-right,.cs-date-navigation,.cs-schedule-tools { display:flex; align-items:center; gap:8px; }
+    .cs-header-bottom-right { grid-column:3; justify-content:flex-end; }
+    .cs-header-bottom-left { grid-column:1; }
+    .cs-schedule-navigator { grid-column:2; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:0; width:250px; height:30px; min-height:30px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+    .cs-date-navigation { position:relative; display:grid; grid-auto-flow:column; grid-template-columns:30px 30px 110px 30px 30px; grid-template-rows:30px; grid-auto-rows:30px; align-items:center; justify-content:center; gap:5px; width:250px; min-width:250px; max-width:250px; height:30px; min-height:30px; padding:0; border:0; white-space:nowrap; flex-wrap:nowrap; }
+    .cs-date-navigation > * { grid-row:1; min-width:0; white-space:nowrap; }
+    .cs-header-secondary { padding:0; }
+    .cs-view-switch { display:flex; align-items:center; justify-content:center; gap:4px; width:100%; }
+    .cs-view-switch button { min-width:82px; height:33px; padding:0 16px; border:1px solid transparent; border-radius:7px; background:transparent; color:#a4a9b0; font-family:inherit; font-size:12px; font-weight:650; line-height:1; cursor:pointer; transition:background .15s ease,color .15s ease,border-color .15s ease; }
+    .cs-view-switch button[aria-pressed=true] { border-color:rgba(0,200,120,.27); background:#123d30; color:#79ffc5; box-shadow:0 1px 2px rgba(0,0,0,.16); }
+    .cs-view-switch button:hover:not([aria-pressed=true]) { background:#2a2d31; color:#e5e8eb; }
+    .cs-view-switch button:focus-visible,.cs-date-navigation .cs-arrow:focus-visible,.cs-detail-nav:focus-visible { outline:2px solid #00c878; outline-offset:2px; }
+    .cs-date-navigation .cs-month-label { grid-column:3; position:static; min-width:0; width:100%; overflow:hidden; text-overflow:ellipsis; transform:none; color:#e2e5e9; font-size:13px; font-weight:700; text-align:center; }
+    .cs-week-label { grid-column:3; min-width:0; width:100%; overflow:hidden; text-overflow:ellipsis; color:#b4bac2; font-size:12px; font-weight:600; text-align:center; white-space:nowrap; font-variant-numeric:tabular-nums; letter-spacing:.1px; }
+    .cs-date-navigation .cs-arrow { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; border:1px solid #3a3d42; border-radius:7px; background:#222428; color:#d1d5db; font-size:18px; }
+    .cs-date-navigation #cs-prev { grid-column:2; }
+    .cs-date-navigation #cs-next { grid-column:4; }
+    .cs-date-navigation #cs-game-toggle { grid-column:5; }
+    .cs-date-side-spacer { grid-column:1; width:30px; height:30px; }
+    .cs-date-end-spacer { grid-column:5; width:30px; height:30px; }
+    .cs-date-navigation .cs-arrow:hover:not(:disabled) { border-color:#555a61; background:#2b2e33; color:#fff; }
+    .cs-detail-nav { position:relative; display:inline-flex; flex:0 0 30px; align-items:center; justify-content:center; width:30px; height:30px; min-height:30px; padding:0; border:1px solid #3a3d42; border-radius:7px; background:#222428; color:#d1d5db; cursor:pointer; transition:background .15s ease,border-color .15s ease,color .15s ease; }
+    .cs-detail-nav img { display:block; width:18px; height:18px; object-fit:contain; }
+    .cs-detail-nav:hover { border-color:#555a61; background:#2b2e33; color:#fff; }
+    .cs-detail-nav-tip { position:absolute; right:0; top:calc(100% + 6px); z-index:14; min-width:max-content; padding:5px 7px; border:1px solid #3a3c40; border-radius:7px; background:#232427; color:#efeff1; font-size:11px; font-weight:700; line-height:1.2; box-shadow:0 4px 14px rgba(0,0,0,.25); opacity:0; visibility:hidden; transform:translateY(-2px); transition:opacity .12s ease,transform .12s ease,visibility .12s ease; pointer-events:none; }
+    .cs-detail-nav:hover .cs-detail-nav-tip,.cs-detail-nav:focus-visible .cs-detail-nav-tip { opacity:1; visibility:visible; transform:translateY(0); }
+    .cs-detail-nav:focus-visible { outline:2px solid #00c878; outline-offset:2px; }
+    .cs-header-bottom-right .cs-game-toggle { width:30px; min-width:30px; height:30px; padding:0; border:1px solid #3a3d42; border-radius:7px; background:#222428; color:#cbd0d6; box-shadow:none; }
+    .cs-header-bottom-right .cs-game-toggle:hover:not(:disabled),.cs-header-bottom-right .cs-game-toggle.cs-open { border-color:#00c878; background:rgba(0,200,120,.14); color:#71ffc3; }
+    .cs-header-bottom-right .cs-game-toggle:disabled { border-color:#34373c; background:#1f2023; color:#666b72; cursor:default; }
+    .cs-header-primary .cs-pill { margin:0; }
+    .cs-schedule-tools { justify-content:flex-end; gap:5px; }
+    .cs-frame-controls { position:absolute; top:-39px; right:12px; z-index:20; display:flex; align-items:center; gap:5px; }
+    .cs-update-notice-wrap + .cs-wrapper .cs-frame-controls { top:6px; }
+    .cs-frame-controls .cs-settings-tip,.cs-frame-controls .cs-extension-collapse-tip { top:calc(100% + 6px); bottom:auto; }
     .cs-settings-toggle { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-      width: 28px; height: 28px; border-radius: 7px; border: 1px solid #3b3d42; background: #25272b; color: #d7d9dd;
+      width:30px; height:30px; border-radius:7px; border:1px solid #3b3d42; background:#25272b; color:#d7d9dd;
       font-size: 20px; line-height: 1; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
     .cs-settings-toggle:hover { border-color: #51545b; background: #2d2f34; color: #fff; }
-    .cs-settings-toggle.cs-open { border-color: #03a950; background: #03a950; color: #ffffff; box-shadow: 0 0 0 3px rgba(3,169,80,0.18), 0 8px 18px rgba(3,169,80,0.22); }
+    .cs-settings-toggle:focus-visible,.cs-extension-collapse:focus-visible { outline:2px solid #00c878; outline-offset:2px; }
+    .cs-settings-toggle.cs-open { border-color:#03a950; background:#123d30; color:#8fffc9; box-shadow:none; }
     .cs-settings-tip { position: absolute; right: 0; top: calc(100% + 6px); z-index: 12; padding: 5px 8px;
       border-radius: 6px; border: 1px solid #303238; background: #202126; color: #f3f4f5; font-size: 12px; white-space: nowrap;
       opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity .15s ease, transform .15s ease, visibility .15s ease; pointer-events: none; }
     .cs-settings-toggle:hover .cs-settings-tip,
     .cs-settings-toggle:focus-visible .cs-settings-tip { opacity: 1; visibility: visible; transform: translateY(0); }
-    .cs-settings-panel { position: absolute; top: 38px; right: 30px; z-index: 18; width: min(330px, calc(100% - 60px)); box-sizing: border-box;
+    .cs-settings-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:18; width:min(330px, calc(100vw - 32px)); box-sizing:border-box;
       padding: 10px; border: 1px solid #343740; border-radius: 8px; background: #202126; color: #f1f2f4;
       box-shadow: 0 12px 28px rgba(0,0,0,.34); }
     .cs-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 36px; padding: 6px 4px; }
@@ -1456,21 +1538,21 @@
     .cs-settings-switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.28); transition: transform .16s ease; }
     .cs-settings-switch.cs-on { background: #03a950; }
     .cs-settings-switch.cs-on::after { transform: translateX(18px); }
-    .cs-section { position: relative; padding: 12px 14px; }
+    .cs-section { position: relative; padding: 14px 18px; }
     .cs-schedule-section { position: relative; border-radius: 10px; transform-origin: top center; }
     .cs-info-section { padding: 14px; border-top: 1px solid #2e3033;
       background: rgba(15,16,18,0.28); }
     .cs-info-layout { display: flex; flex-direction: column; gap: 10px; }
     .cs-info-content-area { display: none !important; }
 
-    .cs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .cs-schedule-section.cs-collapsed .cs-header { margin-bottom: 0; }
+    .cs-header.cs-lol-collapsed-header { justify-content:flex-start; gap:10px; margin-bottom:10px; padding:0; border:0; min-height:0; }
+    .cs-schedule-section.cs-collapsed .cs-header { margin-bottom:0; }
     .cs-header.cs-lol-collapsed-header { flex-wrap: nowrap; gap: 10px; min-width: 0; }
     .cs-lol-collapsed-header .cs-title { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-lol-collapsed-summary { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #aeb1b8; font-size: 12px; font-weight: 700; line-height: 1.4; }
     :host(.cs-light-theme) .cs-lol-collapsed-summary { color: #606873; }
     .cs-extension-collapse { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-      width: 28px; height: 28px; border: 1px solid #3a3c41; border-radius: 7px; background: #242529;
+      width:30px; height:30px; border:1px solid #3a3c41; border-radius:7px; background:#242529;
       color: #c9cbd1; font-size: 10px; font-weight: 800; line-height: 1; cursor: pointer; }
     .cs-extension-collapse:hover { border-color: #51545b; background: #2d2f34; color: #fff; }
     .cs-extension-collapse-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10;
@@ -1481,9 +1563,9 @@
     .cs-extension-collapse:hover .cs-extension-collapse-tip,
     .cs-extension-collapse:focus-visible .cs-extension-collapse-tip { opacity: 1; visibility: visible; transform: translateY(0); }
     .cs-schedule-body[hidden] { display: none !important; }
-    .cs-title { color: #efeff1; font-size: 16px; font-weight: 600; }
+    .cs-title { color:#f1f3f5; font-size:16px; font-weight:650; }
     .cs-spacer { flex: 1; }
-    .cs-update-notice-wrap { margin: 0 30px -1px; }
+    .cs-update-notice-wrap { margin: 0 0 -1px; }
     .cs-update-notice { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; margin: 0; padding: 8px 10px 9px 11px; border: 1px solid rgba(0,255,163,0.38); border-bottom: 0; border-radius: 7px 7px 0 0; background: #124233; color: #d7f7ea; font-size: 12px; font-weight: 700; line-height: 1.35; box-shadow: 0 -2px 10px rgba(0,0,0,0.18); }
     .cs-update-notice-wrap + .cs-wrapper { border-top-left-radius: 0; border-top-right-radius: 0; }
     .cs-update-notice-badge { flex: 0 0 auto; display: inline-flex; align-items: center; height: 19px; padding: 0 7px; border-radius: 999px; background: rgba(0,255,163,0.18); color: #8fffd5; font-size: 11px; font-weight: 900; line-height: 1; }
@@ -1531,16 +1613,20 @@
     .cs-arrow { background: none; border: none; cursor: pointer; color: #00FFA3;
       font-size: 20px; line-height: 1; padding: 2px 4px; }
     .cs-arrow:disabled { color: #4a4c52; cursor: default; }
-    .cs-view-toggle { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid #3a3c40; border-radius: 7px;
-      background: #232427; color: #c9cacd; padding: 0; font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap; }
-    .cs-view-toggle:hover, .cs-view-toggle:focus-visible, .cs-view-toggle.cs-open { color: #efeff1; background: #2b2d31; border-color: #4a4c52; }
+    .cs-view-toggle { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap:8px; min-width:132px; height:38px; border:1px solid #00c878; border-radius:8px;
+      background:#00c878; color:#062b20; padding:0 14px; font-size:13px; font-weight:800; cursor:pointer; white-space:nowrap; box-shadow:0 3px 10px rgba(0,200,120,.18); }
+    .cs-view-toggle:hover, .cs-view-toggle:focus-visible, .cs-view-toggle.cs-open { color:#062b20; background:#20e095; border-color:#20e095; }
     .cs-view-icon { line-height: 1; font-size: 18px; pointer-events: none; }
-    .cs-view-icon svg { display: block; width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .cs-view-icon img { display: block; width: 23px; height: 23px; object-fit: contain; }
+    .cs-view-icon svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .cs-view-icon img { display: block; width: 18px; height: 18px; object-fit: contain; }
     .cs-view-toggle.cs-open .cs-view-icon img { filter: none; }
-    .cs-view-tip { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 12px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
+    .cs-view-tip { position: absolute; right: 0; top: calc(100% + 6px); z-index: 14; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 11px; font-weight: 700; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
+    .cs-view-tip::after { content:""; position:absolute; right:8px; bottom:100%; width:7px; height:7px; background:#232427; border-left:1px solid #3a3c40; border-top:1px solid #3a3c40; transform:translateY(4px) rotate(45deg); }
     .cs-view-toggle:hover .cs-view-tip, .cs-view-toggle:focus-visible .cs-view-tip { opacity: 1; visibility: visible; transform: translateY(0); }
-    .cs-view-toggle.cs-open { color: #062b20; background: #00c878; border-color: #00c878; }
+    .cs-view-toggle:disabled .cs-view-tip { display:none; }
+    .cs-view-toggle.cs-open { color:#062b20; background:#00c878; border-color:#00c878; }
+    .cs-date-navigation .cs-game-toggle { width:30px; min-width:30px; height:30px; padding:0; border-color:#3a3d42; background:#222428; color:#cbd0d6; box-shadow:none; }
+    .cs-date-navigation .cs-game-toggle:hover,.cs-date-navigation .cs-game-toggle.cs-open { border-color:#00c878; background:rgba(0,200,120,.14); color:#71ffc3; }
     .cs-lol-log-toggle { position: relative; z-index: 3; align-items: center; justify-content: center; border: 1px solid #45494e; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; cursor: pointer; transition: transform .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease; }
     .cs-lol-log-toggle:focus-visible { outline: 2px solid #00c878; outline-offset: 3px; }
     .cs-lol-log-toggle.cs-open { border-color: rgba(0,200,120,.5); }
@@ -2157,6 +2243,23 @@
     :host(.cs-light-theme) .cs-info-title { color: #1e2024; }
     :host(.cs-light-theme) .cs-pill-on { color: #008a43; background: rgba(3,169,80,0.1); }
     :host(.cs-light-theme) .cs-pill-on .cs-dot { background: #03a950; }
+    :host(.cs-light-theme) .cs-schedule-navigator { border-color:#dfe2e5; background:#f7f8f9; box-shadow:inset 0 1px #fff; }
+    :host(.cs-light-theme) .cs-top-controls .cs-view-switch { border-color:#d8dce0; background:#f3f5f6; }
+    :host(.cs-light-theme) .cs-view-switch { border-color:transparent; background:transparent; }
+    :host(.cs-light-theme) .cs-view-switch button { color:#626a73; }
+    :host(.cs-light-theme) .cs-view-switch button[aria-pressed=true] { background:#dff5e9; color:#087f4d; box-shadow:inset 0 0 0 1px rgba(3,169,80,.22); }
+    :host(.cs-light-theme) .cs-view-switch button:hover:not([aria-pressed=true]) { background:#e7e9eb; color:#25282d; }
+    :host(.cs-light-theme) .cs-date-navigation .cs-month-label { color:#30353b; }
+    :host(.cs-light-theme) .cs-week-label { color:#68717b; }
+    :host(.cs-light-theme) .cs-date-navigation { border-top-color:rgba(0,0,0,.07); }
+    :host(.cs-light-theme) .cs-date-navigation .cs-arrow { border-color:#d8dce0; background:#fff; color:#555d66; }
+    :host(.cs-light-theme) .cs-date-navigation .cs-arrow:hover:not(:disabled) { border-color:#bfc5cb; background:#f3f5f6; color:#202328; }
+    :host(.cs-light-theme) .cs-detail-nav { color:#727983; }
+    :host(.cs-light-theme) .cs-detail-nav { border-color:#d8dce0; background:#fff; color:#626a73; }
+    :host(.cs-light-theme) .cs-detail-nav img { filter:brightness(0) saturate(100%); }
+    :host(.cs-light-theme) .cs-detail-nav:hover { border-color:#bfc5cb; background:#edf7f1; color:#176b46; }
+    :host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle { border-color:#d8dce0; background:#fff; color:#626a73; }
+    :host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle:hover,:host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle.cs-open { border-color:#03a950; background:#e3f5eb; color:#087f4d; }
     :host(.cs-light-theme) .cs-arrow { color: #008a43; }
     :host(.cs-light-theme) .cs-arrow:disabled { color: #b8bcc1; }
     :host(.cs-light-theme) .cs-extension-collapse { background: #ffffff; border-color: #d8dadd; color: #555a61; }
@@ -2165,7 +2268,9 @@
 
     :host(.cs-light-theme) .cs-settings-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
     :host(.cs-light-theme) .cs-settings-toggle:hover { background: #eceef0; border-color: #c5c8cc; color: #1e2024; }
-    :host(.cs-light-theme) .cs-settings-toggle.cs-open { background: #03a950; border-color: #03a950; color: #ffffff; box-shadow: 0 0 0 3px rgba(3,169,80,0.16), 0 8px 18px rgba(3,169,80,0.2); }
+    :host(.cs-light-theme) .cs-settings-toggle.cs-open { background:#e3f5eb; border-color:#03a950; color:#087f4d; box-shadow:none; }
+    :host(.cs-light-theme) .cs-detail-nav { color:#727983; }
+    :host(.cs-light-theme) .cs-detail-nav:hover { background:#edf7f1; color:#176b46; }
     :host(.cs-light-theme) .cs-settings-tip,
     :host(.cs-light-theme) .cs-settings-panel { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
     :host(.cs-light-theme) .cs-settings-label { color: #25282d; }
@@ -2174,8 +2279,10 @@
     :host(.cs-light-theme) .cs-settings-switch.cs-on { background: #03a950; }
     :host(.cs-light-theme) .cs-view-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; }
     :host(.cs-light-theme) .cs-view-toggle:not(.cs-open) .cs-view-icon img { filter: brightness(0) saturate(100%) invert(34%) sepia(7%) saturate(472%) hue-rotate(174deg) brightness(92%) contrast(87%); }
-    :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible, :host(.cs-light-theme) .cs-view-toggle.cs-open { background: #eceef0; color: #1e2024; }
+    :host(.cs-light-theme) .cs-view-toggle:hover, :host(.cs-light-theme) .cs-view-toggle:focus-visible { background:#20e095; border-color:#20e095; color:#062b20; }
     :host(.cs-light-theme) .cs-view-tip { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    :host(.cs-light-theme) .cs-view-tip::after { background:#fff; border-color:#d3d6da; }
+    :host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle:disabled { border-color:#d8dce0; background:#f0f1f2; color:#a1a6ad; }
     :host(.cs-light-theme) .cs-view-toggle.cs-open { color: #ffffff; background: #03a950; border-color: #03a950; }
     :host(.cs-light-theme) .cs-lol-log-toggle { background: #ffffff; border-color: #d8dadd; color: #555a61; box-shadow: 0 3px 8px rgba(30,40,50,.12); }
     :host(.cs-light-theme) .cs-lol-log-toggle:hover, :host(.cs-light-theme) .cs-lol-log-toggle:focus-visible { background: #f2f5f3; border-color: #03a950; color: #1e2024; }
@@ -2401,9 +2508,32 @@
     :host(.cs-light-theme) .cs-channel-panel .cs-wrapper { box-shadow: 0 8px 28px rgba(0,0,0,0.16); }
     :host(.cs-light-theme) .cs-float-btn { background: #03a950; color: #ffffff; }
 
+    @media (max-width: 820px) {
+      .cs-header { gap:10px; }
+      .cs-header-primary { gap:8px; }
+      .cs-header-primary .cs-title { font-size:17px; }
+      .cs-view-switch button { min-width:0; padding:0 10px; }
+    }
     @media (max-width: 600px) {
-      .cs-header { flex-wrap: wrap; }
-      .cs-schedule-toolbar { margin-left: 16px; margin-right: 16px; }
+      .cs-section { padding:12px 12px; }
+      .cs-header { grid-template-columns:minmax(0,1fr) minmax(0,min(36vw,250px)) minmax(0,1fr); gap:5px; }
+      .cs-header-primary { grid-column:1; gap:4px; }
+      .cs-header-primary .cs-title { font-size:14px; }
+      .cs-header-primary .cs-pill { padding:3px 5px; font-size:9px; }
+      .cs-schedule-navigator { width:min(250px,36vw); height:26px; min-height:26px; }
+      .cs-date-navigation { grid-template-columns:24px minmax(0,1fr) 24px 24px; grid-template-rows:26px; grid-auto-rows:26px; width:min(250px,36vw); min-width:min(250px,36vw); max-width:min(250px,36vw); height:26px; min-height:26px; gap:3px; }
+      .cs-date-side-spacer { display:none; }
+      .cs-date-navigation #cs-prev { grid-column:1; }
+      .cs-date-navigation #cs-next { grid-column:3; }
+      .cs-date-navigation #cs-game-toggle { grid-column:4; }
+      .cs-date-end-spacer { grid-column:4; width:24px; height:26px; }
+      .cs-date-navigation .cs-arrow { width:24px; height:26px; }
+      .cs-date-navigation .cs-game-toggle { width:24px; min-width:24px; height:26px; }
+      .cs-week-label { font-size:10px; letter-spacing:0; }
+      .cs-date-navigation .cs-month-label { font-size:11px; }
+      .cs-header-bottom-right { grid-column:3; grid-row:auto; }
+      .cs-detail-nav { min-height:28px; gap:3px; padding:5px 4px; font-size:10px; }
+      .cs-top-controls .cs-view-switch button { min-width:68px; padding:0 8px; }
       .cs-month-grid { gap: 4px; }
       .cs-month-grid .cs-month-cell, .cs-month-blank { min-height: 70px; padding: 7px 6px 35px; }
       .cs-month-cell .cs-cell-time, .cs-month-cell .cs-cell-title, .cs-month-cell .cs-part-text { font-size: 12px; }
@@ -2422,6 +2552,21 @@
       .cs-gnimti-stat-item img { max-height: 260px; }
       .cs-footer-meta-frame { gap: 6px; }
       .cs-feedback-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; width: auto; max-height: calc(100vh - 32px); overflow-y: auto; }
+    }
+    @media (max-width: 440px) {
+      .cs-header-primary { max-width:100%; gap:5px; }
+    }
+    @media (max-width: 400px) {
+      .cs-header { grid-template-columns:minmax(0,1fr) auto; gap:5px 8px; }
+      .cs-header-primary { grid-column:1; }
+      .cs-header-bottom-right { grid-column:2; }
+      .cs-schedule-navigator { width:min(190px,100%); }
+      .cs-date-navigation { width:min(190px,100%); min-width:min(190px,100%); max-width:min(190px,100%); }
+    }
+    @media (max-width: 380px) {
+      .cs-header-primary .cs-title { font-size:13px; }
+      .cs-frame-controls { gap:4px; }
+      .cs-detail-nav { padding-inline:4px; font-size:10px; }
     }
 
     /* 플로팅 폴백 */
@@ -2545,7 +2690,7 @@
     }
 
     /* Ranked game shelf */
-    .cs-rating-shelf{padding:30px 22px}
+    .cs-rating-shelf{padding:0 22px}
     .cs-rating-shelf-header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:20px}
     .cs-rating-shelf-header h2{font-size:39px;line-height:1.12;letter-spacing:-1.8px;margin:0;font-weight:750}
     .cs-rating-shelf-header h2 span{color:#00ffa3}
@@ -2560,7 +2705,7 @@
     .cs-rating-recent-item strong{font-size:11px;font-weight:500;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .cs-rating-recent-item small{display:block;font-size:9px;color:#999da4;margin-top:5px;font-weight:400}
     .cs-rating-recent-item>b{font-family:Arial,sans-serif;font-size:22px;font-weight:500;letter-spacing:-1px}
-    .cs-rating-recent-item>b small{display:none}
+    .cs-rating-recent-item>b small{display:inline;margin-left:3px;font-size:12px;font-weight:500;letter-spacing:0}
     .cs-rating-recent-item:hover strong{color:#00ffa3}
     .cs-rating-shelf-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:40px;align-items:start}
     .cs-rating-shelf .cs-rating-library{border:0;padding:0;min-width:0}
@@ -2574,7 +2719,7 @@
     .cs-rating-shelf .cs-rating-game strong{font-size:12px;line-height:1.5;font-weight:500;display:block}
     .cs-rating-shelf .cs-rating-game small{font-size:9px;color:#9299a2;display:block;margin-top:6px}
     .cs-rating-shelf .cs-rating-score{font-family:Arial,sans-serif;font-size:29px;letter-spacing:-1.2px;color:#e9edef;font-weight:500;white-space:nowrap}
-    .cs-rating-shelf .cs-rating-score small{display:none}
+    .cs-rating-shelf .cs-rating-score small{display:inline;margin-left:3px;font-size:12px;font-weight:500;letter-spacing:0}
     .cs-rating-arrow{font-size:17px;color:#747d85}
     .cs-rating-shelf .cs-rating-row[aria-pressed=true]{background:#00ffa308;box-shadow:inset 2px 0 #00ffa3;padding-left:10px}
     .cs-rating-shelf .cs-rating-row[aria-pressed=true] .cs-rating-index,.cs-rating-shelf .cs-rating-row[aria-pressed=true] .cs-rating-score,.cs-rating-shelf .cs-rating-row[aria-pressed=true] .cs-rating-arrow{color:#00ffa3}
@@ -2586,7 +2731,7 @@
     .cs-rating-media>img{width:100%;height:100%;display:block;object-fit:contain}
     .cs-rating-media>iframe{border:0;width:100%;height:100%;display:block}
     .cs-rating-showcase-caption{display:flex;justify-content:space-between;gap:10px;margin:12px 0 20px;color:#969ea6;font-size:9px}
-    .cs-rating-showcase-title{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+    .cs-rating-showcase-title{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-top:24px}
     .cs-rating-showcase-title h3{font-size:21px;line-height:1.35;letter-spacing:-.6px;margin:0;font-weight:600}
     .cs-rating-showcase-title>strong{font-family:Arial,sans-serif;font-size:49px;line-height:1;letter-spacing:-2px;color:#00ffa3;font-weight:650;flex-shrink:0}
     .cs-rating-showcase-title>strong small{font-size:10px;font-weight:400;letter-spacing:0;margin-left:4px}
@@ -2602,6 +2747,7 @@
       .cs-rating-shelf-grid{grid-template-columns:1fr;gap:26px}
       .cs-rating-showcase{position:static;grid-row:1}
       .cs-rating-media{aspect-ratio:16/10;max-height:300px}
+      .cs-rating-showcase-title{margin-top:18px}
       .cs-rating-showcase-title h3{font-size:20px}
       .cs-rating-showcase-title>strong{font-size:40px}
       .cs-rating-showcase-caption{margin-bottom:14px}
@@ -2679,6 +2825,15 @@
     .cs-rating-score-group-list button:hover:not(:disabled){border-color:rgba(0,255,163,.55);background:#252a2b}
     .cs-rating-shelf .cs-rating-controls input{height:42px;padding:0 12px;border:1px solid #3a3e43;border-radius:8px;background:#202226}
     .cs-rating-shelf .cs-rating-controls input:focus{border-color:#00c878;background:#24282a;outline:none;box-shadow:0 0 0 2px rgba(0,255,163,.1)}
+    .cs-rating-shelf .cs-rating-library{max-width:720px;width:100%;margin-inline:auto}
+    .cs-rating-shelf .cs-rating-heading{justify-content:center;text-align:center}
+    .cs-rating-shelf .cs-rating-row{grid-template-columns:34px minmax(0,1fr) max-content 18px;justify-items:center;text-align:center;padding-inline:10px}
+    .cs-rating-shelf .cs-rating-game{width:100%;text-align:center}
+    .cs-rating-shelf .cs-rating-more{display:flex;align-items:center;justify-content:center;gap:6px;width:max-content;margin:12px auto 0;padding:6px 11px;border:1px solid #3a3e43;border-radius:999px;background:#202226;color:#c7cbd1;text-align:center;font-size:11px;line-height:1.2}
+    .cs-rating-shelf .cs-rating-more span{float:none;font-size:12px;line-height:1}
+    .cs-rating-shelf .cs-rating-more:hover{border-color:#00c878;background:#242a29;color:#e9fff5}
+    :host(.cs-light-theme) .cs-rating-shelf .cs-rating-more{border-color:#d8dce0;background:#fff;color:#50565e}
+    :host(.cs-light-theme) .cs-rating-shelf .cs-rating-more:hover{border-color:#03a950;background:#f3fff8;color:#176b46}
     :host(.cs-light-theme) .cs-rating-score-group-list button{border-color:#d8dce0;background:#fff}
     :host(.cs-light-theme) .cs-rating-score-group-list button[aria-pressed=true]{border-color:#03a950;background:rgba(3,169,80,.08)}
     :host(.cs-light-theme) .cs-rating-shelf .cs-rating-controls input{border-color:#d8dce0;background:#fff;color:#25282d}
@@ -3078,9 +3233,12 @@
     const today = parseKey(state.todayKey);
     const anchor = addDays(today, todayAnchorOffset());
     const windowStart = addDays(anchor, state.pageOffset * PAGE_SIZE);
+    const windowEnd = addDays(windowStart, PAGE_SIZE - 1);
     const monthBase = new Date(today.getFullYear(), today.getMonth() + state.monthOffset, 1);
     const windowStartKey = dateKey(windowStart);
-    const windowEndKey = dateKey(addDays(windowStart, PAGE_SIZE - 1));
+    const windowEndKey = dateKey(windowEnd);
+    const formatWeekDate = (date) => String(date.getMonth() + 1).padStart(2, "0") + "." + String(date.getDate()).padStart(2, "0");
+    const weekRangeLabel = formatWeekDate(windowStart) + " - " + formatWeekDate(windowEnd);
 
     const previousMonth = new Date(monthBase.getFullYear(), monthBase.getMonth() - 1, 1);
     const nextMonth = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 1);
@@ -3101,21 +3259,34 @@
       : "";
 
     const updatedLabel = formatUpdated();
-    const monthToggleLabel = state.monthExpanded ? "주간 보기" : "월간 보기";
     const schedulePillHtml = '<span class="cs-pill ' + pill.cls + '">' + pill.html + '</span>';
     const collapseLabel = "오뱅알 " + (state.extensionCollapsed ? "펼치기" : "접기");
     const settingsLabel = "알림 설정";
-    const showNotificationSettings = !specialMode && targetLiveNotificationSettingsVisible();
+    const showNotificationSettings = targetLiveNotificationSettingsVisible();
     if (!showNotificationSettings && state.settingsOpen) state.settingsOpen = false;
-    const scheduleToolbarHtml =
-      '<div class="cs-schedule-toolbar"><div class="cs-toolbar-layout">' +
-      '<span class="cs-toolbar-balance" aria-hidden="true"></span><div class="cs-mode-switch-slot">' +
-      (state.extensionCollapsed || !CONTENT_MODE_TABS_ENABLED ? "" : lolLogToggleHtml()) +
-      '</div><div class="cs-schedule-tools">' +
-      (state.extensionCollapsed || specialMode ? "" : '<button type="button" class="cs-view-toggle' + (state.monthExpanded ? " cs-open" : "") + '" id="cs-month-toggle" aria-pressed="' + String(state.monthExpanded) + '" aria-label="' + monthToggleLabel + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + CALENDAR_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + monthToggleLabel + "</span></button>") +
-      (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? " cs-open" : "") + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + "</span></button>" : "") +
-      '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? "\u25BC" : "\u25B2") + '<span class="cs-extension-collapse-tip">' + collapseLabel + "</span></button>" +
-      "</div></div></div>";
+    const calendarViewSwitchHtml = (!specialMode || ratingMode) && !state.extensionCollapsed
+      ? '<div class="cs-view-switch" role="group" aria-label="일정 보기 선택">' +
+        '<button type="button" id="cs-week-toggle" data-calendar-view="week" aria-pressed="' + String(!ratingMode && !state.monthExpanded) + '">주간</button>' +
+        '<button type="button" id="cs-month-toggle" data-calendar-view="month" aria-pressed="' + String(!ratingMode && state.monthExpanded) + '">월간</button></div>'
+      : '';
+    const dateNavigationHtml = !specialMode && !state.extensionCollapsed
+      ? '<div class="cs-schedule-navigator"><div class="cs-date-navigation">' +
+        '<span class="cs-date-side-spacer" aria-hidden="true"></span>' +
+        '<button type="button" class="cs-arrow" id="cs-prev"' + (canGoPrev ? '' : ' disabled') + ' aria-label="이전 일정">‹</button>' +
+        (state.monthExpanded ? monthLabel : '<span class="cs-week-label">' + weekRangeLabel + '</span>') +
+        '<button type="button" class="cs-arrow" id="cs-next"' + (canGoNext ? '' : ' disabled') + ' aria-label="다음 일정">›</button>' +
+        '<span class="cs-date-end-spacer" aria-hidden="true"></span>' +
+        '</div></div>'
+      : '';
+    const gameOnlyToggleHtml = !state.extensionCollapsed
+      ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? ' cs-open' : '') + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? '전체 보기' : '간단히 보기') + '" title="' + (state.gameOnly ? '전체 보기' : '간단히 보기') + '"' + (!state.monthExpanded ? ' disabled aria-disabled="true"' : '') + '><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? '전체 보기' : '간단히 보기') + '</span></button>'
+      : '';
+    const topNavigationHtml = calendarViewSwitchHtml;
+    const scheduleToolbarHtml = specialMode
+      ? (!state.extensionCollapsed && !ratingMode ? '<div class="cs-header-bottom-left">' + lolLogToggleHtml() + '</div>' : '')
+      : '<div class="cs-header-primary"><span class="cs-title">방송 일정</span>' + schedulePillHtml + '</div>' +
+        dateNavigationHtml +
+        (!state.extensionCollapsed ? '<div class="cs-header-bottom-right">' + gameOnlyToggleHtml + lolLogToggleHtml() + '</div>' : '');
     const settingsPanelHtml = showNotificationSettings && state.settingsOpen
       ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
         '<div class="cs-settings-heading"><span>알림 설정</span><button type="button" class="cs-settings-help" popovertarget="cs-notification-guide" aria-label="알림 기능 도움말" title="알림 기능 도움말">?</button></div>' +
@@ -3125,25 +3296,24 @@
         '<div class="cs-settings-row"><span class="cs-settings-label">카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (effectiveCategoryChangeNoticeEnabled() ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(effectiveCategoryChangeNoticeEnabled()) + '" aria-label="카테고리 변경 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
         "</div>"
       : "";
+    const frameControlsHtml = '<div class="cs-frame-controls">' +
+      (showNotificationSettings ? '<button type="button" class="cs-settings-toggle' + (state.settingsOpen ? ' cs-open' : '') + '" id="cs-settings-toggle" aria-expanded="' + String(state.settingsOpen) + '" aria-label="' + settingsLabel + '">&#9881;<span class="cs-settings-tip">' + settingsLabel + '</span></button>' : '') +
+      '<button type="button" class="cs-extension-collapse" id="cs-extension-collapse" aria-expanded="' + String(!state.extensionCollapsed) + '" aria-label="' + collapseLabel + '">' + (state.extensionCollapsed ? '\u25BC' : '\u25B2') + '<span class="cs-extension-collapse-tip">' + collapseLabel + '</span></button>' +
+      settingsPanelHtml + '</div>';
 
     rememberRenderedFingerprint();
 
 
     root.innerHTML =
-      scheduleToolbarHtml +
-      settingsPanelHtml +
       (state.extensionCollapsed ? "" : updateNoticeHtml()) +
+      '<div class="cs-top-controls' + (topNavigationHtml ? '' : ' cs-controls-only') + '">' + topNavigationHtml + frameControlsHtml + '</div>' +
       '<div class="cs-wrapper">' +
       '<div class="cs-section cs-schedule-section' + (state.extensionCollapsed ? " cs-collapsed" : "") + '">' +
-      (specialMode ? (state.extensionCollapsed ? (ratingMode ? '<div class="cs-header"><span class="cs-title">따타스코어</span></div>' : lolCollapsedSummaryHtml()) : "") : '<div class="cs-header">' +
-      '<span class="cs-title">방송 일정</span>' +
-      schedulePillHtml +
-      '<span class="cs-spacer"></span>' +
-      (state.extensionCollapsed || specialMode ? "" : monthLabel +
-        (state.monthExpanded ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? " cs-open" : "") + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? "전체 보기" : "간단히 보기") + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? "전체 보기" : "간단히 보기") + "</span></button>" : "") +
-        '<button class="cs-arrow" id="cs-prev"' + (canGoPrev ? "" : " disabled") + ">‹</button>" +
-        '<button class="cs-arrow" id="cs-next"' + (canGoNext ? "" : " disabled") + ">›</button>") +
-      "</div>") +
+      (specialMode
+        ? (lolLogMode && state.extensionCollapsed
+          ? lolCollapsedSummaryHtml()
+          : (ratingMode && state.extensionCollapsed ? '' : '<div class="cs-header cs-header-secondary">' + scheduleToolbarHtml + '</div>'))
+        : '<div class="cs-header">' + scheduleToolbarHtml + '</div>') +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
       (ratingMode ? gameRatingsHtml() : lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       gameRanking + playReport +
@@ -3155,11 +3325,11 @@
       "</div>" +
       (state.extensionCollapsed ? "" : infoSectionHtml() +
       '<div class="cs-footer">' +
-      '<div class="cs-notice">' +
+      (ratingMode ? "" : '<div class="cs-notice">' +
             '<p class="cs-schedule-notice" title="◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.">◈ 오뱅알 일정은 최대한 확인 가능한 정보를 기준으로 정리되지만, 실제 내용과 다를 수 있습니다.</p>' +
       '<p class="cs-schedule-notice" title="◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.">◈ 일정 제보·변경·누락·오류는 우측 [문의·제보]를 통해 접수해주세요.</p>' +
       '<p class="cs-schedule-notice cs-install-notice" title="◈ 모바일 설치 방법은 OS별 버튼을 눌러 확인할 수 있습니다."><span class="cs-install-notice-text">◈ 모바일에서는 홈 화면에 추가해 앱처럼 사용할 수 있습니다.</span>' + installGuideTriggerHtml("Android", "android") + installGuideTriggerHtml("iOS", "ios") + '</p>' +
-      '</div>' +
+      '</div>') +
       '<div class="cs-footer-meta-frame">' +
       '<button type="button" class="cs-feedback-open' + (state.feedbackOpen ? " cs-open" : "") + '" id="cs-feedback-open" aria-expanded="' + String(state.feedbackOpen) + '">문의·제보</button>' +
       '<span class="cs-updated">' + updatedLabel + "</span>" +
@@ -3827,6 +3997,7 @@
     const updateHistoryViewport = s.getElementById("cs-update-history-viewport");
     const updateHistoryToggle = s.getElementById("cs-update-history-toggle");
     const monthToggle = s.getElementById("cs-month-toggle");
+    const weekToggle = s.getElementById("cs-week-toggle");
     const lolLoadMore = s.getElementById("cs-lol-load-more");
     const extensionCollapse = s.getElementById("cs-extension-collapse");
     const settingsToggle = s.getElementById("cs-settings-toggle");
@@ -3919,7 +4090,8 @@
       }
       render();
     });
-    if (monthToggle) monthToggle.addEventListener("click", () => { closePopover(); state.monthExpanded = !state.monthExpanded; if (!state.monthExpanded) { state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; } render(); });
+    if (monthToggle) monthToggle.addEventListener("click", () => { if (state.monthExpanded && state.scheduleViewMode !== "gameRatings") return; closePopover(); state.monthExpanded = true; state.scheduleViewMode = "schedule"; render(); });
+    if (weekToggle) weekToggle.addEventListener("click", () => { if (!state.monthExpanded && state.scheduleViewMode !== "gameRatings") return; closePopover(); state.monthExpanded = false; state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; state.scheduleViewMode = "schedule"; render(); });
     s.querySelectorAll("[data-schedule-mode]").forEach(button => button.addEventListener("click", () => { void switchScheduleViewMode(button); }));
     if (state.scheduleViewMode === "gameRatings") bindGameRatingControls(s);
     if (lolLoadMore) lolLoadMore.addEventListener("click", () => {
@@ -5986,19 +6158,25 @@
     const scheduleDate = String((scheduleEntry && scheduleEntry.date) || "").trim();
     if (!items.length || (!liveKey && !vodStartedAt(vod) && !scheduleDate)) return [];
     // An explicit broadcast key is authoritative, even when it has no visible chapters.
-    const startedAtGroup = liveKey ? [] : categoryItemsForVodStartedAt(items, vod);
+    const startedAtGroup = categoryItemsForVodStartedAt(items, vod);
     let scopedGroup;
     if (liveKey) {
       const exactGroup = items.filter((item) => categoryHistoryLiveKey(item) === liveKey);
-      const replayStart = sessionKeyMsValue(liveKey);
-      const continuedEarlierItems = exactGroup.length && replayStart ? items.filter((item) => {
-        if (String(item.scheduleDate || item.schedule_date || "").trim() !== scheduleDate) return false;
-        const itemKey = categoryHistoryLiveKey(item);
-        if (!itemKey || itemKey === liveKey) return false;
-        const gap = replayStart - sessionKeyMsValue(itemKey);
-        return gap > 0 && gap <= 2 * 60 * 1000;
-      }) : [];
-      scopedGroup = continuedEarlierItems.concat(exactGroup);
+      if (exactGroup.length) {
+        const replayStart = sessionKeyMsValue(liveKey);
+        const continuedEarlierItems = replayStart ? items.filter((item) => {
+          if (String(item.scheduleDate || item.schedule_date || "").trim() !== scheduleDate) return false;
+          const itemKey = categoryHistoryLiveKey(item);
+          if (!itemKey || itemKey === liveKey) return false;
+          const gap = replayStart - sessionKeyMsValue(itemKey);
+          return gap > 0 && gap <= 2 * 60 * 1000;
+        }) : [];
+        scopedGroup = continuedEarlierItems.concat(exactGroup);
+      } else {
+        // Backfilled VODs may carry a synthetic liveKey derived from their
+        // start timestamp. Fall back to the matching source start time.
+        scopedGroup = startedAtGroup;
+      }
     } else {
       scopedGroup = startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate);
     }

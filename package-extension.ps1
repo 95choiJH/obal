@@ -27,8 +27,9 @@ $allowedIconFiles = @(
   "icons\undetermined.png",
   "icons\naver_cafe.png",
   "icons\video_donation.png",
-  "icons\gamepad-icon.svg",
+  "icons\tile-icon.png",
   "icons\calendar-icon.svg",
+  "icons\star-icon.png",
   "images\notification-guide.png",
   "images\ddahyoni-profile.png"
 )

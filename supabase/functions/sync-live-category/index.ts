@@ -725,27 +725,18 @@ function videoNoFromItem(item: Record<string, unknown>) {
   return String(item.videoNo || item.videoId || "").trim();
 }
 
-function videoTitleFromItem(item: Record<string, unknown>) {
-  return String(item.videoTitle || item.title || "").trim();
-}
-
 function videoPublishMs(item: Record<string, unknown>, offsetHours: number) {
   const raw = item.publishDateAt || item.publishDate || item.createdDate;
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   return chzzkTimestampMs(raw, offsetHours);
 }
 
-function videoMatchesEndedSession(video: Record<string, unknown>, detail: Record<string, unknown> | null, session: LiveSessionState, offsetHours: number) {
+function videoMatchesEndedSession(detail: Record<string, unknown> | null, session: LiveSessionState, offsetHours: number) {
   const startedMs = chzzkTimestampMs(session.started_at, offsetHours);
-  const endedMs = chzzkTimestampMs(session.ended_at || session.last_seen_at, offsetHours);
-  const title = String(session.title || "").trim();
-  const videoTitle = videoTitleFromItem(video) || (detail ? videoTitleFromItem(detail) : "");
   const liveOpenMs = detail ? chzzkTimestampMs((detail as Record<string, unknown>).liveOpenDate, offsetHours) : 0;
-  if (startedMs && liveOpenMs && Math.abs(liveOpenMs - startedMs) <= 10 * 60 * 1000) return true;
-  if (title && videoTitle && title === videoTitle) return true;
-  const publishMs = videoPublishMs(video, offsetHours);
-  if (endedMs && publishMs && publishMs >= endedMs - 15 * 60 * 1000 && publishMs <= endedMs + 12 * 60 * 60 * 1000) return true;
-  return false;
+  // Match only on the source broadcast's start time. Titles and VOD publish
+  // times can coincide with another session and are not sufficient evidence.
+  return !!startedMs && !!liveOpenMs && Math.abs(liveOpenMs - startedMs) <= 10 * 60 * 1000;
 }
 
 async function findReplayVodForSession(channelId: string, session: LiveSessionState, offsetHours: number) {
@@ -759,19 +750,17 @@ async function findReplayVodForSession(channelId: string, session: LiveSessionSt
     } catch (error) {
       console.warn("video detail lookup failed", videoNo, error);
     }
-    if (!videoMatchesEndedSession(video, detail, session, offsetHours)) continue;
+    if (!videoMatchesEndedSession(detail, session, offsetHours)) continue;
     return { videoNo, url: "https://chzzk.naver.com/video/" + encodeURIComponent(videoNo) };
   }
   return null;
 }
 
-function recentReplayScheduleDate(video: Record<string, unknown>, detail: Record<string, unknown> | null, offsetHours: number) {
+function recentReplayScheduleDate(detail: Record<string, unknown> | null, offsetHours: number) {
   const liveOpenDate = detail ? String(detail.liveOpenDate || "").trim() : "";
   const date = scheduleDateFromLiveStart(liveOpenDate, offsetHours);
-  if (date) return { date, startedAt: liveOpenDate };
-  const publishMs = videoPublishMs(video, offsetHours);
-  if (!publishMs) return { date: "", startedAt: "" };
-  return { date: new Date(publishMs + offsetHours * 60 * 60 * 1000).toISOString().slice(0, 10), startedAt: "" };
+  if (date) return { date, startedAt: liveOpenDate, liveKey: "" };
+  return { date: "", startedAt: "", liveKey: "" };
 }
 function sessionMatchesReplayStart(session: LiveSessionState, startedAt: string, offsetHours: number) {
   const replayStartedMs = chzzkTimestampMs(startedAt, offsetHours);
@@ -787,7 +776,7 @@ async function recentReplayScheduleDateWithSession(
   supabaseUrl: string,
   serviceRoleKey: string,
 ) {
-  const replayDate = recentReplayScheduleDate(video, detail, offsetHours);
+  const replayDate = recentReplayScheduleDate(detail, offsetHours);
   if (!replayDate.startedAt) return replayDate;
   try {
     const sessions = await loadRecentLiveSessionStates(channelId, supabaseUrl, serviceRoleKey);
@@ -796,7 +785,7 @@ async function recentReplayScheduleDateWithSession(
   } catch (error) {
     console.warn("recent replay session date lookup failed", error);
   }
-  return replayDate;
+  return { ...replayDate, date: "" };
 }
 
 async function findScheduleVodByUrl(channelId: string, url: string, supabaseUrl: string, serviceRoleKey: string) {
@@ -812,7 +801,7 @@ async function findScheduleVodByUrl(channelId: string, url: string, supabaseUrl:
   return existing || null;
 }
 
-async function appendReplayVodToSchedule(channelId: string, date: string, vod: { videoNo: string; url: string; startedAt?: string }, supabaseUrl: string, serviceRoleKey: string) {
+async function appendReplayVodToSchedule(channelId: string, date: string, vod: { videoNo: string; url: string; liveKey?: string; startedAt?: string }, supabaseUrl: string, serviceRoleKey: string) {
   if (!date || !vod.url) return { synced: false, reason: "invalid-vod" };
   const existingVodRow = await findScheduleVodByUrl(channelId, vod.url, supabaseUrl, serviceRoleKey);
   if (existingVodRow) {
@@ -829,7 +818,7 @@ async function appendReplayVodToSchedule(channelId: string, date: string, vod: {
   const autoVod = normalizeVodItem({
     url: vod.url,
     label: "방송 다시보기",
-    liveKey: vod.startedAt || "",
+    liveKey: vod.liveKey || vod.startedAt || "",
     startedAt: vod.startedAt || "",
     videoNo: vod.videoNo || "",
   }) || { url: vod.url, label: "방송 다시보기", videoNo: vod.videoNo };
@@ -870,6 +859,7 @@ async function syncRecentReplayVodsToSchedule(channelId: string, offsetHours: nu
     const result = await appendReplayVodToSchedule(channelId, replayDate.date, {
       videoNo,
       url: "https://chzzk.naver.com/video/" + encodeURIComponent(videoNo),
+      liveKey: replayDate.liveKey || "",
       startedAt: replayDate.startedAt,
     }, supabaseUrl, serviceRoleKey);
     results.push(result);
