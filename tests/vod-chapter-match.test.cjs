@@ -45,11 +45,11 @@ test('unknown explicit broadcast key never falls back to another session', () =>
   assert.equal(h.vodCategoryGroup(match).length, 0);
 });
 
-test('legacy replay order includes hidden-only sessions before filtering', () => {
+test('multiple legacy replays without identity never infer chapters from array order', () => {
   const h = harness(items);
   const [first, second] = matches([{}, {}]);
   assert.equal(h.vodCategoryGroup(first).length, 0);
-  assert.deepEqual(Array.from(h.vodCategoryGroup(second), item => item.id), [45]);
+  assert.equal(h.vodCategoryGroup(second).length, 0);
 });
 
 test('visible chapters are scoped independently for both broadcasts', () => {
@@ -75,4 +75,36 @@ test('normal chapter queries still exclude hidden records', () => {
   const h = harness(items);
   assert.deepEqual(Array.from(h.getCategoryHistoryItems(), item => item.id), [45]);
   assert.equal(h.getCategoryHistoryItems(true).length, 3);
+});
+
+test('explicit video binding wins over keys and excludes chapters bound to another video', () => {
+  const h = harness([
+    { id: 1, vodVideoNo: '100', liveKey: secondKey, scheduleDate: date, categoryLabel: 'First', offsetSeconds: 90 },
+    { id: 2, vodVideoNo: '200', liveKey: firstKey, scheduleDate: date, categoryLabel: 'Second', offsetSeconds: 10 },
+  ]);
+  const [first, second] = matches([
+    { url: 'https://chzzk.naver.com/video/100', liveKey: firstKey },
+    { url: 'https://chzzk.naver.com/video/200', liveKey: secondKey },
+  ]);
+  assert.deepEqual(Array.from(h.vodCategoryGroup(first), x => x.id), [1]);
+  assert.deepEqual(Array.from(h.vodCategoryGroup(second), x => x.id), [2]);
+});
+
+test('shared source broadcast key cannot leak unbound chapters into multiple replay videos', () => {
+  const h = harness([
+    { id: 1, liveKey: firstKey, scheduleDate: date, categoryLabel: 'Unassigned', offsetSeconds: 10 },
+    { id: 2, vodVideoNo: '100', liveKey: firstKey, scheduleDate: date, categoryLabel: 'Bound', offsetSeconds: 20 },
+  ]);
+  const [first, second] = matches([
+    { url: 'https://chzzk.naver.com/video/100', liveKey: firstKey },
+    { url: 'https://chzzk.naver.com/video/200', liveKey: firstKey },
+  ]);
+  assert.deepEqual(Array.from(h.vodCategoryGroup(first), x => x.id), [2]);
+  assert.equal(h.vodCategoryGroup(second).length, 0);
+});
+
+test('manual chapters waiting for a video stay unpublished even when only one replay exists', () => {
+  const h = harness([{ id: 1, liveKey: date + '-manual', scheduleDate: date, categoryLabel: 'Waiting', offsetSeconds: 10 }]);
+  const [match] = matches([{ url: 'https://chzzk.naver.com/video/100' }]);
+  assert.equal(h.vodCategoryGroup(match).length, 0);
 });

@@ -16,7 +16,7 @@ test('mounted chapters update labels, seek targets, additions and removals witho
   const state = { vodCategoryHost: null };
   const context = vm.createContext({
     state, location: { href: '/video/15287994' },
-    isChzzkVodPage: () => true, currentVodScheduleMatch: () => ({}),
+    isChzzkVodPage: () => true, currentVodScheduleMatch: () => ({ vod: { chaptersReady: true } }),
     vodCategoryGroup: () => items, findLatestVodCardSlots: () => ({ appendTo: parent }),
     removeVodCategoryHost: () => { state.vodCategoryHost = null; },
     escapeHtml: s => s, formatVodOffset: s => String(s),

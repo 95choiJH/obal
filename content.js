@@ -6139,7 +6139,7 @@
     const vods = vodMatch && vodMatch.entry && Array.isArray(vodMatch.entry.vods) ? vodMatch.entry.vods : [];
     const vodIndex = Number(vodMatch && vodMatch.vodIndex);
     if (Number.isInteger(vodIndex) && vods.length > 1) {
-      return groups[vodIndex] ? groups[vodIndex].items : [];
+      return [];
     }
     return groups.length === 1 ? groups[0].items : [];
   }
@@ -6151,16 +6151,26 @@
 
   function vodCategoryGroup(vodMatch) {
     // Keep hidden-only sessions while matching; hide their chapters after scoping.
-    const items = getCategoryHistoryItems(true);
+    const allItems = getCategoryHistoryItems(true);
+    const matchVod = vodMatch && vodMatch.vod;
+    const videoMatch = String(matchVod && matchVod.url || "").match(/\/video\/([0-9]+)/);
+    const videoNo = String((videoMatch && videoMatch[1]) || (matchVod && matchVod.videoNo) || "");
+    const boundItems = allItems.filter((item) => String(item.vodVideoNo || item.vod_video_no || "") === videoNo && !!videoNo);
+    const items = allItems.filter((item) => !String(item.vodVideoNo || item.vod_video_no || ""));
     const scheduleEntry = vodMatch && vodMatch.entry;
     const vod = vodMatch && vodMatch.vod;
     const liveKey = liveKeyFromVod(vod);
     const scheduleDate = String((scheduleEntry && scheduleEntry.date) || "").trim();
-    if (!items.length || (!liveKey && !vodStartedAt(vod) && !scheduleDate)) return [];
+    if ((!items.length && !boundItems.length) || (!liveKey && !vodStartedAt(vod) && !scheduleDate && !videoNo)) return [];
     // An explicit broadcast key is authoritative, even when it has no visible chapters.
-    const startedAtGroup = categoryItemsForVodStartedAt(items, vod);
+    const scheduleVods = scheduleEntry && Array.isArray(scheduleEntry.vods) ? scheduleEntry.vods : [];
+    const sameKeyVods = liveKey ? scheduleVods.filter((candidate) => liveKeyFromVod(candidate) === liveKey) : [];
+    const sameStartVods = vodStartedAt(vod) ? scheduleVods.filter((candidate) => sameStartedAt(vodStartedAt(candidate), vodStartedAt(vod))) : [];
+    const startedAtGroup = sameStartVods.length > 1 ? [] : categoryItemsForVodStartedAt(items, vod);
     let scopedGroup;
-    if (liveKey) {
+    if (sameKeyVods.length > 1) {
+      scopedGroup = [];
+    } else if (liveKey) {
       const exactGroup = items.filter((item) => categoryHistoryLiveKey(item) === liveKey);
       if (exactGroup.length) {
         const replayStart = sessionKeyMsValue(liveKey);
@@ -6175,13 +6185,13 @@
       } else {
         // Backfilled VODs may carry a synthetic liveKey derived from their
         // start timestamp. Fall back to the matching source start time.
-        scopedGroup = startedAtGroup;
+        scopedGroup = sessionKeyMsValue(liveKey) ? startedAtGroup : [];
       }
     } else {
-      scopedGroup = startedAtGroup.length ? startedAtGroup : dateCategoryGroupForVod(items, vodMatch, scheduleDate);
+      scopedGroup = startedAtGroup;
     }
     const seen = new Set();
-    return scopedGroup.filter((item) => item.hidden !== true).sort((a, b) => String(a.changedAt || "").localeCompare(String(b.changedAt || "")) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
+    return boundItems.concat(scopedGroup).filter((item) => item.hidden !== true).sort((a, b) => Number(a.offsetSeconds || 0) - Number(b.offsetSeconds || 0) || String(a.id || "").localeCompare(String(b.id || ""))).filter((item) => {
       const key = String(item.categoryType || "") + "|" + String(item.categoryId || "") + "|" + String(item.categoryLabel || "").trim().toLowerCase() + "|" + String(item.offsetSeconds ?? "");
       if (seen.has(key)) return false;
       seen.add(key);

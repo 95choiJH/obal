@@ -669,6 +669,7 @@ function normalizeLiveCategoryHistory(item) {
   return {
     id: item.id,
     liveKey: String(item.live_key || item.liveKey || "").trim(),
+    vodVideoNo: String(item.vod_video_no || item.vodVideoNo || "").trim(),
     scheduleDate: String(item.schedule_date || item.scheduleDate || "").trim(),
     categoryLabel: label,
     categoryId: String(item.category_id || item.categoryId || "").trim(),
@@ -1117,7 +1118,7 @@ async function fetchFromSupabase() {
   const gnimtiContent = gnimtiContentByChannel[Object.keys(gnimtiContentByChannel)[0]] || null;
   let gameRatingsByChannel = {};
   try { gameRatingsByChannel = await fetchGameRatingsByChannel(); } catch (e) {}
-  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 3, lolMatchLogVersion: 1, lolStreamerRankVersion: 1, gameRatingsVersion: 2, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, lolMatchLogs, lolStreamerRanks, gameRatingsByChannel, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
+  return { version: 1, directiveProfileVersion: 2, gnimtiProfileVersion: 4, titleHistoryVersion: 1, categoryHistoryVersion: 4, lolMatchLogVersion: 1, lolStreamerRankVersion: 1, gameRatingsVersion: 2, targetLiveNotificationsVersion: 2, targetLiveNotificationsEnabled, targetLiveNotificationsPublicEnabled, latestExtensionVersion, notices, updateHistories, updatedAt: latestUpdate, channels, titleHistories, categoryHistories, lolMatchLogs, lolStreamerRanks, gameRatingsByChannel, directiveProfiles, gnimtiProfiles, gnimtiContent, gnimtiContentByChannel };
 }
 
 async function attachCachedProfiles(data) {
@@ -1140,7 +1141,7 @@ async function fetchSchedule(force) {
 
   // 캐시가 신선하면 그대로 반환
   const hasAllCategories = cached.scheduleData && Object.values(cached.scheduleData.channels || {}).every(channel => (channel.schedule || []).every(entry => Array.isArray(entry.allCategories)));
-  if (!force && hasAllCategories && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 3 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.gameRatingsVersion === 2 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
+  if (!force && hasAllCategories && cached.scheduleData && cached.scheduleData.directiveProfileVersion === 2 && cached.scheduleData.gnimtiProfileVersion === 4 && cached.scheduleData.titleHistoryVersion === 1 && cached.scheduleData.categoryHistoryVersion === 4 && cached.scheduleData.lolMatchLogVersion === 1 && cached.scheduleData.lolStreamerRankVersion === 1 && cached.scheduleData.gameRatingsVersion === 2 && cached.scheduleData.targetLiveNotificationsVersion === 2 && cached.fetchedAt && now - cached.fetchedAt < ttl) {
     return { ok: true, data: await attachCachedProfiles(cached.scheduleData), fetchedAt: cached.fetchedAt, fromCache: true };
   }
 

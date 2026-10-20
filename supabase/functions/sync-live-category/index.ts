@@ -480,7 +480,9 @@ async function resolveLiveSession(channelId: string, currentDate: string, curren
     await updateLiveSessionState(channelId, {
       live_key: effectiveLiveKey,
       schedule_date: effectiveDate,
-      started_at: currentStartedAt || null,
+      started_at: chzzkTimestampMs(currentStartedAt, offsetHours)
+        ? new Date(chzzkTimestampMs(currentStartedAt, offsetHours)).toISOString()
+        : null,
       last_seen_at: now,
       ended_at: null,
       title: String(currentTitle || "").trim() || null,

@@ -604,6 +604,10 @@
   .chapter-preview-session { margin-bottom: 5px; color: var(--text-dim); font-size: 11px; font-weight: 900; }
   .chapter-preview-session-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
   .chapter-preview-session-head .chapter-preview-session { margin-bottom: 0; }
+  .chapter-preview-session a { color: var(--mint); white-space: nowrap; }
+  .chapter-preview-session-head { flex-wrap: wrap; }
+  .chapter-assignment { grid-column: 1 / -2; width: 100%; min-width: 0; }
+  .chapter-assignment { min-height: 30px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text-dim); font-size: 11px; }
   .chapter-ready-toggle { flex: 0 0 auto; }
   .chapter-preview-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
   .chapter-preview-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,0.025); }
@@ -803,6 +807,6 @@
 
 <script src="config.js?v=20260712-feedback-drawer"></script>
 <script src="vendor/supabase-2.45.4.min.js"></script>
-<script src="app.js?v=20261014-chapter-ready-publish"></script>
+<script src="app.js?v=20261017-video-chapters"></script>
 </body>
 </html>
