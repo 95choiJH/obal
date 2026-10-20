@@ -1917,7 +1917,7 @@
     return '<div class="chapter-time-selects"><input type="hidden" ' + attribute + '="' + esc(key) + '" value="' + value + '" />' + selects + '</div>';
   }
 
-  function chapterRowHtml(item) {
+  function chapterRowHtml(item, index, chapters) {
     const type = String(item.category_type || "").trim().toUpperCase();
     return '<li class="chapter-preview-row' + (item.hidden ? ' is-hidden' : '') + '">' +
       chapterTimeSelectHtml('data-chapter-time', item.id, item.offset_seconds, '챕터 시작 방송 경과') +
@@ -1928,6 +1928,10 @@
       (type ? '<b>' + esc(type) + '</b>' : '') +
       '<button type="button" class="flag-toggle chapter-hidden-toggle' + (item.hidden ? ' on' : '') + '" data-chapter-hidden="' + esc(item.id) + '">' + (item.hidden ? '숨김됨' : '노출') + '</button>' +
       '<button type="button" class="add-btn small" data-chapter-save="' + esc(item.id) + '">저장</button>' +
+      '<span class="chapter-order-buttons">' +
+        '<button type="button" class="add-btn small" data-chapter-move="' + esc(item.id) + '" data-chapter-neighbor="' + esc(index > 0 ? chapters[index - 1].id : '') + '" aria-label="챕터 위로 이동" title="챕터 위로 이동 (시작 시간 유지)"' + (index === 0 ? ' disabled' : '') + '>&uarr;</button>' +
+        '<button type="button" class="add-btn small" data-chapter-move="' + esc(item.id) + '" data-chapter-neighbor="' + esc(index < chapters.length - 1 ? chapters[index + 1].id : '') + '" aria-label="챕터 아래로 이동" title="챕터 아래로 이동 (시작 시간 유지)"' + (index === chapters.length - 1 ? ' disabled' : '') + '>&darr;</button>' +
+      '</span>' +
     '</li>';
   }
 
@@ -4707,6 +4711,30 @@
         if (!item) return;
         item.hidden = !item.hidden;
         render();
+      };
+    });
+    document.querySelectorAll('[data-chapter-move]').forEach((el) => {
+      el.onclick = async () => {
+        const item = liveCategoryHistory.find((entry) => String(entry.id) === el.dataset.chapterMove);
+        const neighbor = liveCategoryHistory.find((entry) => String(entry.id) === el.dataset.chapterNeighbor);
+        if (!item || !neighbor) return;
+        const fields = ['category_label', 'category_id', 'category_type', 'category_poster_image_url', 'hidden'];
+        const moved = { ...item };
+        const swapped = { ...neighbor };
+        fields.forEach((key) => { moved[key] = neighbor[key]; swapped[key] = item[key]; });
+        // One statement saves both rows atomically while retaining their time and video bindings.
+        document.querySelectorAll('[data-chapter-move]').forEach((button) => { button.disabled = true; });
+        try {
+          const { error } = await sb.from(liveCategoryHistoryTableName()).upsert([moved, swapped], { onConflict: 'id' });
+          if (error) throw error;
+          Object.assign(item, moved);
+          Object.assign(neighbor, swapped);
+          toast('챕터 순서를 저장했습니다. 시작 시간은 유지됩니다.');
+        } catch (error) {
+          toast('챕터 순서 변경 실패: ' + error.message);
+        } finally {
+          render();
+        }
       };
     });
     document.querySelectorAll("[data-chapter-save]").forEach((el) => {
