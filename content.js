@@ -13,12 +13,13 @@
   const api = typeof browser !== "undefined" ? browser : chrome;
   const EXTENSION_VERSION = (api.runtime.getManifest && api.runtime.getManifest().version) || "0";
   const BREAK_ICON_URL = api.runtime.getURL("icons/on_break.png");
-  const BREAK_LIGHT_ICON_URL = BREAK_ICON_URL;
+  const BREAK_LIGHT_ICON_URL = api.runtime.getURL("icons/on_break-light.png");
   const UNDETERMINED_ICON_URL = api.runtime.getURL("icons/undetermined.png");
-  const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined.png");
+  const UNDETERMINED_LIGHT_ICON_URL = api.runtime.getURL("icons/undetermined-light.png");
   const NAVER_CAFE_ICON_URL = api.runtime.getURL("icons/naver_cafe.png");
   const VIDEO_DONATION_ICON_URL = api.runtime.getURL("icons/video_donation.png");
-  const GAMEPAD_ICON_URL = api.runtime.getURL("icons/tile-icon.png");
+  const SIMPLE_ICON_URL = api.runtime.getURL("icons/simple-outline.svg");
+  const GAME_CONTROLLER_ICON_URL = api.runtime.getURL("icons/game-controller-outline.svg");
   const STAR_ICON_URL = api.runtime.getURL("icons/star-icon.png");
   const CALENDAR_ICON_URL = api.runtime.getURL("icons/calendar-icon.svg");
   const CONTENT_MODE_TABS_ENABLED = true;
@@ -120,6 +121,8 @@
     extensionCollapsed: readExtensionCollapsed(),
     monthOffset: 0,
     gameOnly: false,
+    playReportOpen: false,
+    playReportMonthOffset: 0,
     settingsOpen: false,
     liveStartNoticeEnabled: readNotificationSetting(LIVE_START_NOTICE_KEY, false),
     categoryChangeNoticeEnabled: readNotificationSetting(CATEGORY_CHANGE_NOTICE_KEY, false),
@@ -344,8 +347,8 @@
     const category = String(categoryName || "").trim();
     host.shadowRoot.innerHTML =
       '<style>' +
-      ':host{all:initial;display:flex;justify-content:center;align-items:flex-start;box-sizing:border-box;width:100%;height:108px;padding:16px 24px 28px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.68) 0%,rgba(0,0,0,.5) 42%,rgba(0,0,0,.2) 72%,rgba(0,0,0,0) 100%)}.toast{position:relative;pointer-events:auto;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(8,10,14,.995),rgba(18,22,29,.99)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#f8fafc,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f8fafc;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 18px 46px rgba(0,0,0,.68),0 0 0 1px rgba(255,255,255,.14),0 0 28px rgba(0,255,163,.2);transform:translateY(-14px);opacity:0;isolation:isolate;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast::before{content:"";position:absolute;left:8px;top:8px;bottom:8px;z-index:1;width:4px;border-radius:999px;background:linear-gradient(180deg,#00ffa3,#38bdf8);box-shadow:0 0 14px rgba(0,255,163,.45)}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:2;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{position:relative;z-index:1;grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#eef4fb;font-weight:850;text-shadow:0 1px 2px rgba(0,0,0,.36)}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{position:relative;z-index:1;grid-column:2;appearance:none;border:1px solid rgba(0,255,163,.45);border-radius:7px;background:#00ffa3;color:#04251d;height:30px;padding:0 10px;font:950 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 0 18px rgba(0,255,163,.22)}.watch-btn:hover{border-color:rgba(125,211,252,.75);background:#7dd3fc;color:#031923}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{position:relative;z-index:1;grid-column:3;appearance:none;display:inline-flex;align-items:flex-start;justify-content:center;width:24px;height:24px;margin-left:-2px;border:1px solid rgba(255,255,255,.26);border-radius:7px;background:rgba(255,255,255,.1);color:#f1f5f9;font:900 17px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13);color:#fff}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateY(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateY(-14px);opacity:0}}' +
-      '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button><button type="button" class="close-btn" id="obaengal-live-start-close" aria-label="닫기">&times;</button></div>';
+      ':host{all:initial;display:flex;justify-content:center;align-items:flex-start;box-sizing:border-box;width:100%;height:108px;padding:16px 24px 28px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.68) 0%,rgba(0,0,0,.5) 42%,rgba(0,0,0,.2) 72%,rgba(0,0,0,0) 100%)}.toast{position:relative;pointer-events:auto;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;width:max-content;max-width:calc(100vw - 48px);box-sizing:border-box;margin-left:27px;padding:10px 10px 10px 38px;border:1px solid transparent;border-radius:8px;background:linear-gradient(135deg,rgba(8,10,14,.995),rgba(18,22,29,.99)) padding-box,linear-gradient(90deg,#00ffa3,#38bdf8,#f8fafc,#00ffa3) border-box;background-size:100% 100%,260% 100%;color:#f8fafc;font:800 14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 18px 46px rgba(0,0,0,.68),0 0 0 1px rgba(255,255,255,.14),0 0 28px rgba(0,255,163,.2);transform:translateY(-14px);opacity:0;isolation:isolate;animation:cs-live-toast-in .22s cubic-bezier(.2,.8,.2,1) forwards,cs-live-toast-border 3s linear infinite}.toast::before{content:"";position:absolute;left:8px;top:8px;bottom:8px;z-index:1;width:4px;border-radius:999px;background:linear-gradient(180deg,#00ffa3,#38bdf8);box-shadow:0 0 14px rgba(0,255,163,.45)}.toast.is-exiting{animation:cs-live-toast-out .2s ease forwards,cs-live-toast-border 3s linear infinite}.avatar{position:absolute;left:-25px;top:50%;z-index:2;width:50px;height:50px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#00ffa3,#38bdf8,#a78bfa);transform:translateY(-50%);overflow:hidden}.avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}.avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#23262b;color:#00ffa3;font-size:15px;font-weight:900}.copy{position:relative;z-index:1;grid-column:1;min-width:max-content;color:#f4f5f6;font-size:14px;font-weight:850;line-height:1.25;white-space:nowrap;overflow:visible;text-overflow:clip}.name{color:#fff;font-weight:950}.message{color:#eef4fb;font-weight:850;text-shadow:0 1px 2px rgba(0,0,0,.36)}.category{display:inline-flex;align-items:center;max-width:none;margin:0 3px;padding:1px 6px;border:1px solid rgba(56,189,248,.55);border-radius:999px;background:rgba(56,189,248,.18);color:#7dd3fc;font-weight:950;vertical-align:baseline;white-space:nowrap;overflow:visible;text-overflow:clip}.watch-btn{position:relative;z-index:1;grid-column:2;appearance:none;border:1px solid rgba(0,255,163,.45);border-radius:7px;background:#00ffa3;color:#04251d;height:30px;padding:0 10px;font:950 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 0 18px rgba(0,255,163,.22)}.watch-btn:hover{border-color:rgba(125,211,252,.75);background:#7dd3fc;color:#031923}.watch-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}.close-btn{position:relative;z-index:1;grid-column:3;appearance:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:-2px;padding:0;border:1px solid rgba(255,255,255,.26);border-radius:7px;background:rgba(255,255,255,.1);cursor:pointer}.close-btn img{width:16px;height:16px;display:block;filter:brightness(0) invert(1)}.close-btn:hover{border-color:rgba(248,250,252,.36);background:rgba(255,255,255,.13)}.close-btn:focus-visible{outline:2px solid rgba(56,189,248,.78);outline-offset:2px}@keyframes cs-live-toast-in{to{transform:translateY(0);opacity:1}}@keyframes cs-live-toast-border{to{background-position:0 0,260% 0}}@keyframes cs-live-toast-out{to{transform:translateY(-14px);opacity:0}}' +
+      '</style><div class="toast" id="obaengal-live-start-toast" role="status" aria-live="polite"><span class="avatar" id="obaengal-live-start-avatar"></span><span class="copy"><span class="name" id="obaengal-live-start-name"></span><span class="message" id="obaengal-live-start-message"></span></span><button type="button" class="watch-btn" id="obaengal-live-start-watch">방송보러가기</button><button type="button" class="close-btn" id="obaengal-live-start-close" aria-label="닫기"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></div>';
     const avatar = host.shadowRoot.getElementById("obaengal-live-start-avatar");
     if (avatar) {
       if (imageUrl) {
@@ -792,6 +795,7 @@
     };
     try {
       closePopover();
+      state.playReportOpen = false;
       state.settingsOpen = false;
       await Promise.all([
         animate(state.shadow.querySelector(".cs-schedule-section"), [
@@ -1462,7 +1466,7 @@
     #cs-root { position: relative; }
 
     .cs-wrapper { position: relative; background: #1b1c1f; border: 1px solid #2e3033;
-      border-radius: 10px; margin: 0 0 20px; }
+      border-radius: 10px; margin: 0 6px 20px; }
     .cs-top-controls { position:relative; z-index:25; display:flex; align-items:center; justify-content:center; min-height:36px; margin:0 0 8px; }
     .cs-top-controls .cs-view-switch { width:auto; gap:3px; padding:3px; border:1px solid #34373c; border-radius:9px; background:#202226; }
     .cs-top-controls .cs-view-switch button { min-width:76px; height:28px; padding:0 13px; }
@@ -1487,7 +1491,8 @@
     .cs-view-switch button:focus-visible,.cs-date-navigation .cs-arrow:focus-visible,.cs-detail-nav:focus-visible { outline:2px solid #00c878; outline-offset:2px; }
     .cs-date-navigation .cs-month-label { grid-column:3; position:static; min-width:0; width:100%; overflow:hidden; text-overflow:ellipsis; transform:none; color:#e2e5e9; font-size:13px; font-weight:700; text-align:center; }
     .cs-week-label { grid-column:3; min-width:0; width:100%; overflow:hidden; text-overflow:ellipsis; color:#b4bac2; font-size:12px; font-weight:600; text-align:center; white-space:nowrap; font-variant-numeric:tabular-nums; letter-spacing:.1px; }
-    .cs-date-navigation .cs-arrow { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; border:1px solid #3a3d42; border-radius:7px; background:#222428; color:#d1d5db; font-size:18px; }
+    .cs-date-navigation .cs-arrow { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; border:1px solid #3a3d42; border-radius:7px; background:#222428; color:#d1d5db; }
+    .cs-date-navigation .cs-arrow svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
     .cs-date-navigation #cs-prev { grid-column:2; }
     .cs-date-navigation #cs-next { grid-column:4; }
     .cs-date-navigation #cs-game-toggle { grid-column:5; }
@@ -1496,7 +1501,8 @@
     .cs-date-navigation .cs-arrow:hover:not(:disabled) { border-color:#555a61; background:#2b2e33; color:#fff; }
     .cs-detail-nav { position:relative; display:inline-flex; flex:0 0 30px; align-items:center; justify-content:center; width:30px; height:30px; min-height:30px; padding:0; border:1px solid #3a3d42; border-radius:7px; background:#222428; color:#d1d5db; cursor:pointer; transition:background .15s ease,border-color .15s ease,color .15s ease; }
     .cs-detail-nav img { display:block; width:18px; height:18px; object-fit:contain; }
-    .cs-detail-nav:hover { border-color:#555a61; background:#2b2e33; color:#fff; }
+    #cs-play-report-open img { filter:brightness(0) invert(1); }
+    .cs-detail-nav:hover { border-color:#00c878; background:rgba(0,200,120,.14); color:#71ffc3; }
     .cs-detail-nav-tip { position:absolute; right:0; top:calc(100% + 6px); z-index:14; min-width:max-content; padding:5px 7px; border:1px solid #3a3c40; border-radius:7px; background:#232427; color:#efeff1; font-size:11px; font-weight:700; line-height:1.2; box-shadow:0 4px 14px rgba(0,0,0,.25); opacity:0; visibility:hidden; transform:translateY(-2px); transition:opacity .12s ease,transform .12s ease,visibility .12s ease; pointer-events:none; }
     .cs-detail-nav:hover .cs-detail-nav-tip,.cs-detail-nav:focus-visible .cs-detail-nav-tip { opacity:1; visibility:visible; transform:translateY(0); }
     .cs-detail-nav:focus-visible { outline:2px solid #00c878; outline-offset:2px; }
@@ -1620,6 +1626,7 @@
     .cs-view-icon svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .cs-view-icon img { display: block; width: 18px; height: 18px; object-fit: contain; }
     .cs-view-toggle.cs-open .cs-view-icon img { filter: none; }
+    .cs-view-toggle.cs-game-toggle .cs-view-icon img { filter: brightness(0) invert(1); }
     .cs-view-tip { position: absolute; right: 0; top: calc(100% + 6px); z-index: 14; min-width: max-content; max-width: 160px; padding: 5px 7px; border: 1px solid #3a3c40; border-radius: 7px; background: #232427; color: #efeff1; font-size: 11px; font-weight: 700; line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity .12s ease, transform .12s ease, visibility .12s ease; pointer-events: none; }
     .cs-view-tip::after { content:""; position:absolute; right:8px; bottom:100%; width:7px; height:7px; background:#232427; border-left:1px solid #3a3c40; border-top:1px solid #3a3c40; transform:translateY(4px) rotate(45deg); }
     .cs-view-toggle:hover .cs-view-tip, .cs-view-toggle:focus-visible .cs-view-tip { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -1788,6 +1795,42 @@
     .cs-ranking-export button:focus-visible, .cs-ranking-export summary:focus-visible { outline: 2px solid #b3a6d1; outline-offset: 4px; }
     .cs-ranking-export button:disabled { opacity: .5; cursor: wait; }
     .cs-ranking-export-status { font-size: 12px; color: #92969d; }
+    .cs-play-report-overlay { position:fixed; inset:0; z-index:2147483646; display:flex; justify-content:flex-end; }
+    .cs-play-report-backdrop { position:absolute; inset:0; width:100%; height:100%; border:0; border-radius:0; background:rgba(5,8,12,.62); animation:cs-play-report-fade .2s ease both; }
+    .cs-play-report-drawer { position:relative; z-index:1; display:flex; flex-direction:column; width:min(560px,calc(100vw - 16px)); height:100%; max-height:100%; border-left:1px solid #383e50; background:#171b25; color:#edf0f7; box-shadow:-18px 0 55px rgba(0,0,0,.42); animation:cs-play-report-slide-in .24s cubic-bezier(.2,.8,.2,1) both; }
+    .cs-play-report-head { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:20px 22px; border-bottom:1px solid #303646; }
+    .cs-play-report-title-group { display:grid; flex:1 1 auto; grid-template-columns:32px minmax(0,1fr) 32px; align-items:center; gap:12px; width:100%; max-width:420px; min-width:0; }
+    .cs-play-report-title-group h2 { margin:0; text-align:center; font-size:clamp(13px,3.8vw,18px); line-height:1.25; }
+    .cs-play-report-month-nav { display:inline-flex; flex:0 0 32px; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:1px solid #454b5b; border-radius:8px; background:#242a37; color:#e6e9f0; cursor:pointer; }
+    .cs-play-report-month-nav svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .cs-play-report-month-nav:disabled { opacity:.35; cursor:default; }
+    .cs-play-report-head h2 { color:#f3f1f8; font-weight:800; }
+    .cs-play-report-head p { margin:5px 0 0; color:#a4aabe; font-size:12px; }
+    .cs-play-report-close { flex:0 0 34px; width:34px; height:34px; padding:0; border:1px solid #454b5b; border-radius:9px; background:#242a37; color:#e6e9f0; cursor:pointer; }
+    .cs-play-report-close img, .cs-notification-guide-close img, .cs-gnimti-close img, .cs-media-viewer-close img, .cs-media-close img, .oth-close img, .cs-feedback-close img { display:block; width:18px; height:18px; filter:brightness(0) invert(1); }
+    .cs-play-report-close, .cs-notification-guide-close, .cs-gnimti-close, .cs-media-viewer-close, .cs-media-close, .oth-close, .cs-feedback-close { display:inline-flex; align-items:center; justify-content:center; padding:0; }
+    :host(.cs-light-theme) .cs-play-report-close img, :host(.cs-light-theme) .cs-notification-guide-close img, :host(.cs-light-theme) .cs-gnimti-close img, :host(.cs-light-theme) .cs-media-viewer-close img, :host(.cs-light-theme) .cs-media-close img, :host(.cs-light-theme) .oth-close img, :host(.cs-light-theme) .cs-feedback-close img { filter:brightness(0) invert(.2); }
+    .cs-play-report-body { flex:1; min-height:0; overflow:auto; padding:18px 20px 28px; scrollbar-width:thin; scrollbar-color:#4b5365 transparent; }
+    .cs-play-report-body::-webkit-scrollbar { width:6px; height:6px; }
+    .cs-play-report-body::-webkit-scrollbar-track { background:transparent; }
+    .cs-play-report-body::-webkit-scrollbar-thumb { border:1px solid transparent; border-radius:999px; background:#4b5365; background-clip:padding-box; }
+    .cs-play-report-body::-webkit-scrollbar-thumb:hover { background:#68738a; background-clip:padding-box; }
+    .cs-play-report-preview canvas { display:block; width:100%; max-width:540px; height:auto; margin:0 auto 16px; border-radius:14px; }
+    .cs-play-report-drawer .cs-ranking-export-actions { align-items:center; }
+    .cs-play-report-drawer .cs-ranking-export-actions button { border:1px solid #53516c; border-radius:10px; background:#343348; color:#e1dcf1; padding:10px 14px; cursor:pointer; font:inherit; font-size:12px; }
+    .cs-play-report-drawer .cs-ranking-export-actions button:hover { background:#45415b; }
+    .cs-play-report-drawer .cs-ranking-export-actions button:disabled { opacity:.5; cursor:wait; }
+    @keyframes cs-play-report-slide-in { from { transform:translateX(100%); } to { transform:translateX(0); } }
+    @keyframes cs-play-report-fade { from { opacity:0; } to { opacity:1; } }
+    :host(.cs-light-theme) .cs-play-report-drawer { border-color:#d9dee8; background:#fff; color:#222936; box-shadow:-18px 0 55px rgba(34,43,58,.2); }
+    :host(.cs-light-theme) .cs-play-report-head { border-color:#e1e5ed; }
+    :host(.cs-light-theme) .cs-play-report-month-nav { border-color:#d8dce4; background:#f2f4f7; color:#333b4b; }
+    :host(.cs-light-theme) .cs-play-report-head h2 { color:#202634; }
+    :host(.cs-light-theme) .cs-play-report-head p { color:#687286; }
+    :host(.cs-light-theme) .cs-play-report-close { border-color:#d8dce4; background:#f2f4f7; }
+    :host(.cs-light-theme) .cs-play-report-body { scrollbar-color:#c4cad5 transparent; }
+    :host(.cs-light-theme) .cs-play-report-body::-webkit-scrollbar-thumb { background:#c4cad5; background-clip:padding-box; }
+    :host(.cs-light-theme) .cs-play-report-body::-webkit-scrollbar-thumb:hover { background:#9ba5b6; background-clip:padding-box; }
     .cs-game-stats { position: relative; z-index: 1; min-width: 0; overflow: hidden; cursor: grab; user-select: none; touch-action: pan-y; }
     .cs-game-stats:not(.swiper-initialized) { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: rgba(0,255,163,0.42) rgba(9,10,12,0.62); }
     .cs-game-stats .swiper-wrapper { position: relative; z-index: 1; display: flex; align-items: stretch; width: 100%; height: 100%; box-sizing: content-box; transform: translate3d(0,0,0); transition-property: transform; transition-timing-function: var(--swiper-wrapper-transition-timing-function, initial); }
@@ -2029,9 +2072,9 @@
       background: #00c878; color: #062b20; font-size: 12px; font-weight: 700; cursor: pointer; }
     .cs-feedback-submit:disabled { background: #4a4c52; color: #8b8d92; cursor: not-allowed; }
 
-    .cs-popover { position: absolute; width: max-content; min-width: 250px; max-width: none; background: #26272b;
-      border: 1px solid #3a3c40; border-radius: 10px; padding: 12px 14px;
-      z-index: 2147483646; display: none; }
+    .cs-popover { position: fixed; width: max-content; min-width: min(250px, calc(100vw - 20px)); max-width: min(520px, calc(100vw - 20px)); background: #26272b;
+      border: 1px solid #3a3c40; border-radius: 10px; padding: 12px 14px; max-height: none; overflow: visible;
+      z-index: 2147483646; display: none; margin: 0; }
     .cs-popover.cs-open { display: block; }
     .cs-pop-arrow { position: absolute; top: -5px; width: 10px; height: 10px;
       background: #26272b; border-left: 1px solid #3a3c40; border-top: 1px solid #3a3c40;
@@ -2257,7 +2300,8 @@
     :host(.cs-light-theme) .cs-detail-nav { color:#727983; }
     :host(.cs-light-theme) .cs-detail-nav { border-color:#d8dce0; background:#fff; color:#626a73; }
     :host(.cs-light-theme) .cs-detail-nav img { filter:brightness(0) saturate(100%); }
-    :host(.cs-light-theme) .cs-detail-nav:hover { border-color:#bfc5cb; background:#edf7f1; color:#176b46; }
+    :host(.cs-light-theme) #cs-play-report-open img { filter:brightness(0) saturate(100%); }
+    :host(.cs-light-theme) .cs-detail-nav:hover { border-color:#03a950; background:#e3f5eb; color:#087f4d; }
     :host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle { border-color:#d8dce0; background:#fff; color:#626a73; }
     :host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle:hover,:host(.cs-light-theme) .cs-header-bottom-right .cs-game-toggle.cs-open { border-color:#03a950; background:#e3f5eb; color:#087f4d; }
     :host(.cs-light-theme) .cs-arrow { color: #008a43; }
@@ -2270,7 +2314,7 @@
     :host(.cs-light-theme) .cs-settings-toggle:hover { background: #eceef0; border-color: #c5c8cc; color: #1e2024; }
     :host(.cs-light-theme) .cs-settings-toggle.cs-open { background:#e3f5eb; border-color:#03a950; color:#087f4d; box-shadow:none; }
     :host(.cs-light-theme) .cs-detail-nav { color:#727983; }
-    :host(.cs-light-theme) .cs-detail-nav:hover { background:#edf7f1; color:#176b46; }
+    :host(.cs-light-theme) .cs-detail-nav:hover { border-color:#03a950; background:#e3f5eb; color:#087f4d; }
     :host(.cs-light-theme) .cs-settings-tip,
     :host(.cs-light-theme) .cs-settings-panel { background: #ffffff; border-color: #d3d6da; color: #1e2024; box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
     :host(.cs-light-theme) .cs-settings-label { color: #25282d; }
@@ -2984,27 +3028,35 @@
   }
 
   function gameSummaryHtml(monthBase) {
-    const usesPlayTime = playReportAvailable(monthBase);
-    const summary = usesPlayTime ? monthPlayStats(monthBase) : monthGameStats(monthBase);
+    const summary = monthGameStats(monthBase);
     if (!playReportAvailable(monthBase) && !summary.stats.length && !monthGameStats(monthBase, true).stats.length) return '<div class="cs-game-summary"><div class="cs-game-empty">이번 달 게임 없음</div></div>';
     let previousRankValue = null;
     let previousRank = 0;
     const statsHtml = summary.stats.map((item, idx) => {
-      const rankValue = usesPlayTime ? Number(item.seconds || 0) : Number(item.count || 0);
+      const rankValue = Number(item.count || 0);
       const rank = previousRankValue === rankValue ? previousRank : idx + 1;
       previousRankValue = rankValue;
       previousRank = rank;
       const statClass = item.label === state.selectedGame ? " cs-selected" : (state.selectedGame ? " cs-muted" : "");
       return '<div class="swiper-slide"><button type="button" class="cs-game-stat' + statClass + '" data-game-filter="' + escapeHtml(item.label) + '">' +
         '<span class="cs-game-stat-main"><span class="cs-game-rank">#' + rank + '</span><span class="cs-game-stat-name">' + directiveHtml(item.label, { disableProfileLinks: true }) + '</span></span>' +
-        '<span class="cs-game-stat-count">' + (usesPlayTime ? playTimeText(item.seconds) : item.count + '일 방송') + '</span></button></div>';
+        '<span class="cs-game-stat-count">' + item.count + '일 방송</span></button></div>';
     }).join("");
     return '<div class="cs-game-summary"><div class="cs-game-stats swiper" data-game-rank-swiper="1"><div class="swiper-wrapper">' + statsHtml + '</div></div></div>';
   }
 
   function playReportHtml(monthBase) {
     if (!playReportAvailable(monthBase)) return '';
-    return '<details class="cs-ranking-export" id="cs-ranking-export"><summary>' + (monthBase.getMonth() + 1) + '월 플레이 현황</summary><div class="cs-ranking-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite"></span></div></details>';
+    const monthNumber = monthBase.getFullYear() * 100 + monthBase.getMonth() + 1;
+    const previousDisabled = monthNumber <= 202610 ? ' disabled aria-disabled="true"' : '';
+    const nextMonth = new Date(monthBase.getFullYear(), monthBase.getMonth() + 1, 1);
+    const nextDisabled = monthPlayStats(nextMonth).stats.length ? '' : ' disabled aria-disabled="true"';
+    return '<div class="cs-play-report-overlay" id="cs-play-report-panel"><button type="button" class="cs-play-report-backdrop" data-play-report-close aria-label="플레이 현황 닫기"></button><aside class="cs-play-report-drawer" role="dialog" aria-modal="true" aria-labelledby="cs-play-report-title"><header class="cs-play-report-head"><div class="cs-play-report-title-group"><button type="button" class="cs-play-report-month-nav" id="cs-play-report-prev" aria-label="이전 월"' + previousDisabled + '><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6" /></svg></button><h2 id="cs-play-report-title">' + monthBase.getFullYear() + '년 ' + (monthBase.getMonth() + 1) + '월 플레이 현황</h2><button type="button" class="cs-play-report-month-nav" id="cs-play-report-next" aria-label="다음 월"' + nextDisabled + '><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6" /></svg></button></div><button type="button" class="cs-play-report-close" id="cs-play-report-close" aria-label="닫기"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></header><div class="cs-play-report-body"><div class="cs-play-report-preview"></div><div class="cs-ranking-export-actions"><button type="button" data-ranking-action="copy">이미지 복사</button><button type="button" data-ranking-action="save">PNG 저장</button><span class="cs-ranking-export-status" role="status" aria-live="polite"></span></div></div></aside></div>';
+  }
+
+  function playReportButtonHtml(monthBase) {
+    if (!playReportAvailable(monthBase)) return '';
+    return '<button type="button" class="cs-detail-nav" id="cs-play-report-open" aria-label="플레이 현황 열기" title="플레이 현황"><img src="' + GAME_CONTROLLER_ICON_URL + '" alt="" aria-hidden="true"><span class="cs-detail-nav-tip" aria-hidden="true">플레이 현황</span></button>';
   }
 
   function rankingImageCanvas(monthBase, avatar = null, brandIcon = null) {
@@ -3235,6 +3287,7 @@
     const windowStart = addDays(anchor, state.pageOffset * PAGE_SIZE);
     const windowEnd = addDays(windowStart, PAGE_SIZE - 1);
     const monthBase = new Date(today.getFullYear(), today.getMonth() + state.monthOffset, 1);
+    const playReportMonth = new Date(today.getFullYear(), today.getMonth() + state.playReportMonthOffset, 1);
     const windowStartKey = dateKey(windowStart);
     const windowEndKey = dateKey(windowEnd);
     const formatWeekDate = (date) => String(date.getMonth() + 1).padStart(2, "0") + "." + String(date.getDate()).padStart(2, "0");
@@ -3245,14 +3298,14 @@
     const canGoPrev = state.monthExpanded ? monthHasEntry(previousMonth) : hasEntryBefore(windowStartKey);
     const canGoNext = state.monthExpanded ? monthHasEntry(nextMonth) : hasEntryAfter(windowEndKey);
 
-    if (!state.monthExpanded && state.gameOnly) state.gameOnly = false;
     const pill = pillState();
     const cellsHtml = state.monthExpanded ? monthGridHtml(monthBase) : fiveDayGridHtml(windowStart);
     const lolLogMode = state.scheduleViewMode === "lolMatchLogs";
     const ratingMode = state.scheduleViewMode === "gameRatings";
     const specialMode = lolLogMode || ratingMode;
     const gameRanking = !specialMode && state.monthExpanded && state.gameOnly ? gameSummaryHtml(monthBase) : "";
-    const playReport = !specialMode && state.monthExpanded ? playReportHtml(monthBase) : "";
+    const playReport = !specialMode && state.playReportOpen ? playReportHtml(playReportMonth) : "";
+    const playReportButton = !specialMode && !state.extensionCollapsed ? playReportButtonHtml(monthBase) : "";
     const gridClass = state.monthExpanded ? "cs-grid cs-month-grid" : "cs-grid";
     const monthLabel = state.monthExpanded
       ? '<span class="cs-month-label">' + monthBase.getFullYear() + "." + String(monthBase.getMonth() + 1).padStart(2, "0") + "</span>"
@@ -3272,25 +3325,25 @@
     const dateNavigationHtml = !specialMode && !state.extensionCollapsed
       ? '<div class="cs-schedule-navigator"><div class="cs-date-navigation">' +
         '<span class="cs-date-side-spacer" aria-hidden="true"></span>' +
-        '<button type="button" class="cs-arrow" id="cs-prev"' + (canGoPrev ? '' : ' disabled') + ' aria-label="이전 일정">‹</button>' +
+        '<button type="button" class="cs-arrow" id="cs-prev"' + (canGoPrev ? '' : ' disabled') + ' aria-label="이전 일정"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6" /></svg></button>' +
         (state.monthExpanded ? monthLabel : '<span class="cs-week-label">' + weekRangeLabel + '</span>') +
-        '<button type="button" class="cs-arrow" id="cs-next"' + (canGoNext ? '' : ' disabled') + ' aria-label="다음 일정">›</button>' +
+        '<button type="button" class="cs-arrow" id="cs-next"' + (canGoNext ? '' : ' disabled') + ' aria-label="다음 일정"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6" /></svg></button>' +
         '<span class="cs-date-end-spacer" aria-hidden="true"></span>' +
         '</div></div>'
       : '';
     const gameOnlyToggleHtml = !state.extensionCollapsed
-      ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? ' cs-open' : '') + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? '전체 보기' : '간단히 보기') + '" title="' + (state.gameOnly ? '전체 보기' : '간단히 보기') + '"' + (!state.monthExpanded ? ' disabled aria-disabled="true"' : '') + '><span class="cs-view-icon" aria-hidden="true"><img src="' + GAMEPAD_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? '전체 보기' : '간단히 보기') + '</span></button>'
+      ? '<button type="button" class="cs-view-toggle cs-game-toggle' + (state.gameOnly ? ' cs-open' : '') + '" id="cs-game-toggle" aria-pressed="' + String(state.gameOnly) + '" aria-label="' + (state.gameOnly ? '전체 보기' : '카테고리 별 보기') + '" title="' + (state.gameOnly ? '전체 보기' : '카테고리 별 보기') + '"><span class="cs-view-icon" aria-hidden="true"><img src="' + SIMPLE_ICON_URL + '" alt="" /></span><span class="cs-view-tip">' + (state.gameOnly ? '전체 보기' : '카테고리 별 보기') + '</span></button>'
       : '';
     const topNavigationHtml = calendarViewSwitchHtml;
     const scheduleToolbarHtml = specialMode
       ? (!state.extensionCollapsed && !ratingMode ? '<div class="cs-header-bottom-left">' + lolLogToggleHtml() + '</div>' : '')
       : '<div class="cs-header-primary"><span class="cs-title">방송 일정</span>' + schedulePillHtml + '</div>' +
         dateNavigationHtml +
-        (!state.extensionCollapsed ? '<div class="cs-header-bottom-right">' + gameOnlyToggleHtml + lolLogToggleHtml() + '</div>' : '');
+        (!state.extensionCollapsed ? '<div class="cs-header-bottom-right">' + gameOnlyToggleHtml + lolLogToggleHtml() + playReportButton + '</div>' : '');
     const settingsPanelHtml = showNotificationSettings && state.settingsOpen
       ? '<div class="cs-settings-panel" id="cs-settings-panel">' +
         '<div class="cs-settings-heading"><span>알림 설정</span><button type="button" class="cs-settings-help" popovertarget="cs-notification-guide" aria-label="알림 기능 도움말" title="알림 기능 도움말">?</button></div>' +
-        '<div id="cs-notification-guide" class="cs-notification-guide" popover="auto" role="dialog" aria-label="알림 기능 도움말"><div class="cs-notification-guide-heading"><span>알림 기능 도움말</span><button type="button" class="cs-notification-guide-close" popovertarget="cs-notification-guide" popovertargetaction="hide" aria-label="도움말 닫기" autofocus>×</button></div><img src="' + NOTIFICATION_GUIDE_IMAGE_URL + '" alt="효니 방송 시작 알림 안내: 다른 스트리머 방송 시청 중 시작 알림을 받고, 방송보러가기로 이동할 수 있습니다. 설정에서 방송 시작 및 카테고리 변경 알림을 켜거나 끌 수 있습니다." loading="lazy"></div>' +
+        '<div id="cs-notification-guide" class="cs-notification-guide" popover="auto" role="dialog" aria-label="알림 기능 도움말"><div class="cs-notification-guide-heading"><span>알림 기능 도움말</span><button type="button" class="cs-notification-guide-close" popovertarget="cs-notification-guide" popovertargetaction="hide" aria-label="도움말 닫기" autofocus><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></div><img src="' + NOTIFICATION_GUIDE_IMAGE_URL + '" alt="효니 방송 시작 알림 안내: 다른 스트리머 방송 시청 중 시작 알림을 받고, 방송보러가기로 이동할 수 있습니다. 설정에서 방송 시작 및 카테고리 변경 알림을 켜거나 끌 수 있습니다." loading="lazy"></div>' +
         (state.targetLiveNotificationsEnabled === false ? '<div class="cs-settings-row"><span class="cs-settings-label">관리자 설정에서 타스트리머 알림이 OFF입니다</span></div>' : "") +
         '<div class="cs-settings-row"><span class="cs-settings-label">방송 시작 알림</span><button type="button" class="cs-settings-switch' + (effectiveLiveStartNoticeEnabled() ? " cs-on" : "") + '" id="cs-live-start-notice-toggle" role="switch" aria-checked="' + String(effectiveLiveStartNoticeEnabled()) + '" aria-label="방송 시작 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
         '<div class="cs-settings-row"><span class="cs-settings-label">카테고리 변경 알림</span><button type="button" class="cs-settings-switch' + (effectiveCategoryChangeNoticeEnabled() ? " cs-on" : "") + '" id="cs-category-change-notice-toggle" role="switch" aria-checked="' + String(effectiveCategoryChangeNoticeEnabled()) + '" aria-label="카테고리 변경 알림"' + (state.targetLiveNotificationsEnabled === false ? " disabled" : "") + '></button></div>' +
@@ -3312,12 +3365,14 @@
       (specialMode
         ? (lolLogMode && state.extensionCollapsed
           ? lolCollapsedSummaryHtml()
-          : (ratingMode && state.extensionCollapsed ? '' : '<div class="cs-header cs-header-secondary">' + scheduleToolbarHtml + '</div>'))
+          : (ratingMode && state.extensionCollapsed
+            ? '<div class="cs-header"><div class="cs-header-primary"><span class="cs-title">방송 일정</span>' + schedulePillHtml + '</div></div>'
+            : '<div class="cs-header cs-header-secondary">' + scheduleToolbarHtml + '</div>'))
         : '<div class="cs-header">' + scheduleToolbarHtml + '</div>') +
       '<div class="cs-schedule-body"' + (state.extensionCollapsed ? " hidden" : "") + '>' +
       (ratingMode ? gameRatingsHtml() : lolLogMode ? lolMatchLogHtml() : '<div class="' + gridClass + '" id="cs-grid">' + cellsHtml + "</div>" +
       gameRanking + playReport +
-      '<div class="cs-popover" id="cs-popover">' +
+      '<div class="cs-popover" id="cs-popover" popover="manual">' +
       '<div class="cs-pop-arrow" id="cs-pop-arrow"></div>' +
       '<div id="cs-pop-body"></div>' +
       "</div>") +
@@ -3554,7 +3609,7 @@
     return (
       '<div class="cs-feedback-panel' + (state.feedbackOpen ? " cs-open" : "") + '" id="cs-feedback-panel" role="dialog" aria-label="문의 및 제보">' +
       '<div class="cs-feedback-head"><span class="cs-feedback-title">문의 · 제보</span>' +
-      '<button type="button" class="cs-feedback-close" id="cs-feedback-close" aria-label="닫기">×</button></div>' +
+      '<button type="button" class="cs-feedback-close" id="cs-feedback-close" aria-label="닫기"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></div>' +
       '<label class="cs-feedback-label" for="cs-feedback-type">종류</label>' +
       '<select class="cs-feedback-select" id="cs-feedback-type">' +
       option("일정", "일정 (제보/수정/오류 등)") + option("건의") + option("버그 제보") + option("문의") + option("기타") + "</select>" +
@@ -4005,25 +4060,52 @@
     const liveStartNoticeToggle = s.getElementById("cs-live-start-notice-toggle");
     const categoryChangeNoticeToggle = s.getElementById("cs-category-change-notice-toggle");
     const gameToggle = s.getElementById("cs-game-toggle");
-    const rankingExport = s.getElementById("cs-ranking-export");
+    const playReportOpenButton = s.getElementById("cs-play-report-open");
+    const rankingExport = s.getElementById("cs-play-report-panel");
+    if (playReportOpenButton) playReportOpenButton.addEventListener("click", () => {
+      state.playReportOpen = true;
+      state.playReportMonthOffset = state.monthOffset;
+      render();
+      const closeButton = s.getElementById("cs-play-report-close");
+      if (closeButton) closeButton.focus({ preventScroll: true });
+    });
     if (rankingExport) {
       const today = parseKey(state.todayKey);
-      const exportMonth = new Date(today.getFullYear(), today.getMonth() + state.monthOffset, 1);
+      const exportMonth = new Date(today.getFullYear(), today.getMonth() + state.playReportMonthOffset, 1);
       let canvasPromise;
       const preview = () => {
         if (!canvasPromise) {
           canvasPromise = Promise.all([loadPlayReportAvatar(), loadPlayReportBrandIcon()]).then(([avatar, brandIcon]) => {
             const canvas = rankingImageCanvas(exportMonth, avatar, brandIcon);
-            rankingExport.querySelector(".cs-ranking-preview").appendChild(canvas);
+            rankingExport.querySelector(".cs-play-report-preview").appendChild(canvas);
             return canvas;
           }).catch((error) => { canvasPromise = null; throw error; });
         }
         return canvasPromise;
       };
       const status = rankingExport.querySelector(".cs-ranking-export-status");
-      rankingExport.addEventListener("toggle", () => {
-        if (rankingExport.open) {
-          preview().catch(() => { status.textContent = "이미지를 만들지 못했습니다. 다시 열어 주세요."; });
+      preview().catch(() => { status.textContent = "이미지를 만들지 못했습니다. 다시 열어 주세요."; });
+      const closePlayReport = () => {
+        state.playReportOpen = false;
+        render();
+        const trigger = s.getElementById("cs-play-report-open");
+        if (trigger) trigger.focus({ preventScroll: true });
+      };
+      rankingExport.querySelectorAll("[data-play-report-close], #cs-play-report-close").forEach(button => button.addEventListener("click", closePlayReport));
+      const previousMonthButton = rankingExport.querySelector("#cs-play-report-prev");
+      const nextMonthButton = rankingExport.querySelector("#cs-play-report-next");
+      if (previousMonthButton) previousMonthButton.addEventListener("click", () => {
+        state.playReportMonthOffset -= 1;
+        render();
+      });
+      if (nextMonthButton) nextMonthButton.addEventListener("click", () => {
+        state.playReportMonthOffset += 1;
+        render();
+      });
+      rankingExport.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closePlayReport();
         }
       });
       rankingExport.querySelectorAll("[data-ranking-action]").forEach(button => {
@@ -4090,8 +4172,8 @@
       }
       render();
     });
-    if (monthToggle) monthToggle.addEventListener("click", () => { if (state.monthExpanded && state.scheduleViewMode !== "gameRatings") return; closePopover(); state.monthExpanded = true; state.scheduleViewMode = "schedule"; render(); });
-    if (weekToggle) weekToggle.addEventListener("click", () => { if (!state.monthExpanded && state.scheduleViewMode !== "gameRatings") return; closePopover(); state.monthExpanded = false; state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; state.scheduleViewMode = "schedule"; render(); });
+    if (monthToggle) monthToggle.addEventListener("click", () => { if (state.monthExpanded && state.scheduleViewMode !== "gameRatings") return; closePopover(); state.playReportOpen = false; state.monthExpanded = true; state.scheduleViewMode = "schedule"; render(); });
+    if (weekToggle) weekToggle.addEventListener("click", () => { if (!state.monthExpanded && state.scheduleViewMode !== "gameRatings") return; closePopover(); state.playReportOpen = false; state.monthExpanded = false; state.gameOnly = false; state.selectedGame = ""; state.gameRankTranslate = 0; state.scheduleViewMode = "schedule"; render(); });
     s.querySelectorAll("[data-schedule-mode]").forEach(button => button.addEventListener("click", () => { void switchScheduleViewMode(button); }));
     if (state.scheduleViewMode === "gameRatings") bindGameRatingControls(s);
     if (lolLoadMore) lolLoadMore.addEventListener("click", () => {
@@ -4102,6 +4184,7 @@
     });
     if (extensionCollapse) extensionCollapse.addEventListener("click", () => {
       closePopover();
+      state.playReportOpen = false;
       state.settingsOpen = false;
       state.extensionCollapsed = !state.extensionCollapsed;
       saveExtensionCollapsed(state.extensionCollapsed);
@@ -4126,6 +4209,10 @@
     });
     if (gameToggle) gameToggle.addEventListener("click", () => {
       closePopover();
+      if (!state.monthExpanded) {
+        state.monthExpanded = true;
+        state.scheduleViewMode = "schedule";
+      }
       state.gameOnly = !state.gameOnly;
       if (!state.gameOnly) {
         state.selectedGame = "";
@@ -4889,19 +4976,28 @@
     state.activePopoverDate = key;
     popover.classList.add("cs-open");
 
-    // 위치 계산: 팝오버의 실제 absolute 기준인 일정 섹션을 사용한다.
-    // 본문(.cs-schedule-body)을 기준으로 계산하면 헤더 높이만큼 위로
-    // 당겨져 팝오버가 hover 중인 일정 칸을 가리게 된다.
-    const sectionRect = section.getBoundingClientRect();
+    // Top layer로 표시해 오뱅알 프레임의 overflow에 잘리지 않게 viewport 기준으로 배치한다.
+    if (popover.showPopover && !popover.matches(":popover-open")) {
+      try { popover.showPopover(); } catch (_) {}
+    }
     const cellRect = cell.getBoundingClientRect();
     const popW = popover.offsetWidth || 250;
-    const cellCenter = cellRect.left - sectionRect.left + cellRect.width / 2;
-    let left = cellCenter - popW / 2;
-    left = Math.max(4, Math.min(left, sectionRect.width - popW - 4));
-    const top = cellRect.bottom - sectionRect.top + 6;
+    const popH = popover.offsetHeight || 120;
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+    const cellCenter = cellRect.left + cellRect.width / 2;
+    let left = Math.max(10, Math.min(cellCenter - popW / 2, viewportWidth - popW - 10));
+    let top = cellRect.bottom + 8;
+    if (top + popH > viewportHeight - 10) top = cellRect.top - popH - 8;
+    top = Math.max(10, Math.min(top, viewportHeight - popH - 10));
 
     popover.style.left = left + "px";
     popover.style.top = top + "px";
+    const arrowLeft = Math.max(14, Math.min(cellCenter - left - 5, popW - 24));
+    arrow.style.left = arrowLeft + "px";
+    arrow.style.top = top < cellRect.top ? "auto" : "-5px";
+    arrow.style.bottom = top < cellRect.top ? "-5px" : "auto";
+    arrow.style.transform = top < cellRect.top ? "rotate(225deg)" : "rotate(45deg)";
     if (arrow) arrow.style.left = Math.max(10, Math.min(cellCenter - left - 5, popW - 20)) + "px";
   }
 
@@ -5207,7 +5303,7 @@
     pop.setAttribute("aria-label", "그님티");
     pop.innerHTML =
       '<div class="cs-gnimti-dialog">' +
-      '<button type="button" class="cs-gnimti-close" id="cs-gnimti-close" aria-label="닫기">×</button>' +
+      '<button type="button" class="cs-gnimti-close" id="cs-gnimti-close" aria-label="닫기"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button>' +
       '<div class="cs-gnimti-visual">' +
       '<img class="cs-gnimti-image" src="' + GNIMTI_POPUP_IMAGE_URL + '" alt="" />' +
       '<img class="cs-gnimti-logo" src="' + GNIMTI_LOGO_IMAGE_URL + '" alt="" />' +
@@ -5221,7 +5317,7 @@
     pop.addEventListener("keydown", (event) => {
       if (event.key === "Escape") closeGnimtiPopup();
     });
-    const close = pop.querySelector("#cs-gnimti-close");
+      const close = pop.querySelector("#cs-gnimti-close");
     if (close) close.addEventListener("click", closeGnimtiPopup);
     const dialog = pop.querySelector(".cs-gnimti-dialog");
     if (dialog) dialog.addEventListener("click", (event) => {
@@ -5265,7 +5361,7 @@
     viewer = document.createElement("div");
     viewer.id = "cs-media-viewer";
     viewer.className = "cs-media-viewer";
-    viewer.innerHTML = '<button type="button" class="cs-media-viewer-close" id="cs-media-viewer-close" aria-label="닫기">×</button><div class="cs-media-viewer-canvas" id="cs-media-viewer-canvas"><img id="cs-media-viewer-img" alt="" draggable="false" /></div>';
+    viewer.innerHTML = '<button type="button" class="cs-media-viewer-close" id="cs-media-viewer-close" aria-label="닫기"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button><div class="cs-media-viewer-canvas" id="cs-media-viewer-canvas"><img id="cs-media-viewer-img" alt="" draggable="false" /></div>';
     viewer.addEventListener("click", (event) => {
       if (event.target === viewer || event.target.id === "cs-media-viewer-canvas") closeOriginalImage();
     });
@@ -5366,7 +5462,7 @@
     pop = document.createElement("div");
     pop.id = "cs-media-popover";
     pop.className = "cs-media-popover";
-    pop.innerHTML = '<div class="cs-media-head"><span class="cs-media-title" id="cs-media-title"></span><button type="button" class="cs-media-close" id="cs-media-close" aria-label="닫기">×</button></div><div class="cs-media-body" id="cs-media-body"></div>';
+    pop.innerHTML = '<div class="cs-media-head"><span class="cs-media-title" id="cs-media-title"></span><button type="button" class="cs-media-close" id="cs-media-close" aria-label="닫기"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></div><div class="cs-media-body" id="cs-media-body"></div>';
     const root = s && s.getElementById("cs-root");
     (root || s).appendChild(pop);
     const close = pop.querySelector("#cs-media-close");
@@ -5555,7 +5651,12 @@
     state.activePopoverDate = "";
     state.schedulePopoverPinned = false;
     const popover = state.shadow && state.shadow.getElementById("cs-popover");
-    if (popover) popover.classList.remove("cs-open");
+    if (popover) {
+      popover.classList.remove("cs-open");
+      if (popover.matches && popover.matches(":popover-open") && popover.hidePopover) {
+        try { popover.hidePopover(); } catch (_) {}
+      }
+    }
   }
 
   // ----------------------------------------------------------
@@ -5839,7 +5940,7 @@
   function renderTitleHistoryPopover() {
     const items = getTitleHistoryItems();
     if (!items.length) {
-      return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30">&times;</button></div><div class="oth-sheet-body"><div class="oth-empty">\uC544\uC9C1 \uAE30\uB85D\uB41C \uBC29\uC81C \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div></div>';
+      return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></div><div class="oth-sheet-body"><div class="oth-empty">\uC544\uC9C1 \uAE30\uB85D\uB41C \uBC29\uC81C \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div></div>';
     }
     const groups = [];
     items.forEach((item) => {
@@ -5883,7 +5984,7 @@
         if (!rows) return '';
         return '<section class="oth-group"><div class="oth-category"><span>' + escapeHtml(group.label) + '</span></div><ol class="oth-list">' + rows + '</ol></section>';
       }).join("");
-    return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30">&times;</button></div><div class="oth-sheet-body">' + html + '</div>';
+    return '<div class="oth-sheet-handle" aria-hidden="true"></div><div class="oth-popover-head"><strong>\uC774\uC804 \uBC29\uC81C</strong><button type="button" class="oth-close" id="oth-close" aria-label="\uB2EB\uAE30"><img src="' + api.runtime.getURL("icons/close-outline.svg") + '" alt="" aria-hidden="true" /></button></div><div class="oth-sheet-body">' + html + '</div>';
   }
 
 

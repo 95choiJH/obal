@@ -608,9 +608,9 @@
     const days = new Date(month.year, month.month, 0).getDate();
     let html = '<section class="admin-schedule-calendar">' +
       '<div class="admin-calendar-head">' +
-        '<button type="button" class="admin-calendar-arrow" data-admin-month="prev" aria-label="이전 달">‹</button>' +
+        '<button type="button" class="admin-calendar-arrow" data-admin-month="prev" aria-label="이전 달"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6" /></svg></button>' +
         '<div class="admin-calendar-title">' + month.year + "." + String(month.month).padStart(2, "0") + '</div>' +
-        '<button type="button" class="admin-calendar-arrow" data-admin-month="next" aria-label="다음 달">›</button>' +
+        '<button type="button" class="admin-calendar-arrow" data-admin-month="next" aria-label="다음 달"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6" /></svg></button>' +
       '</div>' +
       '<div class="admin-calendar-grid">' + WEEK.map((day) => '<div class="admin-calendar-weekday">' + day + '</div>').join("");
     for (let i = 0; i < first.getDay(); i++) html += '<div class="admin-calendar-blank"></div>';
@@ -1915,6 +1915,45 @@
     const { data, error } = await sb.from(cfg.tableName).select('vods').eq('channel_id', cfg.channelId).eq('date', date).maybeSingle();
     if (error || !(data && data.vods || []).some((vod) => chapterVodVideoNo(vod) === videoNo)) {
       toast('다시보기 링크를 먼저 전체 저장한 후 챕터를 연결해 주세요.');
+      return false;
+    }
+    return true;
+  }
+
+  async function saveChapterVodIfNeeded(date, videoNo) {
+    if (!videoNo) return true;
+    const row = rows.find((entry) => entry.date === date);
+    const vod = (row && row.vods || []).find((entry) => chapterVodVideoNo(entry) === videoNo);
+    if (!vod || !String(vod.url || '').trim()) {
+      toast('연결할 다시보기 주소를 먼저 입력하고 링크를 확인해 주세요.');
+      return false;
+    }
+
+    const { data: savedRow, error: readError } = await sb.from(cfg.tableName)
+      .select('id,vods').eq('channel_id', cfg.channelId).eq('date', date).maybeSingle();
+    if (readError) {
+      toast('다시보기 확인 실패: ' + readError.message);
+      return false;
+    }
+    const savedVods = Array.isArray(savedRow && savedRow.vods) ? savedRow.vods : [];
+    if (savedVods.some((entry) => chapterVodVideoNo(entry) === videoNo)) return true;
+
+    const vodToSave = {
+      url: String(vod.url || '').trim(),
+      label: String(vod.label || '').trim() || '방송 다시보기',
+      videoNo,
+      ...(vod.liveKey || vod.live_key ? { liveKey: String(vod.liveKey || vod.live_key).trim() } : {}),
+      ...(vod.startedAt || vod.started_at ? { startedAt: String(vod.startedAt || vod.started_at).trim() } : {}),
+      ...(vod.endedAt || vod.ended_at ? { endedAt: String(vod.endedAt || vod.ended_at).trim() } : {}),
+      ...(vod.manualLabel === true ? { manualLabel: true } : {}),
+      ...(vod.chaptersReady === true ? { chaptersReady: true } : {}),
+    };
+    const payload = { vods: savedVods.concat(vodToSave), updated_at: new Date().toISOString() };
+    const result = savedRow
+      ? await sb.from(cfg.tableName).update(payload).eq('id', savedRow.id)
+      : await sb.from(cfg.tableName).upsert({ channel_id: cfg.channelId, date, ...payload }, { onConflict: 'channel_id,date' });
+    if (result.error) {
+      toast('다시보기를 일정에 적용하지 못했습니다: ' + result.error.message);
       return false;
     }
     return true;
@@ -4723,7 +4762,7 @@
         if (!item) return;
         const row = rows.find((entry) => entry.date === item.schedule_date);
         const vod = (row && row.vods || []).find((entry) => chapterVodVideoNo(entry) === el.value);
-        if (vod && !await requireSavedChapterVod(item.schedule_date, chapterVodVideoNo(vod))) { render(); return; }
+        if (vod && !await saveChapterVodIfNeeded(item.schedule_date, chapterVodVideoNo(vod))) { render(); return; }
         const start = vod && vod.startedAt || scheduleDateStartIso(item.schedule_date);
         const payload = {
           vod_video_no: vod ? chapterVodVideoNo(vod) : null,

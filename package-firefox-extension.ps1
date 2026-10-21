@@ -24,16 +24,19 @@ $allowedIconFiles = @(
   "icons\image-copy.png",
   "icons\png-download.png",
   "icons\on_break.png",
+  "icons\on_break-light.png",
   "icons\undetermined.png",
+  "icons\undetermined-light.png",
   "icons\naver_cafe.png",
   "icons\video_donation.png",
-  "icons\tile-icon.png",
+  "icons\simple-outline.svg",
+  "icons\game-controller-outline.svg",
   "icons\star-icon.png",
   "icons\calendar-icon.svg",
   "images\notification-guide.png",
   "images\ddahyoni-profile.png"
 )
-$optionalFiles = @('icons\on_break-white.png','icons\gamepad-icon.svg','images\gnimti-logo.png','images\gnimti-logo2.png','images\obal_ios.png','images\obal-android.png','images\gnimti-back.png')
+$optionalFiles = @('images\gnimti-logo.png','images\gnimti-logo2.png','images\obal_ios.png','images\obal-android.png','images\gnimti-back.png')
 $allowedIconFiles += @($optionalFiles | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })
 $gnimtiPath = Join-Path $root 'images\gnimti'
 $allowedGnimtiFiles = if (Test-Path -LiteralPath $gnimtiPath) {
