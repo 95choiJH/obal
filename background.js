@@ -876,6 +876,7 @@ async function fetchAdminSettingsByKey(key) {
 
 function normalizeGameRatings(value) {
   return (Array.isArray(value) ? value : []).map((item, index) => ({
+    recentRegistration: item && item.recentRegistration === true,
     id: String((item && item.id) || index + 1),
     name: String((item && item.name) || "").trim(),
     genre: String((item && item.genre) || "").trim(),

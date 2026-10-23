@@ -214,7 +214,14 @@ function syncVisiblePartLabels(parts: NonNullable<ReturnType<typeof normalizePar
 }
 function mergeParts(existing: unknown, current: NonNullable<ReturnType<typeof normalizeGameImage>>) {
   const list = Array.isArray(existing) ? existing.map(normalizePart).filter(Boolean) as NonNullable<ReturnType<typeof normalizePart>>[] : [];
-  const index = list.findIndex((part) => samePartCategory(part, current));
+  // Only merge with the latest categorized part so returning to an earlier
+  // game after another category creates a new part.
+  let index = -1;
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (!list[i].categoryId && !partCategoryLabel(list[i])) continue;
+    if (samePartCategory(list[i], current)) index = i;
+    break;
+  }
   if (index >= 0) {
     const merged = {
       ...list[index],

@@ -675,6 +675,7 @@
 
   function normalizeGameRatings(value) {
     return (Array.isArray(value) ? value : []).map((item, index) => ({
+      recentRegistration: item && item.recentRegistration === true,
       id: String((item && item.id) || (Date.now() + index)),
       name: String((item && item.name) || ""),
       genre: String((item && item.genre) || ""),
@@ -709,7 +710,7 @@
       form +
       (ratings.length ? '<div class="rating-badge-list" aria-label="저장된 게임">' + badges + '</div>' : '<div class="content-placeholder">등록된 게임이 없습니다. 게임을 추가하면 따타스코어에 노출됩니다.</div>');
     list.querySelector('[data-rating-add]')?.addEventListener('click', () => {
-      const item = { id: String(Date.now()), name: "", genre: "", score: 0, note: "", steamAppId: "", youtubeId: "", imageUrl: "" };
+      const item = { id: String(Date.now()), recentRegistration: true, name: "", genre: "", score: 0, note: "", steamAppId: "", youtubeId: "", imageUrl: "" };
       adminSettings.gameRatings.unshift(item);
       activeGameRatingId = item.id;
       renderGameRatingsAdmin(); markDirty();
@@ -1965,16 +1966,6 @@
     return '다시보기 ' + (index + 1) + ' · ' + (vod.label || '방송 다시보기') + ' · ' + time + '영상 ' + (chapterVodVideoNo(vod) || '확인 필요');
   }
 
-  function chapterAssignmentHtml(item) {
-    const row = rows.find((entry) => entry.date === item.schedule_date);
-    const options = (row && row.vods || []).map((vod, index) => {
-      const id = chapterVodVideoNo(vod);
-      if (!id) return '';
-      return '<option value="' + esc(id) + '"' + (item.vod_video_no === id ? ' selected' : '') + '>' + esc(chapterVodLabel(vod, index)) + '</option>';
-    }).join('');
-    return '<select class="chapter-assignment" data-chapter-assign="' + esc(item.id) + '" aria-label="연결할 다시보기"><option value="">연결 대기</option>' + options + '</select>';
-  }
-
   function chapterTimeSelectHtml(attribute, key, offset, label) {
     const value = formatChapterOffset(offset);
     const values = value.split(':').map(Number);
@@ -1996,6 +1987,7 @@
         '<input class="chapter-preview-title" type="text" data-chapter-title="' + esc(item.id) + '" value="' + esc(item.category_label || "") + '" placeholder="챕터 제목" aria-label="챕터 제목" autocomplete="off" />' +
         '<div class="member-results game-results" data-chapter-title-results="' + esc(item.id) + '"></div>' +
       '</div>' +
+      '<div class="chapter-row-actions">' +
       (type ? '<b>' + esc(type) + '</b>' : '') +
       '<button type="button" class="flag-toggle chapter-hidden-toggle' + (item.hidden ? ' on' : '') + '" data-chapter-hidden="' + esc(item.id) + '">' + (item.hidden ? '숨김됨' : '노출') + '</button>' +
       '<button type="button" class="add-btn small" data-chapter-save="' + esc(item.id) + '">저장</button>' +
@@ -2003,8 +1995,8 @@
         '<button type="button" class="add-btn small" data-chapter-move="' + esc(item.id) + '" data-chapter-neighbor="' + esc(index > 0 ? chapters[index - 1].id : '') + '" aria-label="챕터 위로 이동" title="챕터 위로 이동 (시작 시간 유지)"' + (index === 0 ? ' disabled' : '') + '>&uarr;</button>' +
         '<button type="button" class="add-btn small" data-chapter-move="' + esc(item.id) + '" data-chapter-neighbor="' + esc(index < chapters.length - 1 ? chapters[index + 1].id : '') + '" aria-label="챕터 아래로 이동" title="챕터 아래로 이동 (시작 시간 유지)"' + (index === chapters.length - 1 ? ' disabled' : '') + '>&darr;</button>' +
       '</span>' +
-      chapterAssignmentHtml(item) +
       (item.vod_video_no ? '<a class="add-btn small" target="_blank" rel="noopener noreferrer" href="https://chzzk.naver.com/video/' + esc(item.vod_video_no) + '?t=' + Math.max(0, Number(item.offset_seconds) || 0) + '">시점 미리보기 ↗</a>' : '') +
+      '</div>' +
     '</li>';
   }
 
@@ -4753,28 +4745,6 @@
         if (!vod) return;
         vod.chaptersReady = !vod.chaptersReady;
         markDirty();
-        render();
-      };
-    });
-    document.querySelectorAll('[data-chapter-assign]').forEach((el) => {
-      el.onchange = async () => {
-        const item = liveCategoryHistory.find((entry) => String(entry.id) === el.dataset.chapterAssign);
-        if (!item) return;
-        const row = rows.find((entry) => entry.date === item.schedule_date);
-        const vod = (row && row.vods || []).find((entry) => chapterVodVideoNo(entry) === el.value);
-        if (vod && !await saveChapterVodIfNeeded(item.schedule_date, chapterVodVideoNo(vod))) { render(); return; }
-        const start = vod && vod.startedAt || scheduleDateStartIso(item.schedule_date);
-        const payload = {
-          vod_video_no: vod ? chapterVodVideoNo(vod) : null,
-          live_key: vod ? (vod.liveKey || 'video:' + chapterVodVideoNo(vod)) : item.schedule_date + '-manual',
-          started_at: start,
-          changed_at: chapterChangedAtIso(start, item.offset_seconds),
-        };
-        el.disabled = true;
-        const { error } = await sb.from(liveCategoryHistoryTableName()).update(payload).eq('id', item.id).eq('channel_id', cfg.channelId);
-        if (error) { toast('챕터 연결 실패: ' + error.message); render(); return; }
-        Object.assign(item, payload);
-        toast(vod ? '선택한 다시보기에 챕터를 연결했습니다.' : '챕터를 연결 대기로 이동했습니다.');
         render();
       };
     });

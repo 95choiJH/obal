@@ -168,6 +168,33 @@ test('invalid collection mode is rejected', async () => {
   assert.equal((await harness().request('invalid')).status, 400);
 });
 
+test('returning to an earlier game creates a new part without polling duplicates', async () => {
+  let saved = null;
+  let writes = 0;
+  const h = harness({ supabaseFetch: async (_route, options) => {
+    if (options.method === 'GET') return saved ? [{ id: 1, ...saved }] : [];
+    saved = JSON.parse(options.body);
+    writes += 1;
+    return [];
+  } });
+  const other = { ...category, label: 'Other game', categoryId: 'other' };
+  const sync = current => h.context.syncCategoriesToSchedule(
+    'channel', live.date, [current], ['GAME'], live.startedAt, 'https://db.example', 'service');
+
+  await sync(category);
+  await sync(category);
+  assert.equal(writes, 1);
+  await sync(other);
+  await sync(other);
+  assert.equal(writes, 2);
+  await sync(category);
+  await sync(category);
+  assert.equal(writes, 3);
+  assert.deepEqual(saved.parts.map(part => part.categoryId), ['game', 'other', 'game']);
+  assert.deepEqual(saved.parts.map(part => part.label), ['1부', '2부', '3부']);
+  assert.equal(saved.game_images.length, 2);
+});
+
 
 test('recent replay backfill uses continued live session schedule date', async () => {
   const calls = [];

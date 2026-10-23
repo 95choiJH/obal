@@ -607,23 +607,26 @@
   .chapter-preview-session-head .chapter-preview-session { margin-bottom: 0; }
   .chapter-preview-session a { color: var(--mint); white-space: nowrap; }
   .chapter-preview-session-head { flex-wrap: wrap; }
-  .chapter-assignment { grid-column: 1 / -2; width: 100%; min-width: 0; }
-  .chapter-assignment { min-height: 30px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text-dim); font-size: 11px; }
-  .chapter-ready-toggle { flex: 0 0 auto; }
+  .chapter-ready-toggle { flex: 0 0 auto; height: 28px; padding: 0 8px; font-size: 11px; white-space: nowrap; }
   .chapter-preview-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
-  .chapter-preview-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,0.025); }
-  .chapter-order-buttons { display: inline-flex; gap: 4px; }
+  .chapter-preview-row { display: grid; grid-template-columns: auto minmax(0,1fr) max-content; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,0.025); }
+  .chapter-row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; gap: 6px; white-space: nowrap; }
+  .chapter-preview-row.is-new > span:empty { display: none; }
+  .chapter-preview-row .add-btn.small, .chapter-preview-row .flag-toggle { width: auto; min-width: 0; height: 28px; margin: 0; padding: 0 7px; border-radius: 6px; font-size: 11px; line-height: 1; white-space: nowrap; }
+  .chapter-preview-row .add-btn.small { display: inline-flex; gap: 3px; }
+  .chapter-order-buttons .add-btn.small { width: 28px; padding: 0; }
+  .chapter-order-buttons { display: inline-flex; flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; white-space: nowrap; }
   .chapter-order-buttons button:disabled { opacity: 0.35; cursor: default; }
   .chapter-preview-row.is-new { border-style: dashed; background: rgba(0,255,163,0.035); }
   .chapter-preview-row .game-autocomplete-wrap { min-width: 0; }
   .chapter-preview-row .game-autocomplete-wrap .chapter-preview-title { width: 100%; }
   .chapter-preview-row.is-hidden { opacity: 0.58; border-style: dashed; }
-  .chapter-time-selects { display: flex; align-items: center; gap: 3px; color: var(--text-dim); font-size: 11px; }
-  .chapter-time-selects select { width: 52px; height: 30px; padding: 0 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text-dim); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chapter-time-selects { display: flex; align-items: center; gap: 3px; color: var(--text-dim); font-size: 11px; white-space: nowrap; }
+  .chapter-time-selects select { width: 44px; height: 28px; padding: 0 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text-dim); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .chapter-preview-title { min-width: 0; width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 800; }
   .chapter-preview-row b { color: var(--text-mute); font-size: 9px; }
-  .chapter-hidden-toggle { min-width: 48px; }
-  @media (max-width: 680px) { .chapter-preview-row { grid-template-columns: minmax(0,1fr) auto auto; } .chapter-preview-row .chapter-time-selects, .chapter-preview-row .game-autocomplete-wrap { grid-column: 1 / -1; } .chapter-preview-row .chapter-hidden-toggle { grid-column: 2; } }
+  .chapter-preview-row .chapter-hidden-toggle { min-width: 44px; }
+  @media (max-width: 680px) { .chapter-preview-row { grid-template-columns: minmax(0,1fr) auto auto; } .chapter-preview-row .chapter-time-selects, .chapter-preview-row .game-autocomplete-wrap { grid-column: 1 / -1; } .chapter-row-actions { grid-column: 1 / -1; } }
   @media (max-width: 560px) { .settings-row { align-items: flex-start; } .lol-account-grid { grid-template-columns: 1fr; } }
   .topbar { position: sticky; top: 0; }
   .editor-columns { min-width: 0; }
