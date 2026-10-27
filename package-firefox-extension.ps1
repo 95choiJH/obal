@@ -33,6 +33,7 @@ $allowedIconFiles = @(
   "icons\game-controller-outline.svg",
   "icons\star-icon.png",
   "icons\calendar-icon.svg",
+  "icons\close-outline.svg",
   "images\notification-guide.png",
   "images\ddahyoni-profile.png"
 )

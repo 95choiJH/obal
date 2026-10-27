@@ -659,6 +659,10 @@
   .info-sub-editor-shell .directive-editor { min-height: 116px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
   .info-sub-body { display: block; width: 100%; min-height: 116px; resize: vertical; padding: 11px 12px; border: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1.65; outline: none; }
   .info-sub-add { margin-top: 0; }
+  .info-body-items { display:grid; gap:12px; min-width:0; }
+  .info-body-item { min-width:0; }
+  .info-body-item-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; color:var(--text-mute); font-size:12px; }
+  .info-body-item .directive-editor, .info-body-item .info-sub-body { min-height:64px; }
   @media (max-width: 560px) { .info-structured-head, .info-sub-head { grid-template-columns: 1fr; } .info-sub-head .info-card-actions, .info-structured-head .info-card-actions { justify-content: flex-end; } }
   .info-card { padding: 13px; }
   .info-field { min-width: 0; width: 100%; }

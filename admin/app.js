@@ -1501,10 +1501,12 @@
     const titleId = "info-sub-title-" + i + "-" + si;
     const hasBody = !entry || entry.hasBody !== false;
     const bodyEditor = hasBody ? (
-        '<div class="info-sub-editor-shell">' +
+      '<div class="info-body-items">' + String(entry.body || "").split(/\r?\n/).map((text, bi) =>
+        '<div class="info-body-item"><div class="info-body-item-head"><span>소식 ' + (bi + 1) + '</span><button type="button" class="icon-btn" data-ibody-del="' + i + '-' + si + '-' + bi + '" aria-label="소식 삭제">' + trashSvg() + '</button></div><div class="info-sub-editor-shell">' +
           '<div class="info-sub-toolbar"></div>' +
-          '<textarea id="' + fieldId + '" class="info-sub-body" data-isub-body="' + i + '-' + si + '" placeholder="\uc138\ubd80 \uc18c\uc2dd \ubcf8\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694. \ubbf8\ub514\uc5b4 \ubc84\ud2bc\uc73c\ub85c \uc774\ubbf8\uc9c0/\ub9c1\ud06c\ub97c \ucd94\uac00\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4." data-ii="' + i + '" data-si="' + si + '">' + esc(entry.body || "") + '</textarea>' +
-        '</div>'
+          '<textarea id="' + fieldId + '-' + bi + '" class="info-sub-body" data-isub-body="' + i + '-' + si + '-' + bi + '" placeholder="소식 하나를 입력하세요. 서식과 미디어 버튼을 사용할 수 있습니다." data-ii="' + i + '" data-si="' + si + '">' + esc(text) + '</textarea>' +
+        '</div></div>'
+      ).join('') + '<button type="button" class="add-btn small" data-ibody-add="' + i + '-' + si + '">+ 소식 입력 칸 추가</button></div>'
       ) : "";
     return (
       '<div class="info-sub-card' + (hasBody ? "" : " no-body") + '" data-info-sub="' + i + '-' + si + '">' +
@@ -1600,8 +1602,23 @@
       el.oninput = () => {
         const data = structuredInfoData(info[i]) || { title: "", items: [] };
         data.items[si] = data.items[si] || emptyInfoSubItem("");
-        data.items[si].body = el.value;
+        const fields = document.querySelectorAll('[data-isub-body^="' + i + '-' + si + '-"]');
+        data.items[si].body = Array.from(fields, (field) => field.value).join("\n");
         setStructuredInfoData(i, data);
+        markDirty();
+      };
+    });
+    document.querySelectorAll("[data-ibody-add], [data-ibody-del]").forEach((el) => {
+      el.onclick = () => {
+        const adding = el.hasAttribute("data-ibody-add");
+        const [i, si, bi] = el.getAttribute(adding ? "data-ibody-add" : "data-ibody-del").split("-").map(Number);
+        const data = structuredInfoData(info[i]);
+        const lines = String(data.items[si].body || "").split(/\r?\n/);
+        if (adding) lines.push("");
+        else lines.splice(bi, 1);
+        data.items[si].body = lines.join("\n");
+        setStructuredInfoData(i, data);
+        renderInfo();
         markDirty();
       };
     });
