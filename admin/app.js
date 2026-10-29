@@ -2373,7 +2373,7 @@
       ? '<div class="part-category-selected">' +
         (poster ? '<img class="game-result-poster" src="' + esc(poster) + '" alt="" />' : '<span class="game-result-poster game-result-poster-empty">' + esc(label.charAt(0) || "?") + '</span>') +
         '<span class="part-category-selected-label">' + esc(label) + '</span>' +
-        '<button type="button" class="member-chip-del" data-delpartcategory="' + i + '-' + pi + '" aria-label="카테고리 제거">×</button>' +
+        '<button type="button" class="member-chip-del" data-delpartcategory="' + i + '-' + pi + '" aria-label="카테고리 제거"><svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' +
       '</div>'
       : '';
     return '<div class="part-category-box">' +
@@ -2798,7 +2798,7 @@
         '<span class="member-chip">' +
           memberAvatarImgHtml(hostChannel) +
           '<span class="member-chip-name">' + esc(hostChannel.channelName) + "</span>" +
-          '<button class="member-chip-del" data-hostdel="' + i + "-" + pi + '" aria-label="삭제">×</button>' +
+          '<button class="member-chip-del" data-hostdel="' + i + "-" + pi + '" aria-label="삭제"><svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' +
         "</span>";
     } else {
       inner +=
@@ -2818,7 +2818,7 @@
           '<span class="member-chip">' +
             memberAvatarImgHtml(m) +
             '<span class="member-chip-name">' + esc(m.channelName) + "</span>" +
-            '<button class="member-chip-del" data-mdel="' + i + "-" + pi + "-" + esc(m.channelId) + '" aria-label="삭제">×</button>' +
+            '<button class="member-chip-del" data-mdel="' + i + "-" + pi + "-" + esc(m.channelId) + '" aria-label="삭제"><svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' +
           "</span>"
       )
       .join("");
@@ -3502,7 +3502,7 @@
     directiveInsertPopup.innerHTML = '<div class="directive-popup-backdrop" data-directive-popup-close="1"></div>' +
       '<div class="directive-popup" role="dialog" aria-modal="true">' +
       '<div class="directive-popup-head"><span class="directive-popup-title"></span>' +
-      '<button type="button" class="directive-popup-close" data-directive-popup-close="1" aria-label="닫기">×</button></div>' +
+      '<button type="button" class="directive-popup-close" data-directive-popup-close="1" aria-label="닫기"><svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>' +
       '<div class="directive-popup-body"></div></div>';
     document.body.appendChild(directiveInsertPopup);
     directiveInsertPopup.addEventListener("mousedown", (event) => {
@@ -4469,7 +4469,7 @@
         '</select><span>' + unit + '</span>';
     }).join('');
     return '<div class="part-category-duration"><span>' + label + ' (방송 경과)</span><div class="part-category-time-selects">' + selects +
-      '<button type="button" class="icon-btn" data-category-time-clear="' + key + '" aria-label="' + label + ' 시간 지우기">×</button></div></div>';
+      '<button type="button" class="icon-btn" data-category-time-clear="' + key + '" aria-label="' + label + ' 시간 지우기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></div>';
   }
 
   function normalizePart(p) {

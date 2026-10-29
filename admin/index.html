@@ -84,6 +84,9 @@
   .card.off .card-date { color: var(--text-dim); }
   .card-head .grow { flex: 1; }
   .icon-btn { background: none; color: var(--text-mute); font-size: 0; padding: 4px; width: 28px; height: 28px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
+  .close-icon { display: block; flex-shrink: 0; pointer-events: none; }
+  .member-chip-del .close-icon { width: 12px; height: 12px; }
+  .directive-popup-close .close-icon, .feedback-drawer-close .close-icon { width: 20px; height: 20px; }
   .icon-btn svg { width: 16px; height: 16px; }
   .row { display: flex; gap: 8px; margin-bottom: 8px; }
   .row:last-child { margin-bottom: 0; }
@@ -800,7 +803,7 @@
       <section id="settingsPanel" class="admin-panel" data-admin-panel="settings" hidden><section class="list settings-section"><div id="settingsList"></div></section></section>
       <section id="feedbackPanel" class="admin-panel" data-admin-panel="feedback" hidden>
         <aside class="feedback-drawer" aria-label="&#47928;&#51032; &#48143; &#51228;&#48372; &#44288;&#47532;">
-          <div class="feedback-drawer-head"><span class="feedback-drawer-title">&#47928;&#51032;&#54632;</span><span id="feedbackCount" class="feedback-count"></span><button id="feedbackRefresh" class="feedback-refresh" type="button">&#49352;&#47196;&#44256;&#52840;</button><button id="feedbackDrawerClose" class="feedback-drawer-close" type="button" aria-label="&#45803;&#44592;">&times;</button></div>
+          <div class="feedback-drawer-head"><span class="feedback-drawer-title">&#47928;&#51032;&#54632;</span><span id="feedbackCount" class="feedback-count"></span><button id="feedbackRefresh" class="feedback-refresh" type="button">&#49352;&#47196;&#44256;&#52840;</button><button id="feedbackDrawerClose" class="feedback-drawer-close" type="button" aria-label="&#45803;&#44592;"><svg class="close-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
           <div class="feedback-filters" id="feedbackFilters"><span class="feedback-filter-label">&#49345;&#53468;</span><button class="feedback-filter active" data-feedback-filter="all">&#51204;&#52404;</button><button class="feedback-filter" data-feedback-filter="new">&#51217;&#49688;</button><button class="feedback-filter" data-feedback-filter="checking">&#54869;&#51064;&#51473;</button><button class="feedback-filter" data-feedback-filter="hold">&#48372;&#47448;</button><button class="feedback-filter" data-feedback-filter="done">&#52376;&#47532;&#50756;&#47308;</button></div>
           <div class="feedback-filters" id="feedbackTypeFilters"><span class="feedback-filter-label">&#51333;&#47448;</span><button class="feedback-filter active" data-feedback-type-filter="all">&#51204;&#52404;</button></div>
           <div class="feedback-drawer-body" id="feedbackList"><div class="empty" style="padding:18px 0;">&#48520;&#47084;&#50724;&#45716; &#51473;</div></div>
